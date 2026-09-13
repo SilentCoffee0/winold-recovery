@@ -1,17 +1,17 @@
 ﻿using System.Windows;
 using Microsoft.Extensions.Logging;
+using WinOldRecovery.App.ViewModels;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Logging;
 using WinOldRecovery.Core.Persistence;
+using WinOldRecovery.Core.Processes;
 using WinOldRecovery.Core.Safety;
+using WinOldRecovery.Core.Scan;
 using WinOldRecovery.Core.Sessions;
 using WinOldRecovery.Native;
 
 namespace WinOldRecovery.App;
 
-/// <summary>
-/// Interaction logic for App.xaml
-/// </summary>
 public partial class App : Application
 {
     private SessionDb? sessionDatabase;
@@ -23,11 +23,10 @@ public partial class App : Application
         try
         {
             Privileges.EnableBackupAndRestore();
-            SafeFs safeFs = new(new SourceGuard());
+            SourceGuard sourceGuard = new();
+            SafeFs safeFs = new(sourceGuard);
             DateTimeOffset startedAt = DateTimeOffset.Now;
-            SessionWorkspace workspace = SessionWorkspace.Create(
-                safeFs,
-                now: startedAt);
+            SessionWorkspace workspace = SessionWorkspace.Create(safeFs, now: startedAt);
             sessionDatabase = SessionDb.OpenAsync(workspace.DatabasePath, safeFs)
                 .GetAwaiter()
                 .GetResult();
@@ -52,6 +51,20 @@ public partial class App : Application
             logger.LogInformation(
                 "Session {SessionId} initialized. Windows.old has not been touched.",
                 workspace.SessionId);
+
+            ProcessRunner processRunner = new();
+            SourceDiscovery discovery = new(new DriveInfoVolumeRootProvider(), processRunner);
+            ScanOrchestrator orchestrator = new(sessionDatabase, safeFs, sourceGuard);
+            ShellViewModel viewModel = new(
+                sessionDatabase,
+                workspace,
+                discovery,
+                orchestrator,
+                processRunner);
+            viewModel.LoadSourcesAsync().GetAwaiter().GetResult();
+
+            MainWindow window = new(viewModel);
+            window.Show();
         }
         catch (Exception exception)
         {

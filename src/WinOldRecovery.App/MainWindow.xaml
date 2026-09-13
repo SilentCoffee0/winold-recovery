@@ -1,17 +1,110 @@
 ﻿<Window x:Class="WinOldRecovery.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:WinOldRecovery.App"
-        mc:Ignorable="d"
-        Title="WinOld Recovery"
+        Title="{Binding WindowTitle}"
         Height="720"
         Width="1100"
         MinHeight="640"
         MinWidth="1024"
-        WindowStartupLocation="CenterScreen">
-    <Grid>
+        WindowStartupLocation="CenterScreen"
+        PreviewKeyDown="OnPreviewKeyDown">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Padding="12,8" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+            <StackPanel>
+                <TextBlock FontWeight="SemiBold" Text="WinOld Recovery" />
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button Margin="0,0,8,0" Command="{Binding}" Tag="1" Click="OnStepClick" Content="1 Scan" />
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
+                    <Button Margin="0,0,8,0" Tag="2" Click="OnStepClick" Content="2 Decide" />
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
+                    <Button Margin="0,0,8,0" Tag="3" Click="OnStepClick" Content="3 Preview" />
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
+                    <Button Margin="0,0,8,0" Tag="4" Click="OnStepClick" Content="4 Restore" />
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
+                    <Button Margin="0,0,8,0" Tag="5" Click="OnStepClick" Content="5 Verify" />
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
+                    <Button Tag="6" Click="OnStepClick" Content="6 Purge" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
 
-    </Grid>
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem>
+                <TextBlock Text="{Binding SourceIntegrityText, StringFormat=● {0}}" />
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem>
+                <TextBlock Text="{Binding SpaceBudgetText}" />
+            </StatusBarItem>
+        </StatusBar>
+
+        <Grid Margin="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                    <TextBlock Text="{Binding ScanStatus}" TextWrapping="Wrap" />
+                    <TextBlock Margin="0,4,0,0" Foreground="Gray" Text="{Binding ElevationNote}" TextWrapping="Wrap" />
+                    <TextBlock Margin="0,4,0,0" Text="{Binding CurrentPath}" />
+                </StackPanel>
+
+                <Grid Grid.Row="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <ListBox Grid.Row="0" MaxHeight="140"
+                             ItemsSource="{Binding Sources}"
+                             DisplayMemberPath="Path"
+                             SelectedValuePath="Path"
+                             SelectedValue="{Binding SelectedSourcePath}" />
+
+                    <ListView Grid.Row="1" Margin="0,8,0,8"
+                              ItemsSource="{Binding TreeRows}"
+                              SelectedItem="{Binding SelectedNode}"
+                              VirtualizingPanel.IsVirtualizing="True"
+                              VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="Name" DisplayMemberBinding="{Binding Name}" Width="220" />
+                                <GridViewColumn Header="Size" DisplayMemberBinding="{Binding AggSize}" Width="90" />
+                                <GridViewColumn Header="Files" DisplayMemberBinding="{Binding AggFiles}" Width="70" />
+                                <GridViewColumn Header="Decision" DisplayMemberBinding="{Binding DecisionLabel}" Width="140" />
+                                <GridViewColumn Header="Problem" DisplayMemberBinding="{Binding Problem}" Width="120" />
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal">
+                        <Button Content="Scan" Command="{Binding ScanCommand}" Margin="0,0,8,0" />
+                        <Button Content="Cancel" Command="{Binding CancelScanCommand}" Margin="0,0,8,0" />
+                        <Button Content="Restore (R)" Command="{Binding RestoreCommand}" Margin="0,0,8,0" />
+                        <Button Content="Leave Behind (L)" Command="{Binding LeaveBehindCommand}" Margin="0,0,8,0" />
+                        <Button Content="Undecided (U)" Command="{Binding UndecidedCommand}" Margin="0,0,8,0" />
+                        <Button Content="Open Folder (O)" Command="{Binding OpenFolderCommand}" Margin="0,0,8,0" />
+                        <Button Content="Expand" Command="{Binding ExpandCommand}" CommandParameter="{Binding SelectedNode}" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" />
+
+            <TextBox Grid.Column="2"
+                     IsReadOnly="True"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto"
+                     Text="{Binding DetailText, Mode=OneWay}" />
+        </Grid>
+    </DockPanel>
 </Window>

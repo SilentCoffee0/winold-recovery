@@ -39,7 +39,7 @@ public sealed class OfflineHiveShellFolderSource : IShellFolderValueSource
             return hive.GetStringValues(UserShellFoldersKey);
         }
         catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            exception is not OutOfMemoryException and not StackOverflowException)
         {
             return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }

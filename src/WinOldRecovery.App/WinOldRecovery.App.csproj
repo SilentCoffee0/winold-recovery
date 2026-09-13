@@ -4,6 +4,10 @@
     <ProjectReference Include="..\WinOldRecovery.Recipes\WinOldRecovery.Recipes.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AssemblyName>WinOldRecovery</AssemblyName>
