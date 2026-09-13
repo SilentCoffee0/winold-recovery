@@ -31,3 +31,14 @@ public sealed record WalkerCheckpoint(
     List<string> CompletedTopLevelDirectories);
 
 public readonly record struct ChildAggregate(long AggSize, long AggFiles);
+
+public sealed record ClassificationNodeRow(
+    long Id,
+    long? ParentId,
+    string Name,
+    string RelPath,
+    NodeKind Kind,
+    long Size,
+    long AggSize,
+    NodeProblem Problem,
+    bool Sensitive);

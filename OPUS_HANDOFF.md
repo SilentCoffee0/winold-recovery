@@ -68,11 +68,11 @@ Follow IMPLEMENTATION_PLAN.md: **M0 foundation and spikes → M1 scan + tree →
 
 ## Current implementation handoff — 13 Sep 2026
 
-- **Current item:** M2 classification — embedded JSON rules, badges, suggested defaults (never auto-LeaveBehind unknown or regeneratable), High-value and Regeneratable summary cards.
-- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 items 1–4, 6, and item 5 except FlaUI smoke. Decide Cards, Files view switcher, context menu, optional hashing of files ≤ 64 MB. Reparse nodes cannot be restored.
+- **Current item:** M3 plan, copy engine, journal, and verification L0–L2.
+- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 items 1–4, 6, and item 5 except FlaUI smoke. M2 classification rules, badges, suggested defaults, and summary cards.
 - **Remaining M0 (explicitly pending, not claimed passed):** elevated deny-ACL/orphan-SID enumeration and backup-mode reads; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch; real-VM `cleanmgr` handler; Explorer long-path selection. See `docs/spikes/PENDING_MANUAL.md`.
-- **Verified tests:** strict Release build has 0 warnings/errors. Hashing, NodeBrowser, and ShellViewModel tests pass. Do not tag `v0.1.0-m0` while those external checks remain pending.
-- **Next exact implementation step:** M2 rules engine over embedded HighValue/Regeneratable/GameSaves/Sensitive JSON, apply SuggestedDefault rows, summary cards, contributor rule docs. Never auto-LeaveBehind unclassified or regeneratable nodes.
+- **Verified tests:** strict Release build has 0 warnings/errors. Classification I6, hashing, NodeBrowser, and ShellViewModel tests pass. Do not tag `v0.1.0-m0` while those external checks remain pending.
+- **Next exact implementation step:** M3 PlanBuilder + preflight (space/conflicts), then the in-process copy engine (`.winold-partial` + rename, journal, no ACL copy) and verifier L0–L2. Add remaining native APIs (`GetDiskFreeSpaceExW`, `SetFileTime`, `MoveFileExW`) as the copy engine needs them. Do not start recipes or purge.
 
 ## What not to redesign
 

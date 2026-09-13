@@ -1,0 +1,28 @@
+{
+  "rules": [
+    {
+      "id": "saved-games-folder",
+      "kind": "GameSave",
+      "badge": "Game save",
+      "why": "Windows Saved Games folder.",
+      "suggestedDefault": "Restore",
+      "directoryNames": ["Saved Games"]
+    },
+    {
+      "id": "my-games",
+      "kind": "GameSave",
+      "badge": "Game save",
+      "why": "Documents\\My Games folder.",
+      "suggestedDefault": "Restore",
+      "directoryNames": ["My Games"]
+    },
+    {
+      "id": "steam-userdata",
+      "kind": "GameSave",
+      "badge": "Game save",
+      "why": "Steam per-user save data.",
+      "suggestedDefault": "Restore",
+      "pathContains": ["\\Steam\\userdata"]
+    }
+  ]
+}

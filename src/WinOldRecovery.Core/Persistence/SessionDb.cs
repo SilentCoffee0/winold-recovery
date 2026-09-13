@@ -327,6 +327,69 @@ public sealed class SessionDb : IAsyncDisposable
             cancellationToken);
     }
 
+    public IReadOnlyList<ClassificationNodeRow> ListClassificationNodes(string sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id, parent_id, name, rel_path, kind, size, agg_size, problem, sensitive
+            FROM nodes
+            WHERE session_id = $sessionId
+            ORDER BY id;
+            """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        List<ClassificationNodeRow> rows = [];
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            rows.Add(
+                new ClassificationNodeRow(
+                    reader.GetInt64(0),
+                    reader.IsDBNull(1) ? null : reader.GetInt64(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    Enum.Parse<NodeKind>(reader.GetString(4)),
+                    reader.GetInt64(5),
+                    reader.GetInt64(6),
+                    Enum.Parse<NodeProblem>(reader.GetString(7)),
+                    reader.GetInt64(8) != 0));
+        }
+
+        return rows;
+    }
+
+    public Task MarkNodesSensitiveAsync(
+        IReadOnlyList<long> nodeIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(nodeIds);
+        if (nodeIds.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        return WriteAsync(
+            async (connection, token) =>
+            {
+                using SqliteTransaction transaction = connection.BeginTransaction();
+                await using SqliteCommand command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = "UPDATE nodes SET sensitive = 1 WHERE id = $id;";
+                SqliteParameter id = command.Parameters.Add("$id", SqliteType.Integer);
+                foreach (long nodeId in nodeIds)
+                {
+                    id.Value = nodeId;
+                    await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                }
+
+                transaction.Commit();
+            },
+            cancellationToken);
+    }
+
     public Task SetKvAsync(
         string sessionId,
         string key,

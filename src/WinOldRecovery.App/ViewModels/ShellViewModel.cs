@@ -3,6 +3,7 @@ using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WinOldRecovery.Core.Browse;
+using WinOldRecovery.Core.Classification;
 using WinOldRecovery.Core.Decisions;
 using WinOldRecovery.Core.Hashing;
 using WinOldRecovery.Core.IO;
@@ -48,6 +49,7 @@ public sealed class ShellViewModel : ObservableObject
     private bool hashDuringScan;
     private OverviewCard? selectedCard;
     private IReadOnlyList<DetectedProfile> lastProfiles = [];
+    private ClassificationSummary? lastClassification;
 
     public ShellViewModel(
         SessionDb sessionDb,
@@ -421,6 +423,7 @@ public sealed class ShellViewModel : ObservableObject
             }
 
             lastProfiles = result.Profiles;
+            lastClassification = result.Classification;
             RebuildCards(lastProfiles);
             CurrentStep = WorkflowStep.Decide;
             DecidePane = DecidePane.Cards;
@@ -560,6 +563,26 @@ public sealed class ShellViewModel : ObservableObject
                         node?.Id,
                         "PersonalFolder"));
             }
+        }
+
+        if (lastClassification is not null)
+        {
+            Cards.Add(
+                new OverviewCard(
+                    "High-value items",
+                    "Password vaults, libraries, VM disks, and similar files.",
+                    $"{lastClassification.HighValueCount} items, {lastClassification.HighValueBytes} bytes",
+                    "Undecided",
+                    NodeId: null,
+                    "HighValue"));
+            Cards.Add(
+                new OverviewCard(
+                    "Regeneratable",
+                    "Caches and installers. Badged only — never left behind automatically.",
+                    $"{lastClassification.RegeneratableCount} folders or files, {lastClassification.RegeneratableBytes} bytes",
+                    "Undecided",
+                    NodeId: null,
+                    "Regeneratable"));
         }
 
         OnPropertyChanged(nameof(Cards));

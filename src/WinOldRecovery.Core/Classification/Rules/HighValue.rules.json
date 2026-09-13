@@ -1,0 +1,88 @@
+{
+  "rules": [
+    {
+      "id": "keepass-db",
+      "kind": "HighValue",
+      "badge": "KeePass",
+      "why": "Your password vault. Needs your master password and any key file.",
+      "sensitive": true,
+      "suggestedDefault": "Restore",
+      "nameGlobs": ["*.kdbx", "*.kdb", "*.keyx"]
+    },
+    {
+      "id": "outlook-pst",
+      "kind": "HighValue",
+      "badge": "Outlook",
+      "why": "Open PST in Outlook: File → Open & Export → Open Outlook Data File.",
+      "sensitive": true,
+      "suggestedDefault": "Restore",
+      "nameGlobs": ["*.pst"]
+    },
+    {
+      "id": "outlook-ost",
+      "kind": "HighValue",
+      "badge": "Outlook",
+      "why": "OST files are regenerated from the mail server.",
+      "sensitive": true,
+      "suggestedDefault": "Undecided",
+      "nameGlobs": ["*.ost"]
+    },
+    {
+      "id": "obsidian-vault",
+      "kind": "HighValue",
+      "badge": "Obsidian",
+      "why": "Obsidian vault folder.",
+      "suggestedDefault": "Restore",
+      "directoryNames": [".obsidian"]
+    },
+    {
+      "id": "vscode-settings",
+      "kind": "HighValue",
+      "badge": "VS Code",
+      "why": "Editor settings and keybindings.",
+      "suggestedDefault": "Restore",
+      "pathGlobs": ["**\\Code\\User\\settings.json", "**\\Code\\User\\keybindings.json"]
+    },
+    {
+      "id": "windows-terminal",
+      "kind": "HighValue",
+      "badge": "Windows Terminal",
+      "why": "Terminal settings.",
+      "suggestedDefault": "Restore",
+      "pathGlobs": ["**\\Microsoft.WindowsTerminal_*\\LocalState\\settings.json"]
+    },
+    {
+      "id": "vm-disks",
+      "kind": "HighValue",
+      "badge": "VM disk",
+      "why": "Copy only; re-register the disk in the hypervisor yourself.",
+      "suggestedDefault": "Undecided",
+      "nameGlobs": ["*.vhd", "*.vhdx", "*.vmdk", "*.vdi", "*.qcow2", "*.ova"]
+    },
+    {
+      "id": "databases",
+      "kind": "HighValue",
+      "badge": "Database",
+      "why": "Application or personal database file.",
+      "suggestedDefault": "Undecided",
+      "nameGlobs": ["*.sqlite", "*.sqlite3", "*.mdb", "*.accdb", "*.fdb"],
+      "minSize": 1048576
+    },
+    {
+      "id": "shell-dotfiles",
+      "kind": "HighValue",
+      "badge": "Dotfile",
+      "why": "Shell and editor configuration.",
+      "suggestedDefault": "Restore",
+      "nameGlobs": [".bashrc", ".zshrc", ".profile", ".vimrc", ".editorconfig", ".wslconfig", ".condarc"]
+    },
+    {
+      "id": "zotero-calibre",
+      "kind": "HighValue",
+      "badge": "Library",
+      "why": "Personal library with a catalog database.",
+      "suggestedDefault": "Restore",
+      "nameGlobs": ["zotero.sqlite", "metadata.db"]
+    }
+  ]
+}

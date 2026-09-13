@@ -1,0 +1,110 @@
+{
+  "rules": [
+    {
+      "id": "node-modules",
+      "kind": "Regeneratable",
+      "badge": "Regeneratable",
+      "why": "node_modules is recreated by npm install.",
+      "directoryNames": ["node_modules"]
+    },
+    {
+      "id": "python-venv",
+      "kind": "Regeneratable",
+      "badge": "Regeneratable",
+      "why": "Python virtual environment.",
+      "directoryNames": [".venv", "venv"]
+    },
+    {
+      "id": "python-env",
+      "kind": "Regeneratable",
+      "badge": "Regeneratable",
+      "why": "Python virtual environment (pyvenv.cfg present).",
+      "directoryNames": ["env"],
+      "childGlobs": ["pyvenv.cfg"]
+    },
+    {
+      "id": "pycache",
+      "kind": "Regeneratable",
+      "badge": "Regeneratable",
+      "why": "Python bytecode cache.",
+      "directoryNames": ["__pycache__", ".pytest_cache", ".mypy_cache", ".tox"]
+    },
+    {
+      "id": "cargo-target",
+      "kind": "Regeneratable",
+      "badge": "Regeneratable",
+      "why": "Rust or Maven build output.",
+      "directoryNames": ["target"],
+      "siblingGlobs": ["Cargo.toml", "pom.xml"]
+    },
+    {
+      "id": "dotnet-bin-obj",
+      "kind": "Regeneratable",
+      "badge": "Regeneratable",
+      "why": "bin/obj next to a project file.",
+      "directoryNames": ["bin", "obj"],
+      "siblingGlobs": ["*.csproj", "*.sln"]
+    },
+    {
+      "id": "js-build",
+      "kind": "Regeneratable",
+      "badge": "Regeneratable",
+      "why": "Frontend build output next to package.json.",
+      "directoryNames": ["build", "dist", ".next", ".nuxt", ".parcel-cache", ".turbo"],
+      "siblingGlobs": ["package.json"]
+    },
+    {
+      "id": "cache-dirs",
+      "kind": "Regeneratable",
+      "badge": "Regeneratable",
+      "why": "Package manager or compiler cache.",
+      "directoryNames": [".cache", ".gradle"]
+    },
+    {
+      "id": "cache-paths",
+      "kind": "Regeneratable",
+      "badge": "Regeneratable",
+      "why": "Package manager cache path.",
+      "pathGlobs": ["**\\.m2\\repository", "**\\.nuget\\packages", "**\\.cargo\\registry"]
+    },
+    {
+      "id": "appdata-caches",
+      "kind": "Regeneratable",
+      "badge": "Regeneratable",
+      "why": "Windows and package-manager caches under AppData.",
+      "pathContains": [
+        "\\AppData\\Local\\Temp",
+        "\\AppData\\Local\\pip\\cache",
+        "\\AppData\\Local\\npm-cache",
+        "\\Yarn\\Cache",
+        "\\uv\\cache",
+        "\\Package Cache",
+        "\\INetCache",
+        "\\CrashDumps"
+      ]
+    },
+    {
+      "id": "iso-images",
+      "kind": "Regeneratable",
+      "badge": "Installer",
+      "why": "Disc image; usually re-downloadable.",
+      "nameGlobs": ["*.iso"]
+    },
+    {
+      "id": "large-img",
+      "kind": "Regeneratable",
+      "badge": "Installer",
+      "why": "Large disk image.",
+      "nameGlobs": ["*.img"],
+      "minSize": 524288000
+    },
+    {
+      "id": "downloads-installers",
+      "kind": "Regeneratable",
+      "badge": "Installer",
+      "why": "Installer in Downloads.",
+      "nameGlobs": ["*.exe", "*.msi", "*.msix", "*.appx"],
+      "pathContains": ["\\Downloads\\"]
+    }
+  ]
+}

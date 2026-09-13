@@ -1,3 +1,4 @@
+using WinOldRecovery.Core.Classification;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Persistence;
 using WinOldRecovery.Core.Safety;
@@ -56,11 +57,20 @@ public sealed class ScanOrchestrator
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return new ScanRunResult(registered, profiles, walk);
+        ClassificationEngine classifier = new(sessionDb, safeFs);
+        ClassificationSummary classification = await classifier.ClassifyAsync(
+                sessionId,
+                registered,
+                profiles,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return new ScanRunResult(registered, profiles, walk, classification);
     }
 }
 
 public sealed record ScanRunResult(
     string SourceRoot,
     IReadOnlyList<DetectedProfile> Profiles,
-    WalkResult Walk);
+    WalkResult Walk,
+    ClassificationSummary Classification);

@@ -17,4 +17,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Classification\Rules\*.json" LogicalName="WinOldRecovery.Core.Classification.Rules.%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

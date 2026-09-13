@@ -1,0 +1,40 @@
+{
+  "rules": [
+    {
+      "id": "private-keys",
+      "kind": "Sensitive",
+      "badge": "Sensitive",
+      "why": "Private key or certificate material. Contents are never displayed.",
+      "sensitive": true,
+      "suggestedDefault": "Undecided",
+      "nameGlobs": ["*.pem", "*.key", "*.ppk", "*.pfx", "*.p12", "id_rsa", "id_ed25519", "id_ecdsa", "key.pem"]
+    },
+    {
+      "id": "env-secrets",
+      "kind": "Sensitive",
+      "badge": "Sensitive",
+      "why": "Contains credentials; prefer re-issuing them.",
+      "sensitive": true,
+      "suggestedDefault": "Undecided",
+      "nameGlobs": [".env", ".env.*", "*.secret", "secrets.json", ".netrc", ".npmrc", ".pypirc", ".git-credentials"]
+    },
+    {
+      "id": "cloud-cli",
+      "kind": "Sensitive",
+      "badge": "Sensitive",
+      "why": "Cloud CLI tokens may have expired; re-login is safer.",
+      "sensitive": true,
+      "suggestedDefault": "Undecided",
+      "pathContains": ["\\.aws\\", "\\.azure\\", "\\.kube\\config", "\\.docker\\config.json", "\\gcloud\\", "\\.terraform.d\\"]
+    },
+    {
+      "id": "gnupg-home",
+      "kind": "Sensitive",
+      "badge": "GPG",
+      "why": "OpenPGP keyring. Restore with gpg-agent stopped.",
+      "sensitive": true,
+      "suggestedDefault": "Restore",
+      "directoryNames": ["gnupg", ".gnupg"]
+    }
+  ]
+}
