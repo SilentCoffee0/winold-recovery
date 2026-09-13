@@ -249,6 +249,90 @@ public sealed class RecipeTests
         Assert.Contains("SUPERSECRETAPIKEY", destConfig, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task AnkiWslAndGpg_RestoreWithoutTrashIndexOrRandomSeed()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string anki = Path.Combine(alice, "AppData", "Roaming", "Anki2", "User 1");
+        Directory.CreateDirectory(Path.Combine(anki, "collection.media", "media.trash"));
+        WriteSqlite(
+            Path.Combine(anki, "collection.anki2"),
+            """
+            CREATE TABLE notes(id INTEGER PRIMARY KEY, guid TEXT);
+            CREATE TABLE cards(id INTEGER PRIMARY KEY, nid INTEGER);
+            INSERT INTO notes(guid) VALUES ('note-1');
+            INSERT INTO cards(nid) VALUES (1);
+            """);
+        await File.WriteAllTextAsync(Path.Combine(anki, "collection.anki2-wal"), "wal-must-copy");
+        await File.WriteAllTextAsync(Path.Combine(anki, "collection.media", "image.png"), "media");
+        await File.WriteAllTextAsync(Path.Combine(anki, "collection.media", "media.trash", "gone.png"), "trash");
+        await File.WriteAllTextAsync(Path.Combine(anki, "collection.media.db2"), "regenerate");
+
+        string wsl = Path.Combine(alice, "AppData", "Local", "wsl", "{guid}", "ext4.vhdx");
+        Directory.CreateDirectory(Path.GetDirectoryName(wsl)!);
+        byte[] vhdx = new byte[512];
+        System.Text.Encoding.ASCII.GetBytes("vhdxfile").CopyTo(vhdx, 0);
+        await File.WriteAllBytesAsync(wsl, vhdx);
+
+        string gpg = Path.Combine(alice, "AppData", "Roaming", "gnupg");
+        Directory.CreateDirectory(Path.Combine(gpg, "private-keys-v1.d"));
+        await File.WriteAllTextAsync(Path.Combine(gpg, "pubring.kbx"), "pub");
+        await File.WriteAllTextAsync(Path.Combine(gpg, "private-keys-v1.d", "key"), Canary);
+        await File.WriteAllTextAsync(Path.Combine(gpg, "random_seed"), "seed");
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, RecipeCatalog.All);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+
+        string dump = string.Join('\n', cards.Select(card => string.Join(';', card.Facts.Values)));
+        Assert.DoesNotContain(Canary, dump, StringComparison.Ordinal);
+
+        RecipeCard ankiCard = Assert.Single(cards, card => card.RecipeId == "anki");
+        Assert.Equal("1", ankiCard.Facts["notes"]);
+        PlanResult ankiPlan = host.PlanCard(new AnkiRecipe(), ankiCard, Dest(context));
+        await host.ExecuteAsync("session-1", new AnkiRecipe(), ankiPlan);
+        Assert.True(new AnkiRecipe().Verify(ankiPlan).Ok);
+        string destAnki = Path.Combine(context.Destination, "AppData", "Roaming", "Anki2", "User 1");
+        Assert.True(File.Exists(Path.Combine(destAnki, "collection.anki2-wal")));
+        Assert.True(File.Exists(Path.Combine(destAnki, "collection.media", "image.png")));
+        Assert.False(File.Exists(Path.Combine(destAnki, "collection.media.db2")));
+        Assert.False(Directory.Exists(Path.Combine(destAnki, "collection.media", "media.trash")));
+
+        RecipeCard wslCard = Assert.Single(cards, card => card.RecipeId == "wsl");
+        PlanResult wslPlan = host.PlanCard(new WslRecipe(), wslCard, Dest(context));
+        await host.ExecuteAsync("session-1", new WslRecipe(), wslPlan);
+        Assert.True(new WslRecipe().Verify(wslPlan).Ok);
+        Assert.DoesNotContain(context.Runner.Requests, request => request.FileName.Equals("wsl.exe", StringComparison.OrdinalIgnoreCase));
+        IReadOnlyList<WinOldRecovery.Core.Processes.ProcessRequest> register = WslRecipe.CreateRegisterRequests("Ubuntu", "C:\\tmp\\ext4.vhdx");
+        Assert.Equal("wsl.exe", register[0].FileName);
+        Assert.Contains("--import-in-place", register[1].Arguments);
+        Assert.Contains("C:\\tmp\\ext4.vhdx", register[1].Arguments);
+
+        RecipeCard gpgCard = Assert.Single(cards, card => card.RecipeId == "gpg");
+        PlanResult gpgPlan = host.PlanCard(new GpgRecipe(), gpgCard, Dest(context));
+        await host.ExecuteAsync("session-1", new GpgRecipe(), gpgPlan);
+        Assert.True(new GpgRecipe().Verify(gpgPlan).Ok);
+        Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "gnupg", "private-keys-v1.d", "key")));
+        Assert.False(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "gnupg", "random_seed")));
+        Assert.Contains(context.Runner.Requests, request => request.FileName == "gpg.exe");
+    }
+
     private static string CreateCertificatePem()
     {
         using System.Security.Cryptography.RSA rsa = System.Security.Cryptography.RSA.Create(2048);

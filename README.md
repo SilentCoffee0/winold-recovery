@@ -4,7 +4,7 @@
 
 WinOld Recovery is a free, open-source **Windows.old recovery tool**. After you reinstall, upgrade, or reset Windows, your previous installation sits in `C:\Windows.old` for about ten days. WinOld Recovery scans it, shows you what is in there in plain language, lets you decide item by item what to restore and what to leave behind, restores it safely, verifies the result, and only then helps you delete Windows.old.
 
-> **Status: Milestone 5 in progress.** Scan through M4 recipes plus Syncthing (paused folders, no index) are implemented. Remaining: Anki/WSL/GPG detectors, Chromium autofill/new-profile transplant, gated purge, chaos tests, and elevated/manual M0 checks. The M0 tag has not been created.
+> **Status: Milestone 5 in progress.** Scan through Syncthing, Anki, WSL VHDX copy, and GPG recipes are implemented. Remaining: other R9 detector cards, Chromium autofill/new-profile transplant, gated purge, chaos tests, and elevated/manual M0 checks. The M0 tag has not been created.
 
 ## What it does
 

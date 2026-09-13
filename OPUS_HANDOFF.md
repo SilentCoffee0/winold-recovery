@@ -68,11 +68,11 @@ Follow IMPLEMENTATION_PLAN.md: **M0 foundation and spikes → M1 scan + tree →
 
 ## Current implementation handoff — 13 Sep 2026
 
-- **Current item:** M5 Anki, then WSL/Docker VHDX copy and GPG/KeePass detectors. Remaining M3 polish (kill/resume chaos, disk-full VHDX, overwrite-approval list) can proceed in parallel. Remaining M4: Chromium autofill CSV and optional new-profile bookmark transplant (feature-flagged). Do not build purge before M3 chaos/disk-full are acceptable; verification reports already exist.
-- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 items 1–4, 6, and item 5 except FlaUI smoke. M2 classification. M3 PlanBuilder, preflight, copy engine, journal, RestoreRunner, Verifier L0–L2, and shell Preview/Restore/Verify commands. M4 `IRecipe` host and SSH/Chrome/Edge/Firefox/Git recipes. M5 Syncthing: paused-folder config rewrite, path remap, secret scrubbing, index never copied, device ID from cert DER.
+- **Current item:** remaining M5 high-value detectors (KeePass/Thunderbird/VS Code cards), then M3 chaos/disk-full/overwrite UI, then M6 gated purge. Remaining M4: Chromium autofill CSV and optional new-profile bookmark transplant (feature-flagged). Do not tag `v0.1.0-m0` while elevated/manual M0 checks remain pending.
+- **Complete:** Automated M0 coding through CI/release (M0 tag withheld). M1–M2. M3 PlanBuilder/copy/verify. M4 recipes. M5 Syncthing, Anki (WAL+media, no trash/media.db2), WSL VHDX copy with `vhdxfile` verify and recorded `wsl --import-in-place` flags, GPG keyring without `random_seed`.
 - **Remaining M0 (explicitly pending, not claimed passed):** elevated deny-ACL/orphan-SID enumeration and backup-mode reads; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch; real-VM `cleanmgr` handler; Explorer long-path selection. See `docs/spikes/PENDING_MANUAL.md`.
-- **Verified tests:** strict Release build has 0 warnings/errors (76 tests). Syncthing restore pauses every folder, remaps old-profile paths, keeps API keys out of card facts, and omits `index-v2`. Do not tag `v0.1.0-m0` while those external checks remain pending.
-- **Next exact implementation step:** M5 Anki recipe (collection + WAL + media, no `media.trash`). Do not purge.
+- **Verified tests:** strict Release build has 0 warnings/errors (77 tests). Do not tag `v0.1.0-m0` while those external checks remain pending.
+- **Next exact implementation step:** remaining R9 detector cards (KeePass copy, VS Code settings + install-extensions.cmd), then M6 purge after verify. Do not purge before gates exist.
 
 ## What not to redesign
 

@@ -12,5 +12,8 @@ public static class RecipeCatalog
         new FirefoxRecipe(),
         new GitRecipe(),
         new SyncthingRecipe(),
+        new AnkiRecipe(),
+        new WslRecipe(),
+        new GpgRecipe(),
     ];
 }
