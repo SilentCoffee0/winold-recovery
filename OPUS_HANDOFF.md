@@ -68,11 +68,11 @@ Follow IMPLEMENTATION_PLAN.md: **M0 foundation and spikes → M1 scan + tree →
 
 ## Current implementation handoff — 13 Sep 2026
 
-- **Current item:** M1 item 2 — `FileSystemWalker`.
-- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 item 1 source discovery: `Windows.old*` variants, old system volumes, browsed-folder inspection, 10-day estimate, read-only `SetupCleanupTask` query.
+- **Current item:** M1 item 3 — profile detection (human vs. service vs. Default/Public) and standard-folder detection by name and by offline `User Shell Folders`.
+- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 item 1 source discovery. M1 item 2 `FileSystemWalker`: manual non-following recursion, reparse leaves with tag/target, cloud/EFS/invalid-name/long-path problems, post-order aggregates, 5,000-row batched inserts, 250 ms progress, and cancel/resume checkpoints per top-level directory.
 - **Remaining M0 (explicitly pending, not claimed passed):** elevated deny-ACL/orphan-SID enumeration and backup-mode reads; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch; real-VM `cleanmgr` handler; Explorer long-path selection. See `docs/spikes/PENDING_MANUAL.md`.
-- **Verified tests:** strict Release build has 0 warnings/errors. Core tests include source-discovery coverage. Do not tag `v0.1.0-m0` while those external checks remain pending.
-- **Next exact implementation step:** implement `FileSystemWalker` per ARCHITECTURE §5.1 (manual recursion, reparse leaves, placeholder/EFS/access-denied problems, post-order aggregates, batched inserts, cancel/resume checkpoints).
+- **Verified tests:** strict Release build has 0 warnings/errors. Walker unit tests cover junction non-follow, aggregates, and resume. Fixture integration asserts live-profile `live-only.txt` is never scanned. Do not tag `v0.1.0-m0` while those external checks remain pending.
+- **Next exact implementation step:** implement profile detection and standard-folder detection per IMPLEMENTATION_PLAN M1 work item 3 (name rules plus offline `User Shell Folders` from copied `NTUSER.DAT`).
 
 ## What not to redesign
 
