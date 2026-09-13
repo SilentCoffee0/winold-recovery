@@ -15,7 +15,8 @@ Global definition of done for any milestone:
 - M0 item 1 manual check still required: launch the published EXE on a clean Windows 11 VM and confirm the UAC/elevated startup path interactively.
 - M0 handoff item 2: implementation complete on 13 Sep 2026. Startup enables `SeBackupPrivilege` and `SeRestorePrivilege`; backup-mode source reads use `CreateFileW`; `SourceGuard` canonicalizes paths through existing handles, resolves short names and reparse aliases, and blocks writes beneath registered source roots; `SafeFs` centralizes write operations; purge authorization is root-scoped. Eleven Core safety tests pass, including named I1 write/move tests and path-trick coverage.
 - Remaining native APIs listed in M0 work item 2 (`GetFileInformationByHandleEx`, reparse payload parsing, disk-space query, native file-time setting, and `MoveFileExW`) are not yet implemented; they will be added before the consumers that require them.
-- M0 handoff items 3–8: not started.
+- M0 handoff item 3: implementation complete on 13 Sep 2026. `SessionDb` schema v1 contains all specified state tables and query indexes, uses WAL with `synchronous=NORMAL`, records migrations, rejects newer schemas, exposes read-only query connections, and serializes mutations through a bounded single-reader writer channel. Seventeen Core tests pass.
+- M0 handoff items 4–8: not started.
 
 ---
 

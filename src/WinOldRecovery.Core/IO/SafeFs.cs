@@ -18,6 +18,11 @@ public sealed class SafeFs
         return BackupFile.OpenRead(normalizedPath);
     }
 
+    internal string GetValidatedWritePath(string path, PurgeToken? purgeToken = null)
+    {
+        return sourceGuard.GetValidatedWritePath(path, purgeToken);
+    }
+
     public DirectoryInfo CreateDirectory(string path, PurgeToken? purgeToken = null)
     {
         string validatedPath = sourceGuard.GetValidatedWritePath(path, purgeToken);

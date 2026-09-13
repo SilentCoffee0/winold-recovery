@@ -14,3 +14,5 @@ All notable changes to WinOld Recovery will be documented here.
 - Backup-mode source reads that refuse reparse-backed, offline, and encrypted files.
 - Canonicalized, reparse-aware source-root write protection through `SourceGuard` and `SafeFs`.
 - Root-scoped purge authorization and source-safety unit tests.
+- SQLite session schema v1 covering scan, decision, plan, journal, and verification state.
+- WAL-backed single-writer database channel, read-only query connections, and migration scaffold.
