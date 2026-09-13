@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using WinOldRecovery.App.Help;
 using WinOldRecovery.Core.Browse;
 using WinOldRecovery.Core.Classification;
 using WinOldRecovery.Core.Decisions;
@@ -44,6 +45,8 @@ public sealed class ShellViewModel : ObservableObject
     private readonly RecipeHost? recipeHost;
     private readonly DecisionEngine decisionEngine;
     private readonly NodeBrowser nodeBrowser;
+    private readonly FirstRunState firstRun;
+    private readonly LocalHelp localHelp;
     private CancellationTokenSource? scanCancellation;
     private WorkflowStep currentStep = WorkflowStep.Scan;
     private bool scanCompleted;
@@ -74,6 +77,10 @@ public sealed class ShellViewModel : ObservableObject
     private string destinationRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         "Recovered");
+    private bool helpVisible;
+    private bool firstRunVisible;
+    private HelpTopic? selectedHelpTopic;
+    private string helpText = string.Empty;
 
     private static string LiveProfileRoot =>
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -86,7 +93,9 @@ public sealed class ShellViewModel : ObservableObject
         IProcessRunner processRunner,
         SafeFs safeFs,
         SourceGuard sourceGuard,
-        IReadOnlyList<IRecipe>? recipes = null)
+        IReadOnlyList<IRecipe>? recipes = null,
+        FirstRunState? firstRunState = null,
+        LocalHelp? localHelp = null)
     {
         this.sessionDb = sessionDb;
         this.workspace = workspace;
@@ -124,6 +133,13 @@ public sealed class ShellViewModel : ObservableObject
         ApproveOverwritesCommand = new AsyncRelayCommand(ApproveOverwritesAsync, CanApproveOverwrites);
         ExecutePurgeCommand = new AsyncRelayCommand(ExecutePurgeAsync, () => verifyCompleted && !IsScanning);
         CreateSupportBundleCommand = new RelayCommand(CreateSupportBundle, () => verifyCompleted);
+        this.firstRun = firstRunState ?? FirstRunState.FromWorkspace(safeFs, workspace);
+        this.localHelp = localHelp ?? LocalHelp.FromAppDirectory();
+        firstRunVisible = !this.firstRun.IsDismissed();
+        OpenHelpCommand = new RelayCommand(OpenHelp);
+        CloseHelpCommand = new RelayCommand(() => HelpVisible = false);
+        ShowLogCommand = new AsyncRelayCommand(ShowLogAsync);
+        DismissFirstRunCommand = new RelayCommand(DismissFirstRun);
     }
 
     public IAsyncRelayCommand ScanCommand { get; }
@@ -144,6 +160,12 @@ public sealed class ShellViewModel : ObservableObject
     public IAsyncRelayCommand ApproveOverwritesCommand { get; }
     public IAsyncRelayCommand ExecutePurgeCommand { get; }
     public IRelayCommand CreateSupportBundleCommand { get; }
+    public IRelayCommand OpenHelpCommand { get; }
+    public IRelayCommand CloseHelpCommand { get; }
+    public IAsyncRelayCommand ShowLogCommand { get; }
+    public IRelayCommand DismissFirstRunCommand { get; }
+
+    public IReadOnlyList<HelpTopic> HelpTopics => LocalHelp.Catalog;
 
     public ObservableCollection<SourceCandidate> Sources { get; } = [];
 
@@ -252,6 +274,48 @@ public sealed class ShellViewModel : ObservableObject
 
     public string PromisesText { get; } =
         "We never change Windows.old until you choose to delete it in the last step. We never overwrite your files silently.";
+
+    public string FirstRunBody { get; } =
+        "WinOld Recovery has six steps." + Environment.NewLine + Environment.NewLine +
+        "1. Scan Windows.old (read-only)." + Environment.NewLine +
+        "2. Decide Restore, Leave Behind, or Undecided." + Environment.NewLine +
+        "3. Preview the plan and conflicts." + Environment.NewLine +
+        "4. Restore copies to your new profile." + Environment.NewLine +
+        "5. Verify the copies." + Environment.NewLine +
+        "6. Purge Windows.old only after you type its name." + Environment.NewLine + Environment.NewLine +
+        "We never change Windows.old until you choose to delete it in the last step. We never overwrite your files silently." +
+        Environment.NewLine + Environment.NewLine +
+        "Files in Windows.old belong to a user account that no longer exists; reading them needs administrator rights.";
+
+    public bool HelpVisible
+    {
+        get => helpVisible;
+        private set => SetProperty(ref helpVisible, value);
+    }
+
+    public bool FirstRunVisible
+    {
+        get => firstRunVisible;
+        private set => SetProperty(ref firstRunVisible, value);
+    }
+
+    public HelpTopic? SelectedHelpTopic
+    {
+        get => selectedHelpTopic;
+        set
+        {
+            if (SetProperty(ref selectedHelpTopic, value) && value is not null)
+            {
+                LoadHelp(value);
+            }
+        }
+    }
+
+    public string HelpText
+    {
+        get => helpText;
+        private set => SetProperty(ref helpText, value);
+    }
 
     public string ScanStatus
     {
@@ -541,6 +605,41 @@ public sealed class ShellViewModel : ObservableObject
     {
         FilesViewMode = FilesViewMode.Search;
         ReloadView();
+    }
+
+    public void OpenHelp()
+    {
+        HelpVisible = true;
+        SelectedHelpTopic ??= HelpTopics[0];
+        if (selectedHelpTopic is HelpTopic topic)
+        {
+            LoadHelp(topic);
+        }
+    }
+
+    private void LoadHelp(HelpTopic topic)
+    {
+        try
+        {
+            HelpText = localHelp.ReadDisplayText(topic.FileName);
+        }
+        catch (Exception exception)
+        {
+            ShowHandledFailure(exception);
+        }
+    }
+
+    private async Task ShowLogAsync()
+    {
+        await processRunner.RunAsync(
+                new ProcessRequest("explorer.exe", ["/select," + workspace.LogPath]))
+            .ConfigureAwait(true);
+    }
+
+    private void DismissFirstRun()
+    {
+        firstRun.Dismiss();
+        FirstRunVisible = false;
     }
 
     private async Task ScanAsync()

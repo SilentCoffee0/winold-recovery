@@ -28,5 +28,7 @@
   <ItemGroup>
     <None Include="..\..\src\WinOldRecovery.App\MainWindow.xaml" Link="MainWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\WinOldRecovery.App\App.xaml" Link="App.xaml" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\docs\help\*.md" Link="help\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\docs\limitations.md" Link="help\limitations.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

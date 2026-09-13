@@ -22,6 +22,14 @@ public sealed class FlaUiSmokeTests
         FlaUI.Core.AutomationElements.Window? window = application.GetMainWindow(automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
         Assert.Contains("WinOld Recovery", window.Title, StringComparison.OrdinalIgnoreCase);
+        AutomationElement? dismiss = window.FindFirstDescendant(cf => cf.ByAutomationId("DismissFirstRunButton"));
+        dismiss?.AsButton().Invoke();
+        AutomationElement help = window.FindFirstDescendant(cf => cf.ByAutomationId("HelpButton"))
+            ?? throw new InvalidOperationException("Help button was not found.");
+        help.AsButton().Invoke();
+        AutomationElement closeHelp = window.FindFirstDescendant(cf => cf.ByAutomationId("CloseHelpButton"))
+            ?? throw new InvalidOperationException("Close help button was not found.");
+        closeHelp.AsButton().Invoke();
         AutomationElement scan = window.FindFirstDescendant(cf => cf.ByAutomationId("StepScan"))
             ?? throw new InvalidOperationException("Scan step button was not found.");
         scan.AsButton().Invoke();

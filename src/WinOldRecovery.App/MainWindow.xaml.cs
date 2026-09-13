@@ -39,6 +39,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (e.Key == Key.F1)
+        {
+            ViewModel.OpenHelp();
+            e.Handled = true;
+            return;
+        }
+
         if (Keyboard.Modifiers != ModifierKeys.None)
         {
             return;

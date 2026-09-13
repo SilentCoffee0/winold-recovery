@@ -1,4 +1,5 @@
 using System.IO;
+using WinOldRecovery.App.Help;
 using WinOldRecovery.App.ViewModels;
 using WinOldRecovery.Core.Browse;
 using WinOldRecovery.Core.Decisions;
@@ -137,6 +138,28 @@ public sealed class ShellViewModelTests
         Assert.Contains("was not found", context.ViewModel.ScanStatus, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task FirstRun_StaysUntilDismissedAndHelpLoadsLocalMarkdown()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        Assert.True(context.ViewModel.FirstRunVisible);
+        Assert.Contains("six steps", context.ViewModel.FirstRunBody, StringComparison.OrdinalIgnoreCase);
+        context.ViewModel.DismissFirstRunCommand.Execute(null);
+        Assert.False(context.ViewModel.FirstRunVisible);
+        Assert.True(
+            File.Exists(Path.Combine(context.Root, "WinOldRecovery", "first-run.dismissed")));
+
+        context.ViewModel.OpenHelp();
+        Assert.True(context.ViewModel.HelpVisible);
+        Assert.Contains("Chrome", context.ViewModel.HelpText, StringComparison.OrdinalIgnoreCase);
+
+        await context.ViewModel.ShowLogCommand.ExecuteAsync(null);
+        Assert.Contains(
+            context.Runner.Requests,
+            request => request.FileName == "explorer.exe" &&
+                request.Arguments.Any(argument => argument.Contains("log.txt", StringComparison.OrdinalIgnoreCase)));
+    }
+
     private sealed class ShellTestContext : IAsyncDisposable
     {
         private ShellTestContext(
@@ -170,6 +193,14 @@ public sealed class ShellViewModelTests
             await database.CreateSessionAsync(
                 new SessionRecord(workspace.SessionId, DateTimeOffset.UtcNow, "Created", "0.1.0"));
             SourceDiscovery discovery = new(new StubVolumes([]), runner);
+            string helpRoot = Path.Combine(root, "help");
+            Directory.CreateDirectory(helpRoot);
+            string bundled = Path.Combine(AppContext.BaseDirectory, "help", "limitations.md");
+            File.WriteAllText(
+                Path.Combine(helpRoot, "limitations.md"),
+                File.Exists(bundled)
+                    ? File.ReadAllText(bundled)
+                    : "# Limits\n\nChrome and Edge passwords cannot be recovered.\n");
             ShellViewModel viewModel = new(
                 database,
                 workspace,
@@ -177,7 +208,10 @@ public sealed class ShellViewModelTests
                 new ScanOrchestrator(database, sharedFs, sourceGuard),
                 runner,
                 sharedFs,
-                sourceGuard);
+                sourceGuard,
+                recipes: null,
+                firstRunState: null,
+                localHelp: new LocalHelp(helpRoot));
             return new ShellTestContext(root, database, runner, viewModel);
         }
 

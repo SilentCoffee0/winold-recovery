@@ -18,4 +18,8 @@
     <ApplicationManifest>..\..\build\app.manifest</ApplicationManifest>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\docs\help\*.md" Link="help\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\docs\limitations.md" Link="help\limitations.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

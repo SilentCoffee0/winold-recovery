@@ -11,6 +11,10 @@
         MinWidth="1024"
         WindowStartupLocation="CenterScreen"
         PreviewKeyDown="OnPreviewKeyDown">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="VisibleWhenTrue" />
+    </Window.Resources>
+    <Grid>
     <DockPanel>
         <Border DockPanel.Dock="Top" Padding="12,8" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
             <StackPanel>
@@ -46,6 +50,17 @@
             <Separator />
             <StatusBarItem>
                 <TextBlock Text="{Binding SpaceBudgetText}" />
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem HorizontalAlignment="Right">
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Log" Command="{Binding ShowLogCommand}" Margin="0,0,8,0"
+                            AutomationProperties.Name="Open session log"
+                            AutomationProperties.AutomationId="LogButton" />
+                    <Button Content="Help" Command="{Binding OpenHelpCommand}"
+                            AutomationProperties.Name="Open help"
+                            AutomationProperties.AutomationId="HelpButton" />
+                </StackPanel>
             </StatusBarItem>
         </StatusBar>
 
@@ -274,4 +289,40 @@
             </Grid>
         </Grid>
     </DockPanel>
+        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                Panel.ZIndex="1"
+                Visibility="{Binding HelpVisible, Converter={StaticResource VisibleWhenTrue}}">
+            <DockPanel Margin="24">
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                    <Button DockPanel.Dock="Right" Content="Close help" Command="{Binding CloseHelpCommand}"
+                            AutomationProperties.Name="Close help"
+                            AutomationProperties.AutomationId="CloseHelpButton" />
+                    <TextBlock FontWeight="SemiBold" VerticalAlignment="Center" Text="Help (local pages, no network)" />
+                </DockPanel>
+                <ListBox DockPanel.Dock="Left" Width="280" Margin="0,0,12,0"
+                         ItemsSource="{Binding HelpTopics}"
+                         DisplayMemberPath="Title"
+                         SelectedItem="{Binding SelectedHelpTopic}"
+                         AutomationProperties.Name="Help topics" />
+                <TextBox IsReadOnly="True"
+                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"
+                         Text="{Binding HelpText, Mode=OneWay}"
+                         AutomationProperties.Name="Help page" />
+            </DockPanel>
+        </Border>
+        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                Panel.ZIndex="2"
+                Visibility="{Binding FirstRunVisible, Converter={StaticResource VisibleWhenTrue}}">
+            <StackPanel Margin="48" MaxWidth="640" VerticalAlignment="Center">
+                <TextBlock FontWeight="SemiBold" Text="WinOld Recovery" />
+                <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" Text="{Binding FirstRunBody}"
+                           AutomationProperties.Name="First run explanation" />
+                <Button Margin="0,24,0,0" HorizontalAlignment="Left" Content="Continue"
+                        Command="{Binding DismissFirstRunCommand}"
+                        AutomationProperties.Name="Dismiss first run"
+                        AutomationProperties.AutomationId="DismissFirstRunButton" />
+            </StackPanel>
+        </Border>
+    </Grid>
 </Window>
