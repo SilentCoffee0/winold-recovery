@@ -126,6 +126,40 @@ public sealed class SessionDb : IAsyncDisposable
             cancellationToken);
     }
 
+    public IReadOnlyList<ProfileRecord> ListProfiles(string sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id, name, source_path, kind, last_used_utc
+            FROM profiles
+            WHERE session_id = $sessionId
+            ORDER BY name COLLATE NOCASE;
+            """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        List<ProfileRecord> profiles = [];
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            DateTimeOffset? lastUsed = reader.IsDBNull(4)
+                ? null
+                : DateTimeOffset.Parse(reader.GetString(4), CultureInfo.InvariantCulture);
+            profiles.Add(
+                new ProfileRecord(
+                    sessionId,
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    Enum.Parse<ProfileKind>(reader.GetString(3)),
+                    lastUsed,
+                    reader.GetInt64(0)));
+        }
+
+        return profiles;
+    }
+
     public Task InsertNodesAsync(
         IReadOnlyList<PersistedNode> nodes,
         CancellationToken cancellationToken = default)

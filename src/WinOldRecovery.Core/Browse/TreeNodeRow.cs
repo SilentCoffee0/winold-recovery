@@ -34,6 +34,8 @@ public sealed record TreeNodeRow(
 
     public bool CanRestore => !IsReparse;
 
+    public string BadgeText => string.Join(", ", Badges);
+
     public string DecisionLabel
     {
         get

@@ -129,6 +129,20 @@ public sealed class NodeBrowser
         return page.Rows.Count == 0 ? null : page.Rows[0];
     }
 
+    public TreeNodeRow? FindByRelPath(string relPath)
+    {
+        ArgumentNullException.ThrowIfNull(relPath);
+        NodePage page = Query(
+            parentFilter: "1 = 1",
+            extraFilter: "rel_path = $query",
+            orderBy: "id",
+            offset: 0,
+            limit: 1,
+            parentId: null,
+            search: relPath);
+        return page.Rows.Count == 0 ? null : page.Rows[0];
+    }
+
     private NodePage Query(
         string parentFilter,
         string? extraFilter,

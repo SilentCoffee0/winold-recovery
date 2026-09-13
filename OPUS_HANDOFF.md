@@ -68,11 +68,11 @@ Follow IMPLEMENTATION_PLAN.md: **M0 foundation and spikes → M1 scan + tree →
 
 ## Current implementation handoff — 13 Sep 2026
 
-- **Current item:** M1 item 5 remaining UI — Cards view, Files view-mode switcher in the window, multi-select context menu, and FlaUI smoke. Then M1 item 6 optional hashing.
-- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 items 1–4. M1 item 5 first slice: step bar, status strip ("Windows.old untouched"), Scan source list + scan orchestrator, Decide files tree with SQLite paging (`NodeBrowser`, 2,000 children / 500 largest), Inspect detail pane, Restore/Leave/Undecided, Open Folder through `explorer.exe /select,` via `IProcessRunner`. Reparse nodes cannot be restored.
+- **Current item:** M2 classification — embedded JSON rules, badges, suggested defaults (never auto-LeaveBehind unknown or regeneratable), High-value and Regeneratable summary cards.
+- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 items 1–4, 6, and item 5 except FlaUI smoke. Decide Cards, Files view switcher, context menu, optional hashing of files ≤ 64 MB. Reparse nodes cannot be restored.
 - **Remaining M0 (explicitly pending, not claimed passed):** elevated deny-ACL/orphan-SID enumeration and backup-mode reads; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch; real-VM `cleanmgr` handler; Explorer long-path selection. See `docs/spikes/PENDING_MANUAL.md`.
-- **Verified tests:** strict Release build has 0 warnings/errors. NodeBrowser and ShellViewModel tests pass. Do not tag `v0.1.0-m0` while those external checks remain pending.
-- **Next exact implementation step:** finish Decide Cards view and the Tree/Largest/Recent/Unknown/Problems switcher in the WPF window, then optional hashing (M1 item 6).
+- **Verified tests:** strict Release build has 0 warnings/errors. Hashing, NodeBrowser, and ShellViewModel tests pass. Do not tag `v0.1.0-m0` while those external checks remain pending.
+- **Next exact implementation step:** M2 rules engine over embedded HighValue/Regeneratable/GameSaves/Sensitive JSON, apply SuggestedDefault rows, summary cards, contributor rule docs. Never auto-LeaveBehind unclassified or regeneratable nodes.
 
 ## What not to redesign
 

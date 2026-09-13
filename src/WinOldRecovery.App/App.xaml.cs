@@ -60,7 +60,8 @@ public partial class App : Application
                 workspace,
                 discovery,
                 orchestrator,
-                processRunner);
+                processRunner,
+                safeFs);
             viewModel.LoadSourcesAsync().GetAwaiter().GetResult();
 
             MainWindow window = new(viewModel);

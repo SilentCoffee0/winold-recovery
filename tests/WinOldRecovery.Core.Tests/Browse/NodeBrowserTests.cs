@@ -67,6 +67,22 @@ public sealed class NodeBrowserTests
     }
 
     [Fact]
+    public async Task FindByRelPath_ReturnsExactNode()
+    {
+        await using BrowserContext context = await BrowserContext.CreateAsync();
+        await context.InsertAsync(
+        [
+            Node(1, null, "", "root"),
+            Node(2, 1, @"Users\Alice\Desktop", "Desktop"),
+        ]);
+
+        TreeNodeRow? found = new NodeBrowser(context.Database, "session-1")
+            .FindByRelPath(@"Users\Alice\Desktop");
+        Assert.NotNull(found);
+        Assert.Equal("Desktop", found.Name);
+    }
+
+    [Fact]
     public async Task ChildPageSize_IsTwoThousand()
     {
         Assert.Equal(2000, NodeBrowser.ChildPageSize);

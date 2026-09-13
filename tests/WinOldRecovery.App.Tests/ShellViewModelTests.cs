@@ -34,7 +34,54 @@ public sealed class ShellViewModelTests
         Assert.True(context.ViewModel.CanGoTo(WorkflowStep.Scan));
         Assert.False(context.ViewModel.CanGoTo(WorkflowStep.Purge));
         Assert.Contains(context.ViewModel.TreeRows, row => row.Name.Length > 0);
+        Assert.Equal(DecidePane.Cards, context.ViewModel.DecidePane);
+        Assert.Contains(context.ViewModel.Cards, card => card.Title == "Alice");
+        Assert.Contains(context.ViewModel.Cards, card => card.Title == "Desktop");
         Assert.Equal("Windows.old untouched", context.ViewModel.SourceIntegrityText);
+    }
+
+    [Fact]
+    public async Task SearchNow_SwitchesToSearchView()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "Desktop", "notes.txt"),
+            "keep");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        context.ViewModel.SearchText = "notes";
+        context.ViewModel.SearchNow();
+
+        Assert.Equal(FilesViewMode.Search, context.ViewModel.FilesViewMode);
+        Assert.Contains(context.ViewModel.TreeRows, row => row.Name == "notes.txt");
+    }
+
+    [Fact]
+    public async Task HashDuringScan_StoresSha256ForSmallFiles()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "Desktop", "notes.txt"),
+            "abc");
+        context.ViewModel.SelectedSourcePath = source;
+        context.ViewModel.HashDuringScan = true;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        Assert.Contains("Hashed", context.ViewModel.ScanStatus, StringComparison.Ordinal);
+        Assert.Contains(
+            context.ViewModel.TreeRows,
+            row => row.Name.Length > 0);
     }
 
     [Fact]
@@ -114,7 +161,8 @@ public sealed class ShellViewModelTests
                 workspace,
                 discovery,
                 new ScanOrchestrator(database, safeFs, new SourceGuard()),
-                runner);
+                runner,
+                safeFs);
             return new ShellTestContext(root, database, runner, viewModel);
         }
 

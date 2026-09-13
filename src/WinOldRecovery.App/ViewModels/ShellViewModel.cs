@@ -4,6 +4,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WinOldRecovery.Core.Browse;
 using WinOldRecovery.Core.Decisions;
+using WinOldRecovery.Core.Hashing;
+using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Persistence;
 using WinOldRecovery.Core.Processes;
 using WinOldRecovery.Core.Safety;
@@ -24,10 +26,12 @@ public enum WorkflowStep
 
 public sealed class ShellViewModel : ObservableObject
 {
+    private readonly SessionDb sessionDb;
     private readonly SessionWorkspace workspace;
     private readonly SourceDiscovery sourceDiscovery;
     private readonly ScanOrchestrator scanOrchestrator;
     private readonly IProcessRunner processRunner;
+    private readonly SafeFs safeFs;
     private readonly DecisionEngine decisionEngine;
     private readonly NodeBrowser nodeBrowser;
     private CancellationTokenSource? scanCancellation;
@@ -40,18 +44,25 @@ public sealed class ShellViewModel : ObservableObject
     private TreeNodeRow? selectedNode;
     private FilesViewMode filesViewMode = FilesViewMode.Tree;
     private string searchText = string.Empty;
+    private DecidePane decidePane = DecidePane.Cards;
+    private bool hashDuringScan;
+    private OverviewCard? selectedCard;
+    private IReadOnlyList<DetectedProfile> lastProfiles = [];
 
     public ShellViewModel(
         SessionDb sessionDb,
         SessionWorkspace workspace,
         SourceDiscovery sourceDiscovery,
         ScanOrchestrator scanOrchestrator,
-        IProcessRunner processRunner)
+        IProcessRunner processRunner,
+        SafeFs safeFs)
     {
+        this.sessionDb = sessionDb;
         this.workspace = workspace;
         this.sourceDiscovery = sourceDiscovery;
         this.scanOrchestrator = scanOrchestrator;
         this.processRunner = processRunner;
+        this.safeFs = safeFs;
         decisionEngine = new DecisionEngine(sessionDb, workspace.SessionId);
         nodeBrowser = new NodeBrowser(sessionDb, workspace.SessionId);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => !IsScanning && SelectedSourcePath is not null);
@@ -61,6 +72,17 @@ public sealed class ShellViewModel : ObservableObject
         UndecidedCommand = new AsyncRelayCommand(ClearDecisionAsync, CanMutateSelection);
         OpenFolderCommand = new AsyncRelayCommand(OpenFolderAsync, () => SelectedNode is not null && SourceRoot is not null);
         ExpandCommand = new RelayCommand<TreeNodeRow>(Expand);
+        ShowCardsCommand = new RelayCommand(() => DecidePane = DecidePane.Cards);
+        ShowFilesCommand = new RelayCommand(() => DecidePane = DecidePane.Files);
+        SearchCommand = new RelayCommand(SearchNow);
+        InspectCommand = new RelayCommand(
+            () =>
+            {
+                DecidePane = DecidePane.Files;
+                OnPropertyChanged(nameof(DetailText));
+            },
+            () => SelectedNode is not null);
+        CopyPathCommand = new RelayCommand(CopyPath, () => SelectedNode is not null && SourceRoot is not null);
     }
 
     public IAsyncRelayCommand ScanCommand { get; }
@@ -70,10 +92,27 @@ public sealed class ShellViewModel : ObservableObject
     public IAsyncRelayCommand UndecidedCommand { get; }
     public IAsyncRelayCommand OpenFolderCommand { get; }
     public IRelayCommand<TreeNodeRow> ExpandCommand { get; }
+    public IRelayCommand ShowCardsCommand { get; }
+    public IRelayCommand ShowFilesCommand { get; }
+    public IRelayCommand SearchCommand { get; }
+    public IRelayCommand InspectCommand { get; }
+    public IRelayCommand CopyPathCommand { get; }
 
     public ObservableCollection<SourceCandidate> Sources { get; } = [];
 
     public ObservableCollection<TreeNodeRow> TreeRows { get; } = [];
+
+    public ObservableCollection<OverviewCard> Cards { get; } = [];
+
+    public IReadOnlyList<FilesViewMode> FilesViewModes { get; } =
+    [
+        FilesViewMode.Tree,
+        FilesViewMode.Largest,
+        FilesViewMode.Recent,
+        FilesViewMode.Search,
+        FilesViewMode.Unknown,
+        FilesViewMode.Problems,
+    ];
 
     public WorkflowStep CurrentStep
     {
@@ -144,6 +183,8 @@ public sealed class ShellViewModel : ObservableObject
                 LeaveBehindCommand.NotifyCanExecuteChanged();
                 UndecidedCommand.NotifyCanExecuteChanged();
                 OpenFolderCommand.NotifyCanExecuteChanged();
+                InspectCommand.NotifyCanExecuteChanged();
+                CopyPathCommand.NotifyCanExecuteChanged();
                 OnPropertyChanged(nameof(DetailText));
             }
         }
@@ -165,6 +206,41 @@ public sealed class ShellViewModel : ObservableObject
     {
         get => searchText;
         set => SetProperty(ref searchText, value);
+    }
+
+    public DecidePane DecidePane
+    {
+        get => decidePane;
+        set
+        {
+            if (SetProperty(ref decidePane, value))
+            {
+                OnPropertyChanged(nameof(IsCardsPane));
+                OnPropertyChanged(nameof(IsFilesPane));
+            }
+        }
+    }
+
+    public bool IsCardsPane => DecidePane == DecidePane.Cards;
+
+    public bool IsFilesPane => DecidePane == DecidePane.Files;
+
+    public bool HashDuringScan
+    {
+        get => hashDuringScan;
+        set => SetProperty(ref hashDuringScan, value);
+    }
+
+    public OverviewCard? SelectedCard
+    {
+        get => selectedCard;
+        set
+        {
+            if (SetProperty(ref selectedCard, value) && value?.NodeId is long nodeId)
+            {
+                SelectedNode = nodeBrowser.GetNode(nodeId) ?? SelectedNode;
+            }
+        }
     }
 
     public string WindowTitle =>
@@ -327,9 +403,27 @@ public sealed class ShellViewModel : ObservableObject
                 .ConfigureAwait(true);
             SourceRoot = result.SourceRoot;
             scanCompleted = true;
-            ScanStatus =
-                $"Windows.old holds {result.Walk.NodesVisited} entries across {result.Profiles.Count} profiles. Nothing has been changed.";
+            if (HashDuringScan)
+            {
+                FileHashingPass hasher = new(sessionDb, safeFs);
+                int hashed = await hasher.HashSessionFilesAsync(
+                        workspace.SessionId,
+                        result.SourceRoot,
+                        scanCancellation.Token)
+                    .ConfigureAwait(true);
+                ScanStatus =
+                    $"Windows.old holds {result.Walk.NodesVisited} entries across {result.Profiles.Count} profiles. Hashed {hashed} files under 64 MB. Nothing has been changed.";
+            }
+            else
+            {
+                ScanStatus =
+                    $"Windows.old holds {result.Walk.NodesVisited} entries across {result.Profiles.Count} profiles. Nothing has been changed.";
+            }
+
+            lastProfiles = result.Profiles;
+            RebuildCards(lastProfiles);
             CurrentStep = WorkflowStep.Decide;
+            DecidePane = DecidePane.Cards;
             ReloadView();
             OnPropertyChanged(nameof(WindowTitle));
             OnPropertyChanged(nameof(ScanCompleted));
@@ -367,6 +461,7 @@ public sealed class ShellViewModel : ObservableObject
 
         await decisionEngine.SetUserDecisionAsync(SelectedNode.Id, decision).ConfigureAwait(true);
         ReloadView();
+        RebuildCards(lastProfiles);
     }
 
     private async Task ClearDecisionAsync()
@@ -378,6 +473,7 @@ public sealed class ShellViewModel : ObservableObject
 
         await decisionEngine.ClearUserDecisionAsync(SelectedNode.Id).ConfigureAwait(true);
         ReloadView();
+        RebuildCards(lastProfiles);
     }
 
     private async Task OpenFolderAsync()
@@ -418,6 +514,55 @@ public sealed class ShellViewModel : ObservableObject
         {
             SelectedNode = TreeRows.FirstOrDefault(row => row.Id == SelectedNode.Id) ?? SelectedNode;
         }
+    }
+
+    private void CopyPath()
+    {
+        if (SelectedNode is null || SourceRoot is null)
+        {
+            return;
+        }
+
+        System.Windows.Clipboard.SetText(Path.Combine(SourceRoot, SelectedNode.RelPath));
+    }
+
+    private void RebuildCards(IReadOnlyList<DetectedProfile> profiles)
+    {
+        Cards.Clear();
+        foreach (DetectedProfile profile in profiles)
+        {
+            Cards.Add(
+                new OverviewCard(
+                    profile.DisplayName,
+                    profile.Kind == ProfileKind.Service
+                        ? "Other account (service)"
+                        : "User profile from Windows.old",
+                    profile.LastUsedUtc is { } used
+                        ? "Last used " + used.ToString("d MMM yyyy")
+                        : "Last used unknown",
+                    "Undecided",
+                    NodeId: null,
+                    "Profile"));
+
+            foreach (StandardFolderMatch folder in profile.StandardFolders.Where(static item => item.PresentInSource))
+            {
+                TreeNodeRow? node = folder.RelativePathInSource is null
+                    ? null
+                    : nodeBrowser.FindByRelPath(folder.RelativePathInSource);
+                Cards.Add(
+                    new OverviewCard(
+                        folder.KnownName,
+                        "Personal folder in " + profile.DisplayName,
+                        node is null
+                            ? "Present in the old profile"
+                            : $"{node.AggFiles} files, {node.AggSize} bytes",
+                        node?.DecisionLabel ?? "Undecided",
+                        node?.Id,
+                        "PersonalFolder"));
+            }
+        }
+
+        OnPropertyChanged(nameof(Cards));
     }
 
     private NodePage CombineLargest()

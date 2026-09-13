@@ -30,4 +30,5 @@ All notable changes to WinOld Recovery will be documented here.
 - Reparse-aware `FileSystemWalker` that records junctions/symlinks as leaves, classifies cloud/EFS/long-path/invalid-name problems, stores post-order aggregates, and resumes from top-level directory checkpoints.
 - Profile detection for human, service, and Public (shared) accounts, with standard-folder matching by name and offline `User Shell Folders` redirects.
 - Decision engine with User/SuggestedDefault storage, inherited effective decisions, mixed-subtree summaries, and a 50-step undo stack.
-- WPF Scan/Decide shell with a step bar, untouched-source status strip, virtualized files list, Inspect pane, and Open Folder through the process runner.
+- WPF Scan/Decide shell with a step bar, untouched-source status strip, Decide Cards, Files view switcher, virtualized files list with badges and context menu, Inspect pane, and Open Folder through the process runner.
+- Optional post-scan SHA-256 hashing of clean files at most 64 MB, stored per node in the session database.
