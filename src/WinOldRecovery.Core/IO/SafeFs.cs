@@ -83,4 +83,25 @@ public sealed class SafeFs
         string validatedPath = sourceGuard.GetValidatedWritePath(path, purgeToken);
         File.SetLastWriteTimeUtc(validatedPath, lastWriteTimeUtc);
     }
+
+    public void SetAttributes(
+        string path,
+        FileAttributes attributes,
+        PurgeToken? purgeToken = null)
+    {
+        string validatedPath = sourceGuard.GetValidatedWritePath(path, purgeToken);
+        File.SetAttributes(validatedPath, attributes);
+    }
+
+    public FileSystemInfo CreateSymbolicLink(
+        string path,
+        string targetPath,
+        bool isDirectory,
+        PurgeToken? purgeToken = null)
+    {
+        string validatedPath = sourceGuard.GetValidatedWritePath(path, purgeToken);
+        return isDirectory
+            ? Directory.CreateSymbolicLink(validatedPath, targetPath)
+            : File.CreateSymbolicLink(validatedPath, targetPath);
+    }
 }

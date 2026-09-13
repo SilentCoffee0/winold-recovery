@@ -11,24 +11,12 @@ public static class PathCanonicalizer
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        string regularPath = RemoveExtendedPrefix(path);
-        if (!Path.IsPathFullyQualified(regularPath))
-        {
-            throw new ArgumentException("The path must be fully qualified.", nameof(path));
-        }
-
-        if (regularPath.StartsWith(@"\\", StringComparison.Ordinal))
-        {
-            throw new NotSupportedException("Network paths are not supported in v0.1.");
-        }
-
-        string fullPath = Path.GetFullPath(regularPath);
-        string candidate = fullPath;
+        string candidate = NormalizeLexically(path);
         Stack<string> missingSegments = new();
 
         while (true)
         {
-            if (NativePath.TryGetFinalPath(ToExtendedPath(candidate), out string resolved))
+            if (NativePath.TryGetFinalPath(candidate, out string resolved))
             {
                 while (missingSegments.TryPop(out string? missingSegment))
                 {
@@ -59,6 +47,21 @@ public static class PathCanonicalizer
     public static string NormalizeLexically(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        if (path.StartsWith(ExtendedUncPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new NotSupportedException("Network paths are not supported in v0.1.");
+        }
+
+        if (path.StartsWith(ExtendedPrefix, StringComparison.Ordinal))
+        {
+            if (!Path.IsPathFullyQualified(path))
+            {
+                throw new ArgumentException("The path must be fully qualified.", nameof(path));
+            }
+
+            return TrimEndingSeparatorUnlessRoot(Path.GetFullPath(path));
+        }
 
         string regularPath = RemoveExtendedPrefix(path);
         if (!Path.IsPathFullyQualified(regularPath))

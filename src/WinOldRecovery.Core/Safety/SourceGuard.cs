@@ -8,6 +8,8 @@ public sealed class SourceGuard
     private readonly ConcurrentDictionary<string, byte> sourceRoots =
         new(StringComparer.OrdinalIgnoreCase);
 
+    internal bool HasSourceRoots => !sourceRoots.IsEmpty;
+
     public IReadOnlyCollection<string> SourceRoots => sourceRoots.Keys.ToArray();
 
     public string RegisterSourceRoot(string sourceRoot)
@@ -37,6 +39,11 @@ public sealed class SourceGuard
 
     internal string GetValidatedWritePath(string path, PurgeToken? purgeToken)
     {
+        if (!HasSourceRoots)
+        {
+            return PathCanonicalizer.NormalizeLexically(path);
+        }
+
         string canonicalPath = PathCanonicalizer.Canonicalize(path);
         ValidateWrite(canonicalPath, purgeToken);
         return canonicalPath;

@@ -18,6 +18,8 @@ sessions/
 *.winold-partial
 Windows.old/
 Windows.old.*/
+fixtures/
+*.vhdx
 
 # Published binaries and signing material.
 publish/

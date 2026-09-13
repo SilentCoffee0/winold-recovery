@@ -81,6 +81,18 @@ public sealed class SourceGuardTests : IDisposable
     }
 
     [Fact]
+    public void ExtendedPathPreservesTrailingSpacesAndStillProtectsSource()
+    {
+        guard.RegisterSourceRoot(sourceRoot);
+        string trailingSpaceChild = PathCanonicalizer.ToExtendedPath(
+            Path.Combine(sourceRoot, "trailing-space "));
+
+        Assert.EndsWith(" ", PathCanonicalizer.NormalizeLexically(trailingSpaceChild));
+        Assert.Throws<SourceWriteDeniedException>(
+            () => safeFs.OpenWrite(trailingSpaceChild, FileMode.CreateNew));
+    }
+
+    [Fact]
     public void CorrectlyScopedPurgeTokenAllowsAWrite()
     {
         string canonicalRoot = guard.RegisterSourceRoot(sourceRoot);

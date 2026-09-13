@@ -16,7 +16,9 @@ Global definition of done for any milestone:
 - M0 handoff item 2: implementation complete on 13 Sep 2026. Startup enables `SeBackupPrivilege` and `SeRestorePrivilege`; backup-mode source reads use `CreateFileW`; `SourceGuard` canonicalizes paths through existing handles, resolves short names and reparse aliases, and blocks writes beneath registered source roots; `SafeFs` centralizes write operations; purge authorization is root-scoped. Eleven Core safety tests pass, including named I1 write/move tests and path-trick coverage.
 - Remaining native APIs listed in M0 work item 2 (`GetFileInformationByHandleEx`, reparse payload parsing, disk-space query, native file-time setting, and `MoveFileExW`) are not yet implemented; they will be added before the consumers that require them.
 - M0 handoff item 3: implementation complete on 13 Sep 2026. `SessionDb` schema v1 contains all specified state tables and query indexes, uses WAL with `synchronous=NORMAL`, records migrations, rejects newer schemas, exposes read-only query connections, and serializes mutations through a bounded single-reader writer channel. Seventeen Core tests pass.
-- M0 handoff items 4–8: not started.
+- M0 handoff item 4: implementation complete on 13 Sep 2026. `FixtureGen` creates two profiles, live-target and loop junctions, file/directory symlinks, long/offline/invalid-name/large-`node_modules` hazards, privileged deny-ACL/orphan-SID/EFS hazards, and canary-bearing recipe shells; it refuses non-empty targets and writes a secret-free manifest consumed by its self-check. Portable generation and self-check pass in integration tests.
+- M0 item 4 external check still required: run the full elevated generator with its default 100,000 files on NTFS and pass the self-check. This agent environment is not elevated, so privileged hazard creation was not claimed as tested.
+- M0 handoff items 5–8: not started.
 
 ---
 

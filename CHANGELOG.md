@@ -16,3 +16,6 @@ All notable changes to WinOld Recovery will be documented here.
 - Root-scoped purge authorization and source-safety unit tests.
 - SQLite session schema v1 covering scan, decision, plan, journal, and verification state.
 - WAL-backed single-writer database channel, read-only query connections, and migration scaffold.
+- Synthetic Windows.old fixture generator with a self-check, canary recipe shells, reparse/path hazards, and explicit elevated-only hazards.
+- Central child-process runner with argument-list, timeout, cancellation, and output capture support.
+- Extended-path handling that preserves trailing-space names instead of normalizing them onto another path.

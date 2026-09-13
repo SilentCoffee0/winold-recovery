@@ -1,0 +1,131 @@
+using WinOldRecovery.Core.Processes;
+using WinOldRecovery.FixtureGen;
+
+namespace WinOldRecovery.Integration.Tests.FixtureGen;
+
+public sealed class FixtureGeneratorTests
+{
+    [Fact]
+    public async Task PortableFixture_GeneratesAndPassesItsSelfCheck()
+    {
+        string testRoot = CreateTestRoot();
+        string fixtureRoot = Path.Combine(testRoot, "Windows.old");
+
+        try
+        {
+            FixtureGenerator generator = new(new ProcessRunner());
+            FixtureManifest manifest = await generator.GenerateAsync(
+                new FixtureOptions(
+                    fixtureRoot,
+                    NodeModulesFileCount: 128,
+                    PortableMode: true));
+
+            FixtureCheckResult result = new FixtureSelfCheck().Check(fixtureRoot);
+
+            Assert.True(result.Success, string.Join(Environment.NewLine, result.Errors));
+            Assert.Equal("Created", manifest.Hazards["legacy-junction"].Status);
+            Assert.Equal("Created", manifest.Hazards["junction-loop"].Status);
+            Assert.Equal("Created", manifest.Hazards["long-path"].Status);
+            Assert.Equal("Created", manifest.Hazards["offline-placeholder"].Status);
+            Assert.Equal("Created", manifest.Hazards["invalid-name"].Status);
+            Assert.Equal("Unavailable", manifest.Hazards["deny-acl"].Status);
+            Assert.Equal("Unavailable", manifest.Hazards["orphan-sid"].Status);
+            Assert.Equal("Unavailable", manifest.Hazards["efs"].Status);
+        }
+        finally
+        {
+            DeleteTestFixture(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task Manifest_DoesNotContainCanarySecretValues()
+    {
+        string testRoot = CreateTestRoot();
+        string fixtureRoot = Path.Combine(testRoot, "Windows.old");
+
+        try
+        {
+            FixtureGenerator generator = new(new ProcessRunner());
+            await generator.GenerateAsync(
+                new FixtureOptions(
+                    fixtureRoot,
+                    NodeModulesFileCount: 5,
+                    PortableMode: true));
+
+            string manifest = await File.ReadAllTextAsync(
+                Path.Combine(fixtureRoot, FixtureOptions.ManifestFileName));
+
+            Assert.DoesNotContain("WINOLD_RECOVERY_CANARY", manifest);
+        }
+        finally
+        {
+            DeleteTestFixture(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task Generator_RefusesToReplaceExistingContents()
+    {
+        string testRoot = CreateTestRoot();
+        string fixtureRoot = Path.Combine(testRoot, "Windows.old");
+        Directory.CreateDirectory(fixtureRoot);
+        await File.WriteAllTextAsync(Path.Combine(fixtureRoot, "keep.txt"), "keep");
+
+        try
+        {
+            FixtureGenerator generator = new(new ProcessRunner());
+
+            await Assert.ThrowsAsync<IOException>(
+                () => generator.GenerateAsync(
+                    new FixtureOptions(
+                        fixtureRoot,
+                        NodeModulesFileCount: 5,
+                        PortableMode: true)));
+
+            Assert.Equal(
+                "keep",
+                await File.ReadAllTextAsync(Path.Combine(fixtureRoot, "keep.txt")));
+        }
+        finally
+        {
+            DeleteTestFixture(testRoot);
+        }
+    }
+
+    private static string CreateTestRoot()
+    {
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            $"WinOldRecovery-FixtureGen-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        return root;
+    }
+
+    private static void DeleteTestFixture(string testRoot)
+    {
+        string alice = Path.Combine(testRoot, "Windows.old", "Users", "Alice");
+        string[] directoryLinks =
+        [
+            Path.Combine(alice, "Application Data"),
+            Path.Combine(alice, "Loop"),
+            Path.Combine(alice, "DirectorySymlink"),
+        ];
+
+        foreach (string link in directoryLinks)
+        {
+            if (Directory.Exists(link))
+            {
+                Directory.Delete(link);
+            }
+        }
+
+        string fileLink = Path.Combine(alice, "file-link.txt");
+        if (File.Exists(fileLink))
+        {
+            File.Delete(fileLink);
+        }
+
+        Directory.Delete(testRoot, recursive: true);
+    }
+}
