@@ -32,6 +32,12 @@ Copyright Eric Zimmerman and contributors. Licensed under the MIT License.
 
 https://github.com/EricZimmerman/Registry
 
+## CommunityToolkit.Mvvm
+
+Copyright .NET Foundation and Contributors. Licensed under the MIT License.
+
+https://github.com/CommunityToolkit/dotnet
+
 ## Serilog
 
 Copyright Serilog contributors. Licensed under the Apache License 2.0.

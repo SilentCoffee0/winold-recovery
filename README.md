@@ -4,7 +4,7 @@
 
 WinOld Recovery is a free, open-source **Windows.old recovery tool**. After you reinstall, upgrade, or reset Windows, your previous installation sits in `C:\Windows.old` for about ten days. WinOld Recovery scans it, shows you what is in there in plain language, lets you decide item by item what to restore and what to leave behind, restores it safely, verifies the result, and only then helps you delete Windows.old.
 
-> **Status: Milestone 7 in progress.** Scan through gated purge, overwrite confirmation, Chromium autofill CSV, and R9 detector cards are implemented. Remaining: FlaUI/a11y/docs/signing, a real 200 MB VHDX disk-full volume test, and elevated/manual M0 checks. The M0 tag has not been created.
+> **Status: Milestone 7 in progress.** Hardening docs, ARM64 publish, narrator names, redacted failure copy, and a skippable FlaUI smoke exist. Remaining: interactive FlaUI on a desktop, code signing, the manual VM matrix, a real 200 MB VHDX disk-full test, a 1M-node memory pass, and elevated/manual M0 checks. The M0 tag has not been created.
 
 ## What it does
 
@@ -30,6 +30,11 @@ WinOld Recovery is a free, open-source **Windows.old recovery tool**. After you 
 | [SAFETY_MODEL.md](SAFETY_MODEL.md) | The sixteen invariants, threat model, purge design, secrets handling |
 | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | Milestones with work, tests, acceptance criteria |
 | [docs/classification-rules.md](docs/classification-rules.md) | Contributor schema for high-value and regeneratable rule files |
+| [docs/faq.md](docs/faq.md) | Recover files from Windows.old, Chrome passwords, WSL, Syncthing, purge |
+| [docs/limitations.md](docs/limitations.md) | What v0.1 will not do |
+| [docs/recipes.md](docs/recipes.md) | App cards at a glance |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to add a rule or recipe |
+| [docs/signing.md](docs/signing.md) | SignPath / Azure Trusted Signing plan |
 
 ## Planned stack
 
@@ -45,4 +50,4 @@ WinOld Recovery is an independent community project. It is not affiliated with, 
 
 ## License
 
-MIT (to be added with the first code commit).
+MIT. See [LICENSE](LICENSE). Builds on GitHub Releases are unsigned until SignPath is connected; SmartScreen will warn.

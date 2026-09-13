@@ -43,3 +43,5 @@ All notable changes to WinOld Recovery will be documented here.
 - Gated purge: I10 gates, `PurgeToken` minted only after they pass, preferred `cleanmgr /sagerun:777` via `IProcessRunner`, reparse-aware manual delete, session purge manifest and support bundle.
 - Preview conflict list with per-file overwrite confirmation (I2); copy resume after a leftover `.winold-partial`; runtime disk-full pause that does not delete existing destination files.
 - Chromium autofill CSV from `Web Data` (never `credit_cards`); optional bookmark transplant behind `WINOLD_RECOVERY_CHROMIUM_TRANSPLANT=1`.
+- Narrator names and automation ids on the six-step bar; redacted unhandled-exception dialog; CONTRIBUTING and support-bundle bug template; FAQ/limitations/recipes/signing docs; ARM64 publish profile and release assets; FlaUI smoke skipped unless `RUN_FLAUI=1`.
+- Handled scan/restore/verify/purge failures show a redacted explanation and the session log path; first-run promises copy; file-list type-ahead; action-button narrator names; NodeBrowser paging truncation test.

@@ -64,3 +64,14 @@ Pending elevated test:
 4. Free space and resume.
 
 The unit suite maps `ERROR_DISK_FULL` (112) to `Paused(DiskFull)` and is not a substitute for this volume test.
+
+## One-million-node scan memory ceiling
+
+Pending on a machine with a large scratch volume:
+
+1. Generate a 1,000,000-node fixture (or walk a tree of that size).
+2. Scan with the published EXE.
+3. Confirm working set stays under 1.5 GB and the Files tree stays responsive (SQLite paging, 2,000 children per page).
+4. Record peak working set and duration.
+
+CI proves child paging truncates at 2,000 rows; it does not allocate a million files.

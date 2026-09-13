@@ -68,11 +68,11 @@ Follow IMPLEMENTATION_PLAN.md: **M0 foundation and spikes → M1 scan + tree →
 
 ## Current implementation handoff — 13 Sep 2026
 
-- **Current item:** M7 hardening (FlaUI, a11y, docs site, signing, ARM64), remaining Preview layout polish, and elevated/manual M0 checks. Do not tag `v0.1.0-m0` while those remain pending.
-- **Complete:** Automated M0 coding through CI/release (M0 tag withheld). M1–M2. M3 PlanBuilder/copy/verify plus overwrite-approval, crash-resume of partials, and runtime disk-full pause. M4 recipes including Chromium autofill CSV (payment cards never exported) and a feature-flagged bookmark transplant. M5 Syncthing, Anki, WSL, GPG, and R9 detector cards. M6 gated purge.
-- **Remaining M0 (explicitly pending, not claimed passed):** elevated deny-ACL/orphan-SID enumeration and backup-mode reads; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch; real-VM `cleanmgr` handler; Explorer long-path selection; 200 MB VHDX disk-full volume. See `docs/spikes/PENDING_MANUAL.md`.
-- **Verified tests:** strict Release build has 0 warnings/errors (87 tests). Do not tag `v0.1.0-m0` while those external checks remain pending.
-- **Next exact implementation step:** M7 FlaUI smoke, docs, and release hardening. Do not tag `v0.1.0-m0`.
+- **Current item:** interactive FlaUI on a desktop (`RUN_FLAUI=1`), SignPath, manual VM matrix, 1M-node memory ceiling, and elevated/manual M0 checks. Do not tag `v0.1.0-m0` or `v0.1.0` while those remain pending.
+- **Complete:** Automated M0 coding through CI/release (M0 tag withheld). M1–M6. M7 slices: narrator names, redacted crash and handled-failure dialogs/status, contributor docs, ARM64 publish, skippable FlaUI smoke, first-run promises, file-list type-ahead, page-size truncation test.
+- **Remaining M0 (explicitly pending, not claimed passed):** elevated deny-ACL/orphan-SID enumeration and backup-mode reads; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch; real-VM `cleanmgr` handler; Explorer long-path selection; 200 MB VHDX disk-full volume; 1,000,000-node memory ceiling. See `docs/spikes/PENDING_MANUAL.md`.
+- **Verified tests:** strict Release build has 0 warnings/errors. Do not tag `v0.1.0-m0` while those external checks remain pending.
+- **Next exact implementation step:** run FlaUI on an interactive elevated desktop when a published EXE is available. Do not tag `v0.1.0-m0`.
 
 ## What not to redesign
 

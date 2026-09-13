@@ -57,3 +57,25 @@ jobs:
           name: WinOldRecovery-win-x64
           path: src/WinOldRecovery.App/bin/publish/win-x64/WinOldRecovery.exe
           if-no-files-found: error
+
+      - name: Restore ARM64 publish runtime packs
+        run: >
+          dotnet restore src/WinOldRecovery.App/WinOldRecovery.App.csproj
+          --runtime win-arm64
+          -p:PublishReadyToRun=true
+
+      - name: Publish single-file ARM64
+        run: >
+          dotnet publish src/WinOldRecovery.App/WinOldRecovery.App.csproj
+          --configuration Release
+          --runtime win-arm64
+          --self-contained
+          --no-restore
+          -p:PublishProfile=win-arm64
+
+      - name: Upload unsigned ARM64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinOldRecovery-win-arm64
+          path: src/WinOldRecovery.App/bin/publish/win-arm64/WinOldRecovery.exe
+          if-no-files-found: error

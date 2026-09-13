@@ -1,0 +1,41 @@
+name: Bug report
+description: A problem while scanning, restoring, verifying, or purging Windows.old
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Attach a **support bundle** from WinOld Recovery (Purge step → Create support bundle, or the session folder under `%LOCALAPPDATA%\WinOldRecovery\sessions`). Do not attach KeePass databases, `Login Data`, cookies, private keys, or unredacted logs that contain secrets.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Steps, expected result, actual result.
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: WinOld Recovery version or commit
+    validations:
+      required: true
+  - type: checkboxes
+    id: bundle
+    attributes:
+      label: Support bundle
+      options:
+        - label: I attached the support bundle (or the session log path) and stripped secret files
+          required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Source
+      description: Was the source a real Windows.old, FixtureGen, or a custom folder? Do not paste full secret paths.

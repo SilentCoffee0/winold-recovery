@@ -3,6 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:WinOldRecovery.App.Controls"
         Title="{Binding WindowTitle}"
+        AutomationProperties.Name="WinOld Recovery"
+        AutomationProperties.AutomationId="WinOldRecoveryMain"
         Height="720"
         Width="1100"
         MinHeight="640"
@@ -13,18 +15,26 @@
         <Border DockPanel.Dock="Top" Padding="12,8" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
             <StackPanel>
                 <TextBlock FontWeight="SemiBold" Text="WinOld Recovery" />
+                <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Text="{Binding PromisesText}"
+                           AutomationProperties.Name="Recovery promises" />
                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                    <Button Margin="0,0,8,0" Command="{Binding}" Tag="1" Click="OnStepClick" Content="1 Scan" />
+                    <Button Margin="0,0,8,0" Command="{Binding}" Tag="1" Click="OnStepClick" Content="1 Scan"
+                            AutomationProperties.Name="Scan step" AutomationProperties.AutomationId="StepScan" />
                     <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
-                    <Button Margin="0,0,8,0" Tag="2" Click="OnStepClick" Content="2 Decide" />
+                    <Button Margin="0,0,8,0" Tag="2" Click="OnStepClick" Content="2 Decide"
+                            AutomationProperties.Name="Decide step" AutomationProperties.AutomationId="StepDecide" />
                     <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
-                    <Button Margin="0,0,8,0" Tag="3" Click="OnStepClick" Content="3 Preview" />
+                    <Button Margin="0,0,8,0" Tag="3" Click="OnStepClick" Content="3 Preview"
+                            AutomationProperties.Name="Preview step" AutomationProperties.AutomationId="StepPreview" />
                     <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
-                    <Button Margin="0,0,8,0" Tag="4" Click="OnStepClick" Content="4 Restore" />
+                    <Button Margin="0,0,8,0" Tag="4" Click="OnStepClick" Content="4 Restore"
+                            AutomationProperties.Name="Restore step" AutomationProperties.AutomationId="StepRestore" />
                     <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
-                    <Button Margin="0,0,8,0" Tag="5" Click="OnStepClick" Content="5 Verify" />
+                    <Button Margin="0,0,8,0" Tag="5" Click="OnStepClick" Content="5 Verify"
+                            AutomationProperties.Name="Verify step" AutomationProperties.AutomationId="StepVerify" />
                     <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
-                    <Button Tag="6" Click="OnStepClick" Content="6 Purge" />
+                    <Button Tag="6" Click="OnStepClick" Content="6 Purge"
+                            AutomationProperties.Name="Purge step" AutomationProperties.AutomationId="StepPurge" />
                 </StackPanel>
             </StackPanel>
         </Border>
@@ -71,7 +81,8 @@
                              ItemsSource="{Binding Sources}"
                              DisplayMemberPath="Path"
                              SelectedValuePath="Path"
-                             SelectedValue="{Binding SelectedSourcePath}" />
+                             SelectedValue="{Binding SelectedSourcePath}"
+                             AutomationProperties.Name="Windows.old sources" />
 
                     <DockPanel Grid.Row="1" Margin="0,8,0,8">
                         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
@@ -81,8 +92,10 @@
                                       ItemsSource="{Binding FilesViewModes}"
                                       SelectedItem="{Binding FilesViewMode}" />
                             <TextBox Width="180" Margin="8,0,0,0"
-                                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
-                            <Button Content="Search" Command="{Binding SearchCommand}" Margin="8,0,0,0" />
+                                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Search files" />
+                            <Button Content="Search" Command="{Binding SearchCommand}" Margin="8,0,0,0"
+                                    AutomationProperties.Name="Search now" />
                             <CheckBox Content="Hash files smaller than 64 MB during scan"
                                       IsChecked="{Binding HashDuringScan}"
                                       VerticalAlignment="Center"
@@ -115,7 +128,9 @@
                               SelectedItem="{Binding SelectedNode}"
                               SelectionMode="Extended"
                               VirtualizingPanel.IsVirtualizing="True"
-                              VirtualizingPanel.VirtualizationMode="Recycling">
+                              VirtualizingPanel.VirtualizationMode="Recycling"
+                              TextSearch.TextPath="Name"
+                              AutomationProperties.Name="Recoverable files">
                             <ListView.Style>
                                 <Style TargetType="ListView">
                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -150,19 +165,30 @@
                     </DockPanel>
 
                     <StackPanel Grid.Row="2" Orientation="Horizontal">
-                        <Button Content="Scan" Command="{Binding ScanCommand}" Margin="0,0,8,0" />
-                        <Button Content="Cancel" Command="{Binding CancelScanCommand}" Margin="0,0,8,0" />
-                        <Button Content="Restore (R)" Command="{Binding RestoreCommand}" Margin="0,0,8,0" />
-                        <Button Content="Leave Behind (L)" Command="{Binding LeaveBehindCommand}" Margin="0,0,8,0" />
-                        <Button Content="Undecided (U)" Command="{Binding UndecidedCommand}" Margin="0,0,8,0" />
-                        <Button Content="Open Folder (O)" Command="{Binding OpenFolderCommand}" Margin="0,0,8,0" />
-                        <Button Content="Preview plan" Command="{Binding PreparePreviewCommand}" Margin="0,0,8,0" />
+                        <Button Content="Scan" Command="{Binding ScanCommand}" Margin="0,0,8,0"
+                                AutomationProperties.Name="Start scan" AutomationProperties.AutomationId="ScanButton" />
+                        <Button Content="Cancel" Command="{Binding CancelScanCommand}" Margin="0,0,8,0"
+                                AutomationProperties.Name="Cancel scan" />
+                        <Button Content="Restore (R)" Command="{Binding RestoreCommand}" Margin="0,0,8,0"
+                                AutomationProperties.Name="Mark restore" />
+                        <Button Content="Leave Behind (L)" Command="{Binding LeaveBehindCommand}" Margin="0,0,8,0"
+                                AutomationProperties.Name="Mark leave behind" />
+                        <Button Content="Undecided (U)" Command="{Binding UndecidedCommand}" Margin="0,0,8,0"
+                                AutomationProperties.Name="Mark undecided" />
+                        <Button Content="Open Folder (O)" Command="{Binding OpenFolderCommand}" Margin="0,0,8,0"
+                                AutomationProperties.Name="Open folder" />
+                        <Button Content="Preview plan" Command="{Binding PreparePreviewCommand}" Margin="0,0,8,0"
+                                AutomationProperties.Name="Preview plan" />
                         <ComboBox Width="160" Margin="0,0,8,0"
                                   ItemsSource="{Binding ConflictPolicies}"
-                                  SelectedItem="{Binding SelectedConflictPolicy}" />
-                        <Button Content="Run restore" Command="{Binding ExecuteRestoreCommand}" Margin="0,0,8,0" />
-                        <Button Content="Verify" Command="{Binding ExecuteVerifyCommand}" Margin="0,0,8,0" />
-                        <Button Content="Expand" Command="{Binding ExpandCommand}" CommandParameter="{Binding SelectedNode}" />
+                                  SelectedItem="{Binding SelectedConflictPolicy}"
+                                  AutomationProperties.Name="Conflict policy" />
+                        <Button Content="Run restore" Command="{Binding ExecuteRestoreCommand}" Margin="0,0,8,0"
+                                AutomationProperties.Name="Run restore" />
+                        <Button Content="Verify" Command="{Binding ExecuteVerifyCommand}" Margin="0,0,8,0"
+                                AutomationProperties.Name="Run verify" />
+                        <Button Content="Expand" Command="{Binding ExpandCommand}" CommandParameter="{Binding SelectedNode}"
+                                AutomationProperties.Name="Expand folder" />
                     </StackPanel>
                     <DockPanel Grid.Row="3">
                         <DockPanel.Style>
@@ -204,7 +230,8 @@
                         <CheckBox Content="I acknowledge remaining Undecided items" IsChecked="{Binding UndecidedAcknowledged}" />
                         <CheckBox Content="This is a custom source root (not named Windows.old)" IsChecked="{Binding CustomRootConfirmed}" />
                         <CheckBox Content="Prefer Windows Disk Cleanup (Previous Installations)" IsChecked="{Binding PreferCleanupHandler}" />
-                        <TextBox Margin="0,8,0,0" Text="{Binding PurgeTypedFolderName, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBox Margin="0,8,0,0" Text="{Binding PurgeTypedFolderName, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Type the Windows.old folder name to confirm purge" />
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Content="Purge source" Command="{Binding ExecutePurgeCommand}" Margin="0,0,8,0" />
                             <Button Content="Create support bundle" Command="{Binding CreateSupportBundleCommand}" />

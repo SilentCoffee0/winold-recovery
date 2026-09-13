@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 using WinOldRecovery.Core.Browse;
 using WinOldRecovery.Core.Decisions;
@@ -83,10 +84,22 @@ public sealed class NodeBrowserTests
     }
 
     [Fact]
-    public async Task ChildPageSize_IsTwoThousand()
+    public async Task GetChildren_TruncatesAtThePageSize()
     {
-        Assert.Equal(2000, NodeBrowser.ChildPageSize);
-        Assert.Equal(500, NodeBrowser.LargestListSize);
+        await using BrowserContext context = await BrowserContext.CreateAsync();
+        List<PersistedNode> nodes = [Node(1, null, "", "root")];
+        for (int i = 0; i < NodeBrowser.ChildPageSize + 1; i++)
+        {
+            long id = i + 2;
+            string name = "f" + i.ToString("D4", CultureInfo.InvariantCulture) + ".txt";
+            nodes.Add(Node(id, 1, name, name));
+        }
+
+        await context.InsertAsync(nodes);
+        NodePage page = new NodeBrowser(context.Database, "session-1").GetChildren(1);
+        Assert.Equal(NodeBrowser.ChildPageSize, page.Rows.Count);
+        Assert.Equal(NodeBrowser.ChildPageSize + 1, page.TotalCount);
+        Assert.True(page.Truncated);
     }
 
     private static PersistedNode Node(

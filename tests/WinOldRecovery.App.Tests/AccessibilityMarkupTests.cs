@@ -1,0 +1,70 @@
+using System.IO;
+
+namespace WinOldRecovery.App.Tests;
+
+public sealed class AccessibilityMarkupTests
+{
+    [Fact]
+    public void MainWindow_DeclaresNarratorNamesForTheSixSteps()
+    {
+        string xaml = File.ReadAllText(FindMainWindowXaml());
+        Assert.Contains("AutomationProperties.Name=\"Scan step\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Decide step\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Preview step\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Restore step\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Verify step\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Purge step\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"ScanButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("MinWidth=\"1024\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("MinHeight=\"640\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("TextSearch.TextPath=\"Name\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("PromisesText", xaml, StringComparison.Ordinal);
+        Assert.Contains("ThemeMode=\"System\"", File.ReadAllText(FindAppXaml()), StringComparison.Ordinal);
+    }
+
+    private static string FindMainWindowXaml()
+    {
+        string copied = Path.Combine(AppContext.BaseDirectory, "MainWindow.xaml");
+        if (File.Exists(copied))
+        {
+            return copied;
+        }
+
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            string candidate = Path.Combine(directory.FullName, "src", "WinOldRecovery.App", "MainWindow.xaml");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException("MainWindow.xaml was not found from the test output directory.");
+    }
+
+    private static string FindAppXaml()
+    {
+        string copied = Path.Combine(AppContext.BaseDirectory, "App.xaml");
+        if (File.Exists(copied))
+        {
+            return copied;
+        }
+
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            string candidate = Path.Combine(directory.FullName, "src", "WinOldRecovery.App", "App.xaml");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException("App.xaml was not found from the test output directory.");
+    }
+}

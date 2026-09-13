@@ -44,25 +44,44 @@ jobs:
           --no-restore
           -p:PublishProfile=win-x64
 
+      - name: Restore ARM64 publish runtime packs
+        run: >
+          dotnet restore src/WinOldRecovery.App/WinOldRecovery.App.csproj
+          --runtime win-arm64
+          -p:PublishReadyToRun=true
+
+      - name: Publish single-file ARM64
+        run: >
+          dotnet publish src/WinOldRecovery.App/WinOldRecovery.App.csproj
+          --configuration Release
+          --runtime win-arm64
+          --self-contained
+          --no-restore
+          -p:PublishProfile=win-arm64
+
       - name: Stage release assets
         shell: pwsh
         run: |
-          $source = "src/WinOldRecovery.App/bin/publish/win-x64/WinOldRecovery.exe"
-          if (-not (Test-Path $source)) {
-            throw "Published executable was not found."
-          }
+          $x64 = "src/WinOldRecovery.App/bin/publish/win-x64/WinOldRecovery.exe"
+          $arm = "src/WinOldRecovery.App/bin/publish/win-arm64/WinOldRecovery.exe"
+          if (-not (Test-Path $x64)) { throw "x64 executable was not found." }
+          if (-not (Test-Path $arm)) { throw "ARM64 executable was not found." }
           New-Item -ItemType Directory -Force -Path artifacts/release | Out-Null
-          Copy-Item $source artifacts/release/WinOldRecovery.exe
-          $hash = (Get-FileHash artifacts/release/WinOldRecovery.exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          Set-Content -Path artifacts/release/WinOldRecovery.exe.sha256 -Value "$hash  WinOldRecovery.exe" -NoNewline
-          Get-Content artifacts/release/WinOldRecovery.exe.sha256
+          Copy-Item $x64 artifacts/release/WinOldRecovery-win-x64.exe
+          Copy-Item $arm artifacts/release/WinOldRecovery-win-arm64.exe
+          foreach ($name in @("WinOldRecovery-win-x64.exe", "WinOldRecovery-win-arm64.exe")) {
+            $hash = (Get-FileHash "artifacts/release/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            Set-Content -Path "artifacts/release/$name.sha256" -Value "$hash  $name" -NoNewline
+          }
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           gh release create "${{ github.ref_name }}"
-          artifacts/release/WinOldRecovery.exe
-          artifacts/release/WinOldRecovery.exe.sha256
+          artifacts/release/WinOldRecovery-win-x64.exe
+          artifacts/release/WinOldRecovery-win-x64.exe.sha256
+          artifacts/release/WinOldRecovery-win-arm64.exe
+          artifacts/release/WinOldRecovery-win-arm64.exe.sha256
           --title "WinOld Recovery ${{ github.ref_name }}"
-          --notes "Unsigned self-contained x64 build. SHA-256 checksum is attached. Elevated/manual Milestone 0 acceptance checks remain pending unless the tag notes say otherwise."
+          --notes "Unsigned self-contained x64 and ARM64 builds. SHA-256 checksums are attached. Signing is documented in docs/signing.md. Elevated/manual Milestone 0 checks remain pending unless the tag notes say otherwise."

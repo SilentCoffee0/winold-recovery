@@ -7,6 +7,7 @@ using WinOldRecovery.Core.Classification;
 using WinOldRecovery.Core.Decisions;
 using WinOldRecovery.Core.Hashing;
 using WinOldRecovery.Core.IO;
+using WinOldRecovery.Core.Logging;
 using WinOldRecovery.Core.Persistence;
 using WinOldRecovery.Core.Planning;
 using WinOldRecovery.Core.Processes;
@@ -248,6 +249,9 @@ public sealed class ShellViewModel : ObservableObject
 
     public string ElevationNote { get; } =
         "Files in Windows.old belong to a user account that no longer exists; reading them needs administrator rights.";
+
+    public string PromisesText { get; } =
+        "We never change Windows.old until you choose to delete it in the last step. We never overwrite your files silently.";
 
     public string ScanStatus
     {
@@ -501,6 +505,22 @@ public sealed class ShellViewModel : ObservableObject
                 }
 
                 return false;
+            case "I":
+                if (InspectCommand.CanExecute(null))
+                {
+                    InspectCommand.Execute(null);
+                    return true;
+                }
+
+                return false;
+            case "Space":
+                if (SelectedNode is not null)
+                {
+                    Expand(SelectedNode);
+                    return true;
+                }
+
+                return false;
             default:
                 return false;
         }
@@ -544,6 +564,12 @@ public sealed class ShellViewModel : ObservableObject
 
         try
         {
+            if (!safeFs.DirectoryExists(SelectedSourcePath))
+            {
+                throw new DirectoryNotFoundException(
+                    "The chosen Windows.old folder was not found.");
+            }
+
             ScanRunResult result = await scanOrchestrator.RunAsync(
                     workspace.SessionId,
                     SelectedSourcePath,
@@ -597,6 +623,10 @@ public sealed class ShellViewModel : ObservableObject
         catch (OperationCanceledException)
         {
             ScanStatus = "Scan paused. Partial results were kept.";
+        }
+        catch (Exception exception)
+        {
+            ShowHandledFailure(exception);
         }
         finally
         {
@@ -814,6 +844,8 @@ public sealed class ShellViewModel : ObservableObject
             return;
         }
 
+        try
+        {
         safeFs.CreateDirectory(DestinationRoot);
         PlanBuilder builder = new(sessionDb);
         lastPlan = await builder.BuildAsync(
@@ -855,6 +887,11 @@ public sealed class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(OverwriteButtonLabel));
         OnPropertyChanged(nameof(WindowTitle));
         CurrentStep = WorkflowStep.Preview;
+        }
+        catch (Exception exception)
+        {
+            ShowHandledFailure(exception);
+        }
     }
 
     private async Task ApproveOverwritesAsync()
@@ -910,6 +947,8 @@ public sealed class ShellViewModel : ObservableObject
             return;
         }
 
+        try
+        {
         RestoreRunner runner = new(new CopyEngine(sessionDb, safeFs));
         RestoreResult result = await runner.RunAsync(lastPlan).ConfigureAwait(true);
         if (result.Completed && recipeHost is not null)
@@ -935,12 +974,18 @@ public sealed class ShellViewModel : ObservableObject
 
         restoreCompleted = result.Completed;
         ScanStatus = result.PausedDiskFull
-            ? "Restore paused: the destination volume is full. Nothing was deleted to make room."
+            ? "Restore paused: the destination volume is full. Nothing was deleted to make room. A redacted log is at " +
+              workspace.LogPath + "."
             : result.Completed
                 ? "Restore finished. Verify the copies before considering a purge."
-                : "Restore did not finish.";
+                : "Restore did not finish. A redacted log is at " + workspace.LogPath + ".";
         ExecuteVerifyCommand.NotifyCanExecuteChanged();
         CurrentStep = WorkflowStep.Restore;
+        }
+        catch (Exception exception)
+        {
+            ShowHandledFailure(exception);
+        }
     }
 
     private async Task ExecuteVerifyAsync()
@@ -950,14 +995,22 @@ public sealed class ShellViewModel : ObservableObject
             return;
         }
 
+        try
+        {
         VerifyReport report = await new Verifier(sessionDb, safeFs).VerifyAsync(lastPlan).ConfigureAwait(true);
         verifyCompleted = report.AllOk;
         ScanStatus = report.AllOk
             ? "Verify report: every checked item passed existence, size/time, and hash samples."
-            : "Verify report: at least one item failed. Purge stays locked.";
+            : "Verify report: at least one item failed. Purge stays locked. A redacted log is at " +
+              workspace.LogPath + ".";
         ExecutePurgeCommand.NotifyCanExecuteChanged();
         CreateSupportBundleCommand.NotifyCanExecuteChanged();
         CurrentStep = WorkflowStep.Verify;
+        }
+        catch (Exception exception)
+        {
+            ShowHandledFailure(exception);
+        }
     }
 
     private async Task ExecutePurgeAsync()
@@ -967,6 +1020,8 @@ public sealed class ShellViewModel : ObservableObject
             return;
         }
 
+        try
+        {
         string folderName = Path.GetFileName(SourceRoot.TrimEnd('\\'));
         string canonical = sourceGuard.SourceRoots.FirstOrDefault(
             root => root.Equals(
@@ -1004,13 +1059,33 @@ public sealed class ShellViewModel : ObservableObject
             .ConfigureAwait(true);
         ScanStatus = result.Completed
             ? "Purge finished (" + result.Method + "). Session records remain in this app's data folder."
-            : "Purge did not finish: " + result.Detail;
+            : "Purge did not finish: " + result.Detail + " A redacted log is at " + workspace.LogPath + ".";
         CurrentStep = WorkflowStep.Purge;
+        }
+        catch (Exception exception)
+        {
+            ShowHandledFailure(exception);
+        }
     }
 
     private void CreateSupportBundle()
     {
-        string zip = SupportBundle.Create(safeFs, workspace);
-        ScanStatus = "Support bundle written to " + zip;
+        try
+        {
+            string zip = SupportBundle.Create(safeFs, workspace);
+            ScanStatus = "Support bundle written to " + zip;
+        }
+        catch (Exception exception)
+        {
+            ShowHandledFailure(exception);
+        }
+    }
+
+    private void ShowHandledFailure(Exception exception)
+    {
+        ScanStatus = ExceptionReport.FormatUserMessage(
+            exception,
+            workspace.LogPath,
+            new SensitiveDataRedactor());
     }
 }

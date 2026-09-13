@@ -124,6 +124,19 @@ public sealed class ShellViewModelTests
         Assert.StartsWith("/select,", Assert.Single(request.Arguments), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Scan_MissingFolder_SurfacesRedactedExplanationAndLogPath()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        context.ViewModel.SelectedSourcePath = Path.Combine(context.Root, "missing-Windows.old");
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        Assert.False(context.ViewModel.ScanCompleted);
+        Assert.Contains("Windows.old was not modified", context.ViewModel.ScanStatus, StringComparison.Ordinal);
+        Assert.Contains("log.txt", context.ViewModel.ScanStatus, StringComparison.Ordinal);
+        Assert.Contains("was not found", context.ViewModel.ScanStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed class ShellTestContext : IAsyncDisposable
     {
         private ShellTestContext(
