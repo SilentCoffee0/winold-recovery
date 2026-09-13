@@ -1,0 +1,161 @@
+# WinOld Recovery — Implementation Plan (v0.1)
+
+Eight milestones, each shippable as a tagged pre-release. Estimates assume one developer or one AI coding agent working full time; they are effort, not calendar promises. Every milestone ends with green unit + integration tests and the invariant watchdog (SAFETY_MODEL §8) armed.
+
+Global definition of done for any milestone:
+
+- Builds with `dotnet build -warnaserror`; `dotnet publish` single-file x64 succeeds; the EXE starts elevated on a clean Windows 11 VM.
+- All new code has tests; the integration suite runs against the generated fixture Windows.old with the source watchdog and reports zero source changes.
+- No secret canary appears in logs, DB exports, or UI dumps.
+- CHANGELOG entry written; docs updated if behaviour changed.
+
+## Current implementation status
+
+- M0 item 1: implementation complete on 13 Sep 2026. The solution and all specified projects target `net10.0-windows`; strict Release builds and tests pass; the WPF shell uses the system Fluent theme; the application manifest embeds `requireAdministrator`, PerMonitorV2 DPI awareness, and `longPathAware`; and the x64 self-contained ReadyToRun publish produces one 69,411,706-byte EXE.
+- M0 item 1 manual check still required: launch the published EXE on a clean Windows 11 VM and confirm the UAC/elevated startup path interactively.
+- M0 items 2–8: not started.
+
+---
+
+## M0 — Foundation and technical spikes (≈ 1 week)
+
+**Goal.** A compilable skeleton with the safety primitives, persistence, fixture generator, and answers to the open technical questions in ARCHITECTURE §12.
+
+**Work.**
+1. Create the solution per ARCHITECTURE §3; `Directory.Build.props` (net10.0-windows, nullable, warnings as errors, `LangVersion` latest); `app.manifest` (requireAdministrator, longPathAware, PerMonitorV2 DPI); publish profile (single-file, self-contained, compression, native extraction).
+2. `WinOldRecovery.Native`: `CreateFileW` (backup semantics, open-reparse-point, no-recall), `GetFileInformationByHandleEx` (attribute tag), `FSCTL_GET_REPARSE_POINT`, `AdjustTokenPrivileges` helper (`Privileges.EnableBackupAndRestore()`), `GetDiskFreeSpaceExW`, `SetFileTime`, `MoveFileExW`.
+3. `Core.SafeFs` + `SourceGuard`: all file APIs used by the app; source-root registry; refusal of any write under a source root without a `PurgeToken`; `\\?\` normalisation; unit tests including path-trick cases (`..`, short names, trailing spaces, different casing, junction-resolved paths).
+4. `Core.SessionDb`: SQLite schema v1 (sessions, profiles, nodes, badges, decisions, cards, components, plan_items, journal, verify_results, kv), WAL mode, single-writer channel, migration scaffold.
+5. Logging with redaction sink; session folder layout.
+6. `tools/FixtureGen`: builds a synthetic Windows.old in a target directory (and optionally on a fresh VHDX): two profiles, legacy junctions pointing at a "live" fixture profile, junction loop, file + dir symlinks, deny-ACL folder, orphan-SID-owned files (create temp local user, own files, delete user), EFS files (`cipher /E`), 300-char paths, `OFFLINE`-attributed placeholder stand-ins, invalid-name files, 100k-file `node_modules` tree, and recipe fixtures with canary secrets (empty shells for now; recipes fill them in later milestones).
+7. Spikes with written results in `docs/spikes/`: (a) `FileSystemEnumerator` lists the deny-ACL and orphan-SID folders with backup privilege enabled; (b) `CreateFileW`-backed `FileStream` reads them; (c) `Registry` NuGet parses the fixture `NTUSER.DAT` inside the single-file bundle; (d) SQLite native loads inside the bundle; (e) `cleanmgr /sagerun` with only the Previous Installations flag deletes a fake `Windows.old` on a test VM (or record that it needs the real handler and the fallback must be primary); (f) startup time and EXE size with/without ReadyToRun.
+8. CI: GitHub Actions build + test + publish artifact on every push; release workflow on tags.
+
+**Tests.** SafeFs/SourceGuard unit tests; SessionDb round-trip; FixtureGen self-check (asserts every hazard is present); spike tests as skippable integration tests.
+
+**Acceptance.** Skeleton EXE runs elevated, shows an empty main window, writes a session folder; all spikes answered; fixture generator produces a tree that a naive recursive `Directory.GetFiles` would loop or fail on.
+
+## M1 — Scan engine and Files tree (≈ 2 weeks)
+
+**Goal.** Scan a real Windows.old into SQLite and browse it in a responsive tree with decisions.
+
+**Work.**
+1. Source discovery (all volumes, `Windows.old*`, roots with `Users`+`Windows`, browse), validation, age + estimated auto-delete date from folder creation time and `SetupCleanupTask` presence.
+2. `FileSystemWalker` per ARCHITECTURE §5.1: manual recursion, reparse leaf nodes with tag and target, placeholder/EFS/access-denied problems, post-order aggregates, batched inserts, progress, cancel/resume (walker checkpoints per top-level directory).
+3. Profile detection (human vs. service vs. Default/Public), standard-folder detection by name and by offline `User Shell Folders`.
+4. Decision engine: explicit decisions, inheritance, effective-decision materialisation for subtrees, mixed-state summaries, undo (last 50 actions).
+5. WPF shell: step bar, status strip (source integrity, space budget placeholder), Scan view, Decide view with `TreeListView` (virtualized, paged children, sorting, badges column, decision column), Detail pane, views Largest/Recent/Search/Unknown/Problems, Open Folder / Open Containing Folder, keyboard shortcuts, multi-select context menu.
+6. Optional hashing stage (files < 64 MB) as a background job.
+
+**Tests.** Walker against the fixture: node counts, aggregates, every hazard classified correctly, junction never followed (assert no node under the live-profile fixture path), watchdog clean. Decision inheritance property tests. Performance test: 1M synthetic entries scanned in < 60 s on CI hardware and tree expansion of a 100k-child node in < 300 ms. FlaUI smoke: scan fixture, expand, mark Restore/Leave, restart app, decisions persisted.
+
+**Acceptance.** The reference 782k-file profile scans in under 60 s; the UI never blocks longer than 100 ms during scan or expansion; all Problems categories appear with explanations; nothing is written under the source.
+
+## M2 — Classification, high-value and regeneratable rules, suggested defaults (≈ 1 week)
+
+**Goal.** Badges and suggested defaults per PRODUCT_SPEC §7 and RECOVERY_RECIPES R1/R9.
+
+**Work.**
+1. Rules engine over embedded JSON rule files (`HighValue.rules.json`, `Regeneratable.rules.json`, `GameSaves.rules.json`, `Sensitive.rules.json`): path globs, sibling-file conditions, extension lists, size thresholds, header-signature checks (first 4 KB only, never for sensitive-by-path files).
+2. Sensitivity flags and redaction wiring.
+3. Suggested-default table and its application (marked `SuggestedDefault`, distinct in UI).
+4. "High-value items" summary card and "Regeneratable" summary card (counts, bytes, per-rule breakdown, jump-to-tree).
+5. Contributor documentation for rule files.
+
+**Tests.** Rule unit tests per rule with positive/negative fixtures; test asserting no default `LeaveBehind` exists for unclassified or regeneratable nodes; canary test for sensitivity redaction.
+
+**Acceptance.** On the fixture and on the reference machine, KeePass/GPG/VS Code/Obsidian/game-save/`.env`/VM-disk items are badged; `node_modules` and caches are badged, never decided; nothing unknown is called junk.
+
+## M3 — Plan, Preview, Copy engine, Journal, Verify for personal folders (≈ 2 weeks)
+
+**Goal.** End-to-end restore of file-tree decisions with all safety properties.
+
+**Work.**
+1. `PlanBuilder` (CopyTree/CopyFile items from effective decisions), destination mapping per profile (current user default, custom, "Recovered" subfolder policy), containment validation.
+2. `PreflightChecker`: conflicts (per-file compare of size/time; listing), free space per volume with margin, invalid destination names, long-path warnings, running-app checks (interface used by recipes later).
+3. `CopyEngine` per ARCHITECTURE §6: backup-semantics reads, partial-file + rename, conflict policies, timestamps, parallel workers, in-line SHA-256, disk-full pause, retries, journal.
+4. `RestoreRunner`: jobs, progress, pause/cancel, resume-from-journal on next launch, warnings list.
+5. `Verifier` L0–L2 with sampling policy and immutable reports.
+6. Preview, Restore, Verify views per UX_SPEC §4–5, including the overwrite-approval file list and the space budget in the status strip.
+
+**Tests.** Integration: restore fixture folders to a temp destination; assert byte-equality, timestamps, fresh ACLs (no orphan SIDs), keep-both naming, skip policy, overwrite only with approval. Kill tests: terminate the process at random points during a 50k-file restore; relaunch; resume; final state identical to an uninterrupted run; no `.winold-partial` leftovers; source watchdog clean. Disk-full test on a 200 MB VHDX destination: pauses, nothing deleted, resumes after freeing space. Verify report: injected corruption in one destination file is detected at L2.
+
+**Acceptance.** All SAFETY_MODEL invariants I1–I3, I9, I11–I16 have named passing tests; a 40 GB restore on the reference machine runs at disk speed with live progress; cancel and resume work.
+
+## M4 — Recipes batch 1: Firefox, Chromium, SSH, Git (≈ 2 weeks)
+
+**Goal.** First smart cards with real recipes and the `IRecipe` pipeline.
+
+**Work.**
+1. `IRecipe` infrastructure: registry, `ProfileContext`, card/component persistence, `SmartCard` control with the six-question template, prerequisites (running processes), recipe steps in plans, L3 verification hooks, exports folder.
+2. Firefox recipe R3: profile discovery (`profiles.ini`, `installs.ini`), facts, transplant with allow-list and `profiles.ini` registration, exports (bookmarks HTML, history CSV, tabs from mozLz4, extension list), Primary Password detection (attempt to open `key4.db` metadata; if it cannot be determined, say so).
+3. Chromium recipe R2 for Chrome and Edge: discovery, facts, bookmarks JSON→Netscape HTML, history export, SNSS tab list, extension list with store links, autofill export, optional new-profile bookmark transplant behind a feature flag until the spike passes, fixed "cannot recover" component with copy.
+4. SSH recipe R5: discovery, fingerprints, unencrypted-key detection, copy with no-overwrite naming, ACL hardening, `ssh -G` verify when available.
+5. Git recipe R6: config restore with scrubbed display; repo discovery during scan (`.git` dir/file), offline ref parse, on-demand git.exe analysis with the exact flags, risk badges, restore as tree, L3 verify.
+6. Help pages: "Browser passwords after reinstall", "SSH keys", "Git repositories".
+
+**Tests.** Recipe fixtures with canary secrets: Firefox profile (real schema `places.sqlite`, `key4.db`, `logins.json`), Chromium profile (`Bookmarks`, `History`, SNSS v3 session, `Local State`), `.ssh` with encrypted and unencrypted keys, git repos in eight states. Assertions: exports correct (bookmark counts, tab URLs), transplant registers profile, secrets never in logs, ACLs correct, git analysis writes nothing (watchdog on `.git`), risk levels correct, offline mode conservative.
+
+**Acceptance.** On the reference machine: Firefox profiles restore into a new Firefox as new profiles with passwords intact (manual check), Chrome bookmarks import from the generated HTML, the Chrome card states the password limitation, git repos show correct risk with and without git.exe.
+
+## M5 — Recipes batch 2: Syncthing, Anki, WSL/Docker, GPG and high-value cards (≈ 2 weeks)
+
+**Work.**
+1. Syncthing recipe R4: multi-home discovery (including `ProgramData` and other profiles), device-ID derivation, config parse with secret scrubbing, config rewrite (paused, path remap, defaults), destination rules, prerequisites (processes + service), L3 verify.
+2. Anki recipe R8: discovery incl. `-b` shortcuts, facts via read-only copy, profile restore with WAL, backups, add-ons, prefs rule, verify.
+3. WSL recipe R7: offline `Lxss` parse, filesystem discovery, Docker Desktop disks, VHDX copy with mandatory hash, registration and default-user steps behind explicit confirmation, WSL 1 detection as manual, verify.
+4. GPG, KeePass, Thunderbird, Outlook, VS Code, Windows Terminal, Obsidian: detector cards with copy-based restore and the specific rules in R9 (no-overwrite naming, `install-extensions.cmd` export).
+5. Help pages: "Syncthing identity", "WSL", "Anki".
+
+**Tests.** Fixtures: Syncthing home with generated cert (device ID precomputed) and config with three folders; Anki profile from an empty schema plus media; VHDX stub with valid header; gnupg tree; KeePass file; VS Code settings + extensions list. Assertions: rewritten config has every folder paused and remapped paths; device ID equal; index not copied; Anki collection integrity ok; VHDX hash equal; `wsl.exe` invocations are recorded but not executed in tests (process runner abstraction); canaries absent.
+
+**Acceptance.** On the reference machine: Syncthing card shows two identities with correct last-activity and device IDs; restoring the active one to a fresh Syncthing install yields the same device ID with all folders paused; Anki opens the restored profile; Docker VHDX copies and verifies.
+
+## M6 — Purge, session records, support bundle (≈ 1 week)
+
+**Work.**
+1. Purge view with all gates (UX_SPEC §7), typed confirmation, `PurgeToken` minting.
+2. `PurgeExecutor`: OS cleanup handler path with polling and timeout; manual fallback (ownership, reparse-aware bottom-up delete, progress, cancel, residue report); refusal conditions (running jobs, executable/session/destination inside root, non-source path).
+3. Session record export before purge; "Create support bundle".
+4. 10-day warning polish: show task presence and next run; no modification.
+
+**Tests.** Gate tests (each gate individually blocks); token cannot be minted outside the purge view-model; manual deleter on a fixture with junction loop, deny ACLs, long paths, read-only files completes and never touches junction targets (watchdog on the live-profile fixture); cleanup-handler path tested on a VM with a real `Windows.old` produced by an in-place reinstall (manual test checklist, recorded).
+
+**Acceptance.** Purge cannot be reached without a verify report; purge of a fixture leaves nothing behind and the live fixture untouched; session records exist afterwards.
+
+## M7 — Hardening, polish, docs, release (≈ 1–2 weeks)
+
+**Work.**
+1. FlaUI end-to-end: scan → decide → preview → restore → verify → purge on the fixture.
+2. Accessibility pass (keyboard, narrator names, contrast, DPI), dark theme check, window-size limits.
+3. Error surfaces: every failure has a user-facing explanation and a log reference; unhandled-exception dialog with redaction.
+4. Performance pass on 1M-node fixture; memory ceiling (< 1.5 GB during scan of 1M nodes).
+5. README, docs site pages (recipes, limitations, FAQ with SEO terms), THIRD_PARTY_NOTICES, CONTRIBUTING (how to add a rule or recipe), issue templates that ask for the support bundle.
+6. Code signing setup (SignPath application or Azure Trusted Signing), release workflow with checksums, ARM64 build.
+7. Manual test matrix on VMs: Windows 10 22H2, Windows 11 24H2/25H2, upgrade-created and reinstall-created Windows.old, non-English Windows (robocopy adapter off, so only UI strings matter), profile with OneDrive Files On-Demand placeholders, EFS files, BitLocker secondary volume.
+
+**Acceptance.** v0.1.0 tag; release assets; README ranks-ready; all invariants tested; manual matrix passed with issues triaged.
+
+---
+
+## Order and dependencies
+
+M0 → M1 → M2 → M3 → (M4 ∥ M5 after M3 and the `IRecipe` infrastructure at the start of M4) → M6 → M7. M4's infrastructure step must land before M5 starts. Total ≈ 12 weeks of effort for v0.1.
+
+## Trimmed from v0.1 during planning
+
+- Robocopy as primary backend (kept as an off-by-default adapter behind `IRestoreCopier`, implemented only if a bulk-speed problem is measured).
+- Chromium new-profile transplant beyond bookmarks (feature-flagged).
+- Move/rename restore mode, 10-day task extension, WSL 1 migration, Docker Desktop registration, other browsers, registry-based settings, symlink recreation, network sources, localisation, CLI automation.
+
+## Risks and mitigations tracked per milestone
+
+| Risk | Milestone | Mitigation |
+|---|---|---|
+| Backup-privilege enumeration does not list some deny-ACL folders | M0 | P/Invoke walker fallback (`FileIdBothDirectoryInfo`) |
+| Defender flags the single-file EXE | M0/M7 | Minimise native extraction; LiteDB fallback; signing; submit false positive |
+| WPF tree performance with 1M nodes | M1 | Flat virtualized list backed by SQL paging; measured early |
+| `cleanmgr` handler behaves differently across builds | M0/M6 | Manual deleter is fully featured and tested; handler is preferred but not required |
+| Browser formats change (Firefox `logins.db`, profile groups; Chrome profile version) | M4 | Allow-list is data; exports are the guaranteed path; transplant is best-effort with clear messaging |
+| Disk space on the same volume | M3 | Budget UI; refuse to start plans that do not fit; documented "move mode" decision for v0.2 |
+| 10-day auto-delete during a multi-day recovery | M1/M6 | Prominent countdown; docs explain the risk; v0.2 opt-in extension |

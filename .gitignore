@@ -1,0 +1,26 @@
+**/bin/
+**/obj/
+.vs/
+.vscode/
+.idea/
+TestResults/
+artifacts/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Recovery sessions and user data must never be committed.
+sessions/
+*.db
+*.db-shm
+*.db-wal
+*.winold-partial
+Windows.old/
+Windows.old.*/
+
+# Published binaries and signing material.
+publish/
+*.pfx
+*.p12
+*.snk
