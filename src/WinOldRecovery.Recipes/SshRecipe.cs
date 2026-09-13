@@ -92,7 +92,7 @@ public sealed class SshRecipe : IRecipe
         return new PlanResult(decisions.Card, writes);
     }
 
-    public Task ExecuteAsync(PlanResult plan, IRecipeJournal journal, CancellationToken cancellationToken = default)
+    public async Task ExecuteAsync(PlanResult plan, IRecipeJournal journal, CancellationToken cancellationToken = default)
     {
         foreach (RecipeWrite write in plan.Writes)
         {
@@ -112,7 +112,17 @@ public sealed class SshRecipe : IRecipe
             }
         }
 
-        return Task.CompletedTask;
+        if (plan.Destination is { } destination)
+        {
+            await destination.ProcessRunner.RunAsync(
+                    new WinOldRecovery.Core.Processes.ProcessRequest(
+                        "ssh.exe",
+                        ["-G", "localhost"],
+                        WorkingDirectory: Path.Combine(destination.DestinationProfileRoot, ".ssh"),
+                        Timeout: TimeSpan.FromSeconds(15)),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     public RecipeVerifyResult Verify(PlanResult plan)

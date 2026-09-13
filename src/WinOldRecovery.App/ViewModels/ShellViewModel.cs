@@ -751,7 +751,7 @@ public sealed class ShellViewModel : ObservableObject
         int recipeWrites = 0;
         if (recipeHost is not null)
         {
-            DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs);
+            DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner);
             foreach (RecipeCard card in lastRecipeCards)
             {
                 IRecipe? recipe = recipeHost.Find(card.RecipeId);
@@ -784,7 +784,7 @@ public sealed class ShellViewModel : ObservableObject
         RestoreResult result = await runner.RunAsync(lastPlan).ConfigureAwait(true);
         if (result.Completed && recipeHost is not null)
         {
-            DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs);
+            DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner);
             foreach (RecipeCard card in lastRecipeCards)
             {
                 IRecipe? recipe = recipeHost.Find(card.RecipeId);

@@ -135,6 +135,14 @@ public sealed class SafeFs
         return reader.ReadToEnd();
     }
 
+    public byte[] ReadAllBytes(string path)
+    {
+        using FileStream stream = OpenRead(path);
+        using MemoryStream memory = new();
+        stream.CopyTo(memory);
+        return memory.ToArray();
+    }
+
     public void WriteAllText(string path, string contents, PurgeToken? purgeToken = null)
     {
         string? directory = Path.GetDirectoryName(path);
@@ -146,5 +154,18 @@ public sealed class SafeFs
         using FileStream stream = OpenWrite(path, FileMode.Create, purgeToken);
         using StreamWriter writer = new(stream);
         writer.Write(contents);
+    }
+
+    public void CopyReadToWrite(string sourcePath, string destinationPath, PurgeToken? purgeToken = null)
+    {
+        string? directory = Path.GetDirectoryName(destinationPath);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            CreateDirectory(directory, purgeToken);
+        }
+
+        using FileStream input = OpenRead(sourcePath);
+        using FileStream output = OpenWrite(destinationPath, FileMode.Create, purgeToken);
+        input.CopyTo(output);
     }
 }

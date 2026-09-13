@@ -36,3 +36,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Restore `PlanBuilder` that emits copy-tree and copy-file items, rejects source/destination containment, and never plans whole AppData folders.
 - Journaled copy engine using `.winold-partial` then rename, keep-both conflicts, preflight space margin, and L0–L2 verification reports.
 - `IRecipe` host with SSH, Chrome, Edge, Firefox, and Git first-slice recipes: Netscape bookmark export, Firefox `*-recovered` transplant plus `profiles.ini` registration, scrubbed Git config, whole-tree Git repo restore, and a SmartCard six-question pane. Canary secrets stay out of card facts.
+- Chromium History/SNSS/extension-store exports and Firefox `places.sqlite` bookmark/history exports via read-only SQLite copies in the session temp folder; `ssh -G` and git.exe analyze requests through `IProcessRunner`; help pages under `docs/help/`.

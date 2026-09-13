@@ -87,7 +87,8 @@ public sealed class RecipeHost
         Dictionary<string, Decision> decisions = card.Components.ToDictionary(
             static component => component.Key,
             static component => component.Fixed ? Decision.Undecided : component.SuggestedDefault);
-        return recipe.Plan(new CardDecisions(card, decisions), destination);
+        PlanResult planned = recipe.Plan(new CardDecisions(card, decisions), destination);
+        return planned with { Destination = destination };
     }
 
     public async Task ExecuteAsync(

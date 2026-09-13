@@ -68,11 +68,11 @@ Follow IMPLEMENTATION_PLAN.md: **M0 foundation and spikes → M1 scan + tree →
 
 ## Current implementation handoff — 13 Sep 2026
 
-- **Current item:** remaining M4 recipe depth (Chromium SNSS/history HTML, Firefox bookmark exports, SSH `ssh -G` verify, on-demand git.exe analysis, help pages), then M5 Syncthing/Anki/WSL/GPG. Remaining M3 polish (kill/resume chaos, disk-full VHDX, overwrite-approval list) can proceed in parallel. Do not build purge before those M3 items are acceptable; verification reports already exist.
-- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 items 1–4, 6, and item 5 except FlaUI smoke. M2 classification. M3 PlanBuilder, preflight, copy engine, journal, RestoreRunner, Verifier L0–L2, and shell Preview/Restore/Verify commands. M4 `IRecipe` host, SmartCard six-question pane, and first-slice SSH / Chrome / Edge / Firefox / Git recipes (detect, plan, execute, canary-safe facts).
+- **Current item:** M5 Syncthing (paused folders, never restore index), then Anki/WSL/GPG detectors. Remaining M3 polish (kill/resume chaos, disk-full VHDX, overwrite-approval list) can proceed in parallel. Remaining M4 depth: Chromium autofill CSV and optional new-profile bookmark transplant (feature-flagged). Do not build purge before M3 chaos/disk-full are acceptable; verification reports already exist.
+- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 items 1–4, 6, and item 5 except FlaUI smoke. M2 classification. M3 PlanBuilder, preflight, copy engine, journal, RestoreRunner, Verifier L0–L2, and shell Preview/Restore/Verify commands. M4 `IRecipe` host, SmartCard, SSH/Chrome/Edge/Firefox/Git recipes including History/SNSS/extension-store exports, Firefox places HTML/CSV, `ssh -G` via `IProcessRunner`, git.exe analyze request flags, and help pages under `docs/help/`.
 - **Remaining M0 (explicitly pending, not claimed passed):** elevated deny-ACL/orphan-SID enumeration and backup-mode reads; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch; real-VM `cleanmgr` handler; Explorer long-path selection. See `docs/spikes/PENDING_MANUAL.md`.
-- **Verified tests:** strict Release build has 0 warnings/errors (73 tests). Recipe canaries stay out of card facts; Chrome bookmarks export as Netscape HTML; Firefox transplants into `*-recovered` and registers `profiles.ini`; Git writes a scrubbed `.gitconfig` and copies the whole working tree. Do not tag `v0.1.0-m0` while those external checks remain pending.
-- **Next exact implementation step:** Chromium History/SNSS/extension-store exports and Firefox places exports, then M5 Syncthing. Do not purge.
+- **Verified tests:** strict Release build has 0 warnings/errors (75 tests). Recipe canaries stay out of card facts; Chrome history/tabs/extensions exports and Firefox `places.sqlite` bookmark HTML are covered. Do not tag `v0.1.0-m0` while those external checks remain pending.
+- **Next exact implementation step:** M5 Syncthing recipe (paused config rewrite, never copy index). Do not purge.
 
 ## What not to redesign
 

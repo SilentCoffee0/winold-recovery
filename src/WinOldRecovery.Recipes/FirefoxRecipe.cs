@@ -63,6 +63,26 @@ public sealed class FirefoxRecipe : IRecipe
             }
 
             bool hasPlaces = present.Contains("places.sqlite");
+            string bookmarksHtml = string.Empty;
+            string historyCsv = "url,title\n";
+            int bookmarkCount = 0;
+            if (hasPlaces)
+            {
+                try
+                {
+                    string copy = ReadOnlySqlite.CopyToTemp(
+                        context.SafeFs,
+                        Path.Combine(profile, "places.sqlite"),
+                        Path.Combine(context.SessionTemporaryDirectory, "firefox", Path.GetFileName(profile)),
+                        "places.sqlite");
+                    (bookmarkCount, bookmarksHtml) = SqliteExports.FirefoxBookmarks(copy);
+                    historyCsv = SqliteExports.FirefoxHistoryCsv(copy);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
+                {
+                }
+            }
+
             cards.Add(
                 new RecipeCard(
                     Id,
@@ -82,6 +102,22 @@ public sealed class FirefoxRecipe : IRecipe
                             false,
                             null,
                             true),
+                        new RecipeComponent(
+                            "bookmarks-export",
+                            "Bookmarks HTML export",
+                            bookmarkCount + " bookmarks",
+                            hasPlaces ? Decision.Restore : Decision.LeaveBehind,
+                            false,
+                            null,
+                            false),
+                        new RecipeComponent(
+                            "history-export",
+                            "History CSV export",
+                            "From places.sqlite",
+                            hasPlaces ? Decision.Restore : Decision.LeaveBehind,
+                            false,
+                            null,
+                            true),
                     ],
                     context.ProfileName + ":" + Path.GetFileName(profile),
                     new Dictionary<string, string>
@@ -89,6 +125,8 @@ public sealed class FirefoxRecipe : IRecipe
                         ["source"] = profile,
                         ["files"] = string.Join("|", present),
                         ["folder"] = Path.GetFileName(profile),
+                        ["bookmarksHtml"] = bookmarksHtml,
+                        ["historyCsv"] = historyCsv,
                     }));
         }
 
@@ -97,49 +135,77 @@ public sealed class FirefoxRecipe : IRecipe
 
     public PlanResult Plan(CardDecisions decisions, DestinationContext destination)
     {
-        if (!RecipeDecisions.ShouldRestore(decisions, "transplant"))
-        {
-            return new PlanResult(decisions.Card, []);
-        }
-
-        string source = decisions.Card.Facts["source"];
-        string folder = decisions.Card.Facts["folder"] + "-recovered";
-        string dest = Path.Combine(
-            destination.DestinationProfileRoot,
-            "AppData",
-            "Roaming",
-            "Mozilla",
-            "Firefox",
-            "Profiles",
-            folder);
         List<RecipeWrite> writes = [];
-        foreach (string name in decisions.Card.Facts["files"].Split('|', StringSplitOptions.RemoveEmptyEntries))
+        if (RecipeDecisions.ShouldRestore(decisions, "transplant"))
         {
+            string source = decisions.Card.Facts["source"];
+            string folder = decisions.Card.Facts["folder"] + "-recovered";
+            string dest = Path.Combine(
+                destination.DestinationProfileRoot,
+                "AppData",
+                "Roaming",
+                "Mozilla",
+                "Firefox",
+                "Profiles",
+                folder);
+            foreach (string name in decisions.Card.Facts["files"].Split('|', StringSplitOptions.RemoveEmptyEntries))
+            {
+                writes.Add(
+                    new RecipeWrite(
+                        RecipeWriteKind.CopyFile,
+                        Path.Combine(source, name),
+                        Path.Combine(dest, name),
+                        null,
+                        1,
+                        "transplant"));
+            }
+
+            string iniPath = Path.Combine(
+                destination.DestinationProfileRoot,
+                "AppData",
+                "Roaming",
+                "Mozilla",
+                "Firefox",
+                "profiles.ini");
             writes.Add(
                 new RecipeWrite(
-                    RecipeWriteKind.CopyFile,
-                    Path.Combine(source, name),
-                    Path.Combine(dest, name),
+                    RecipeWriteKind.WriteContent,
                     null,
+                    iniPath,
+                    BuildProfilesIni(destination, folder),
                     1,
                     "transplant"));
         }
 
-        string iniPath = Path.Combine(
-            destination.DestinationProfileRoot,
-            "AppData",
-            "Roaming",
-            "Mozilla",
-            "Firefox",
-            "profiles.ini");
-        writes.Add(
-            new RecipeWrite(
-                RecipeWriteKind.WriteContent,
-                null,
-                iniPath,
-                BuildProfilesIni(destination, folder),
-                1,
-                "transplant"));
+        string exportRoot = Path.Combine(
+            destination.SessionExportsDirectory,
+            Id,
+            decisions.Card.InstanceKey.Replace(':', '_'));
+        if (RecipeDecisions.ShouldRestore(decisions, "bookmarks-export"))
+        {
+            string html = decisions.Card.Facts.GetValueOrDefault("bookmarksHtml") ?? string.Empty;
+            writes.Add(
+                new RecipeWrite(
+                    RecipeWriteKind.WriteContent,
+                    null,
+                    Path.Combine(exportRoot, "bookmarks.html"),
+                    html,
+                    html.Length,
+                    "bookmarks-export"));
+        }
+
+        if (RecipeDecisions.ShouldRestore(decisions, "history-export"))
+        {
+            string csv = decisions.Card.Facts.GetValueOrDefault("historyCsv") ?? "url,title\n";
+            writes.Add(
+                new RecipeWrite(
+                    RecipeWriteKind.WriteContent,
+                    null,
+                    Path.Combine(exportRoot, "history.csv"),
+                    csv,
+                    csv.Length,
+                    "history-export"));
+        }
 
         return new PlanResult(decisions.Card, writes);
     }

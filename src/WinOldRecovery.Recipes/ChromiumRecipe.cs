@@ -46,9 +46,10 @@ public sealed class ChromiumRecipe : IRecipe
 
             string bookmarksJson = context.SafeFs.ReadAllText(bookmarks);
             int count = CountBookmarks(bookmarksJson);
-            int extensionCount = CountExtensions(context, Path.Combine(entry, "Extensions"));
-            bool hasHistory = context.SafeFs.FileExists(Path.Combine(entry, "History"));
-            bool hasSessions = context.SafeFs.DirectoryExists(Path.Combine(entry, "Sessions"));
+            string extensionsHtml = BuildExtensionsHtml(context, Path.Combine(entry, "Extensions"));
+            int extensionCount = CountTag(extensionsHtml, "<li>");
+            (int historyCount, string historyHtml, string historyCsv) = ReadHistory(context, entry, name);
+            (int tabCount, string tabsHtml) = ReadTabs(context, Path.Combine(entry, "Sessions"));
             cards.Add(
                 new RecipeCard(
                     Id,
@@ -71,16 +72,16 @@ public sealed class ChromiumRecipe : IRecipe
                         new RecipeComponent(
                             "history-export",
                             "History export",
-                            hasHistory ? "History database present" : "No History file",
-                            hasHistory ? Decision.Restore : Decision.LeaveBehind,
+                            historyCount + " URLs",
+                            historyCount > 0 ? Decision.Restore : Decision.LeaveBehind,
                             false,
                             null,
                             true),
                         new RecipeComponent(
                             "tabs-export",
                             "Open tabs list",
-                            hasSessions ? "Session files present" : "No session files",
-                            hasSessions ? Decision.Restore : Decision.LeaveBehind,
+                            tabCount + " tabs",
+                            tabCount > 0 ? Decision.Restore : Decision.LeaveBehind,
                             false,
                             null,
                             false),
@@ -108,6 +109,10 @@ public sealed class ChromiumRecipe : IRecipe
                         ["bookmarksJson"] = bookmarksJson,
                         ["count"] = count.ToString(),
                         ["extensions"] = extensionCount.ToString(),
+                        ["extensionsHtml"] = extensionsHtml,
+                        ["historyHtml"] = historyHtml,
+                        ["historyCsv"] = historyCsv,
+                        ["tabsHtml"] = tabsHtml,
                     }));
         }
 
@@ -130,20 +135,27 @@ public sealed class ChromiumRecipe : IRecipe
 
         if (RecipeDecisions.ShouldRestore(decisions, "history-export"))
         {
-            string source = Path.Combine(decisions.Card.Facts["profileDir"], "History");
             writes.Add(
                 new RecipeWrite(
-                    RecipeWriteKind.CopyFile,
-                    source,
-                    Path.Combine(exportRoot, "history.sqlite"),
+                    RecipeWriteKind.WriteContent,
                     null,
+                    Path.Combine(exportRoot, "history.html"),
+                    decisions.Card.Facts.GetValueOrDefault("historyHtml"),
+                    1,
+                    "history-export"));
+            writes.Add(
+                new RecipeWrite(
+                    RecipeWriteKind.WriteContent,
+                    null,
+                    Path.Combine(exportRoot, "history.csv"),
+                    decisions.Card.Facts.GetValueOrDefault("historyCsv"),
                     1,
                     "history-export"));
         }
 
         if (RecipeDecisions.ShouldRestore(decisions, "tabs-export"))
         {
-            string html = "<!DOCTYPE html><title>Open tabs</title><p>Session files were found. Import bookmarks.html for URLs that were saved as bookmarks.</p>";
+            string html = decisions.Card.Facts.GetValueOrDefault("tabsHtml") ?? "<!DOCTYPE html><title>Open tabs</title>";
             writes.Add(
                 new RecipeWrite(
                     RecipeWriteKind.WriteContent,
@@ -156,9 +168,7 @@ public sealed class ChromiumRecipe : IRecipe
 
         if (RecipeDecisions.ShouldRestore(decisions, "extensions-export"))
         {
-            string html = "<!DOCTYPE html><title>Extensions</title><p>Count: " +
-                WebUtility.HtmlEncode(decisions.Card.Facts.GetValueOrDefault("extensions", "0")) +
-                "</p>";
+            string html = decisions.Card.Facts.GetValueOrDefault("extensionsHtml") ?? "<!DOCTYPE html><title>Extensions</title>";
             writes.Add(
                 new RecipeWrite(
                     RecipeWriteKind.WriteContent,
@@ -203,20 +213,135 @@ public sealed class ChromiumRecipe : IRecipe
         return count;
     }
 
-    private static int CountExtensions(ProfileContext context, string extensionsRoot)
+    private (int Count, string Html, string Csv) ReadHistory(ProfileContext context, string profileDir, string profileName)
     {
-        if (!context.SafeFs.DirectoryExists(extensionsRoot))
+        string history = Path.Combine(profileDir, "History");
+        if (!context.SafeFs.FileExists(history))
         {
-            return 0;
+            return (0, string.Empty, "url,title,visit_count\n");
         }
 
-        int count = 0;
+        try
+        {
+            string copy = ReadOnlySqlite.CopyToTemp(
+                context.SafeFs,
+                history,
+                Path.Combine(context.SessionTemporaryDirectory, Id, profileName),
+                "History");
+            return SqliteExports.ChromiumHistory(copy);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            return (0, string.Empty, "url,title,visit_count\n");
+        }
+    }
+
+    private static (int Count, string Html) ReadTabs(ProfileContext context, string sessionsDir)
+    {
+        if (!context.SafeFs.DirectoryExists(sessionsDir))
+        {
+            return (0, "<!DOCTYPE html><title>Open tabs</title>");
+        }
+
+        string? newest = context.SafeFs.EnumerateFileSystemEntries(sessionsDir)
+            .Where(static path =>
+            {
+                string name = Path.GetFileName(path);
+                return name.StartsWith("Session_", StringComparison.OrdinalIgnoreCase) ||
+                    name.StartsWith("Tabs_", StringComparison.OrdinalIgnoreCase);
+            })
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .FirstOrDefault();
+        if (newest is null)
+        {
+            return (0, "<!DOCTYPE html><title>Open tabs</title>");
+        }
+
+        IReadOnlyList<string> urls = SnssReader.ReadTabUrls(context.SafeFs.ReadAllBytes(newest));
+        StringBuilder html = new();
+        html.AppendLine("<!DOCTYPE html><title>Open tabs</title><h1>Reopen these tabs</h1><ul>");
+        foreach (string url in urls)
+        {
+            html.Append("<li><a href=\"")
+                .Append(WebUtility.HtmlEncode(url))
+                .Append("\">")
+                .Append(WebUtility.HtmlEncode(url))
+                .AppendLine("</a></li>");
+        }
+
+        html.AppendLine("</ul>");
+        return (urls.Count, html.ToString());
+    }
+
+    private string BuildExtensionsHtml(ProfileContext context, string extensionsRoot)
+    {
+        StringBuilder html = new();
+        html.AppendLine("<!DOCTYPE html><title>Extensions</title><h1>Extensions</h1><ul>");
+        if (!context.SafeFs.DirectoryExists(extensionsRoot))
+        {
+            html.AppendLine("</ul>");
+            return html.ToString();
+        }
+
+        string store = Id == "edge"
+            ? "https://microsoftedge.microsoft.com/addons/detail/"
+            : "https://chromewebstore.google.com/detail/";
         foreach (string idDir in context.SafeFs.EnumerateFileSystemEntries(extensionsRoot))
         {
-            if (context.SafeFs.DirectoryExists(idDir))
+            if (!context.SafeFs.DirectoryExists(idDir))
             {
-                count++;
+                continue;
             }
+
+            string id = Path.GetFileName(idDir);
+            string name = id;
+            foreach (string versionDir in context.SafeFs.EnumerateFileSystemEntries(idDir))
+            {
+                string manifest = Path.Combine(versionDir, "manifest.json");
+                if (!context.SafeFs.FileExists(manifest))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    using JsonDocument document = JsonDocument.Parse(context.SafeFs.ReadAllText(manifest));
+                    if (document.RootElement.TryGetProperty("name", out JsonElement nameElement) &&
+                        nameElement.GetString() is string manifestName &&
+                        !manifestName.StartsWith("__MSG_", StringComparison.Ordinal))
+                    {
+                        name = manifestName;
+                    }
+                }
+                catch (JsonException)
+                {
+                }
+
+                break;
+            }
+
+            html.Append("<li><a href=\"")
+                .Append(store)
+                .Append(WebUtility.HtmlEncode(id))
+                .Append("\">")
+                .Append(WebUtility.HtmlEncode(name))
+                .Append(" (")
+                .Append(WebUtility.HtmlEncode(id))
+                .AppendLine(")</a></li>");
+        }
+
+        html.AppendLine("</ul>");
+        return html.ToString();
+    }
+
+    private static int CountTag(string html, string tag)
+    {
+        int count = 0;
+        int index = 0;
+        while ((index = html.IndexOf(tag, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += tag.Length;
         }
 
         return count;

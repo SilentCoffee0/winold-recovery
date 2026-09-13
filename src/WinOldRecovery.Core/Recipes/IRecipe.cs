@@ -32,7 +32,8 @@ public sealed record ProfileContext(
 public sealed record DestinationContext(
     string DestinationProfileRoot,
     string SessionExportsDirectory,
-    SafeFs SafeFs);
+    SafeFs SafeFs,
+    IProcessRunner ProcessRunner);
 
 public enum RecipeWriteKind
 {
@@ -79,7 +80,10 @@ public sealed record RecipeWrite(
     long Bytes,
     string ComponentKey);
 
-public sealed record PlanResult(RecipeCard Card, IReadOnlyList<RecipeWrite> Writes);
+public sealed record PlanResult(
+    RecipeCard Card,
+    IReadOnlyList<RecipeWrite> Writes,
+    DestinationContext? Destination = null);
 
 public sealed record RecipeVerifyResult(bool Ok, string Detail);
 
