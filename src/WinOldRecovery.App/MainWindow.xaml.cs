@@ -16,6 +16,26 @@ public partial class MainWindow : Window
 
     public ShellViewModel ViewModel { get; }
 
+    private void OnWindowSizeChanged(object sender, EventArgs e)
+    {
+        ViewModel.SetWindowWidth(ActualWidth);
+        if (SplitterColumn is null || DetailColumn is null)
+        {
+            return;
+        }
+
+        if (ViewModel.CompactLayout)
+        {
+            SplitterColumn.Width = new GridLength(0);
+            DetailColumn.Width = new GridLength(0);
+        }
+        else
+        {
+            SplitterColumn.Width = new GridLength(12);
+            DetailColumn.Width = new GridLength(1, GridUnitType.Star);
+        }
+    }
+
     private void OnStepClick(object sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: string tag } &&

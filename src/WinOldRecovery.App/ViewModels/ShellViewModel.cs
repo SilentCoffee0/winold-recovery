@@ -81,6 +81,11 @@ public sealed class ShellViewModel : ObservableObject
     private bool firstRunVisible;
     private HelpTopic? selectedHelpTopic;
     private string helpText = string.Empty;
+    private bool logVisible;
+    private string logText = string.Empty;
+    private bool compactLayout;
+    private bool compactInspect;
+    private string currentPathFull = string.Empty;
 
     private static string LiveProfileRoot =>
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -116,8 +121,23 @@ public sealed class ShellViewModel : ObservableObject
         UndecidedCommand = new AsyncRelayCommand(ClearDecisionAsync, CanMutateSelection);
         OpenFolderCommand = new AsyncRelayCommand(OpenFolderAsync, () => SelectedNode is not null && SourceRoot is not null);
         ExpandCommand = new RelayCommand<TreeNodeRow>(Expand);
-        ShowCardsCommand = new RelayCommand(() => DecidePane = DecidePane.Cards);
-        ShowFilesCommand = new RelayCommand(() => DecidePane = DecidePane.Files);
+        ShowCardsCommand = new RelayCommand(() =>
+        {
+            compactInspect = false;
+            DecidePane = DecidePane.Cards;
+            OnPropertyChanged(nameof(CompactInspect));
+        });
+        ShowFilesCommand = new RelayCommand(() =>
+        {
+            compactInspect = false;
+            DecidePane = DecidePane.Files;
+            OnPropertyChanged(nameof(CompactInspect));
+        });
+        ShowInspectCommand = new RelayCommand(() =>
+        {
+            compactInspect = true;
+            OnPropertyChanged(nameof(CompactInspect));
+        });
         SearchCommand = new RelayCommand(SearchNow);
         InspectCommand = new RelayCommand(
             () =>
@@ -138,7 +158,8 @@ public sealed class ShellViewModel : ObservableObject
         firstRunVisible = !this.firstRun.IsDismissed();
         OpenHelpCommand = new RelayCommand(OpenHelp);
         CloseHelpCommand = new RelayCommand(() => HelpVisible = false);
-        ShowLogCommand = new AsyncRelayCommand(ShowLogAsync);
+        ShowLogCommand = new RelayCommand(OpenLog);
+        CloseLogCommand = new RelayCommand(() => LogVisible = false);
         DismissFirstRunCommand = new RelayCommand(DismissFirstRun);
     }
 
@@ -151,6 +172,7 @@ public sealed class ShellViewModel : ObservableObject
     public IRelayCommand<TreeNodeRow> ExpandCommand { get; }
     public IRelayCommand ShowCardsCommand { get; }
     public IRelayCommand ShowFilesCommand { get; }
+    public IRelayCommand ShowInspectCommand { get; }
     public IRelayCommand SearchCommand { get; }
     public IRelayCommand InspectCommand { get; }
     public IRelayCommand CopyPathCommand { get; }
@@ -162,7 +184,8 @@ public sealed class ShellViewModel : ObservableObject
     public IRelayCommand CreateSupportBundleCommand { get; }
     public IRelayCommand OpenHelpCommand { get; }
     public IRelayCommand CloseHelpCommand { get; }
-    public IAsyncRelayCommand ShowLogCommand { get; }
+    public IRelayCommand ShowLogCommand { get; }
+    public IRelayCommand CloseLogCommand { get; }
     public IRelayCommand DismissFirstRunCommand { get; }
 
     public IReadOnlyList<HelpTopic> HelpTopics => LocalHelp.Catalog;
@@ -317,6 +340,36 @@ public sealed class ShellViewModel : ObservableObject
         private set => SetProperty(ref helpText, value);
     }
 
+    public bool LogVisible
+    {
+        get => logVisible;
+        private set => SetProperty(ref logVisible, value);
+    }
+
+    public string LogText
+    {
+        get => logText;
+        private set => SetProperty(ref logText, value);
+    }
+
+    public bool CompactLayout
+    {
+        get => compactLayout;
+        private set => SetProperty(ref compactLayout, value);
+    }
+
+    public bool CompactInspect
+    {
+        get => compactInspect;
+        private set => SetProperty(ref compactInspect, value);
+    }
+
+    public string CurrentPathFull
+    {
+        get => currentPathFull;
+        private set => SetProperty(ref currentPathFull, value);
+    }
+
     public string ScanStatus
     {
         get => scanStatus;
@@ -436,7 +489,7 @@ public sealed class ShellViewModel : ObservableObject
     public string WindowTitle =>
         SourceRoot is null
             ? $"WinOld Recovery — {CurrentStep}"
-            : $"WinOld Recovery — {SourceRoot} — {CurrentStep}";
+            : $"WinOld Recovery — {PathDisplay.MiddleEllipsis(SourceRoot, 48)} — {CurrentStep}";
 
     public RecipeCard? SelectedRecipeCard =>
         SelectedCard is null
@@ -473,6 +526,7 @@ public sealed class ShellViewModel : ObservableObject
             }
 
             TreeNodeRow node = SelectedNode;
+            string sourceFull = SourceRoot is null ? node.RelPath : Path.Combine(SourceRoot, node.RelPath);
             string destination = SourceRoot is null
                 ? node.RelPath
                 : Path.Combine(
@@ -486,8 +540,10 @@ public sealed class ShellViewModel : ObservableObject
                 Environment.NewLine,
                 ((string[])
                 [
-                    "Source: " + (SourceRoot is null ? node.RelPath : Path.Combine(SourceRoot, node.RelPath)),
-                    "Planned destination: " + destination,
+                    "Source: " + PathDisplay.MiddleEllipsis(sourceFull),
+                    "Full source path: " + sourceFull,
+                    "Planned destination: " + PathDisplay.MiddleEllipsis(destination),
+                    "Full destination path: " + destination,
                     $"Size: {node.AggSize} bytes  Files: {node.AggFiles}",
                     "Modified: " + (node.ModifiedUtc?.ToString("d MMM yyyy") ?? "—"),
                     "Decision: " + node.DecisionLabel,
@@ -629,11 +685,26 @@ public sealed class ShellViewModel : ObservableObject
         }
     }
 
-    private async Task ShowLogAsync()
+    public void OpenLog()
     {
-        await processRunner.RunAsync(
-                new ProcessRequest("explorer.exe", ["/select," + workspace.LogPath]))
-            .ConfigureAwait(true);
+        try
+        {
+            LogText = SessionLogReader.Read(safeFs, workspace.LogPath, new SensitiveDataRedactor());
+            LogVisible = true;
+        }
+        catch (Exception exception)
+        {
+            ShowHandledFailure(exception);
+        }
+    }
+
+    public void SetWindowWidth(double width)
+    {
+        CompactLayout = width < 1200;
+        if (!CompactLayout)
+        {
+            CompactInspect = false;
+        }
     }
 
     private void DismissFirstRun()
@@ -657,7 +728,8 @@ public sealed class ShellViewModel : ObservableObject
         Progress<WalkProgress> progress = new(report =>
         {
             NodesVisited = report.NodesVisited;
-            CurrentPath = report.CurrentRelativePath;
+            CurrentPathFull = report.CurrentRelativePath;
+            CurrentPath = PathDisplay.MiddleEllipsis(report.CurrentRelativePath);
             ScanStatus = $"Scanning… {report.NodesVisited} entries";
         });
 
@@ -976,8 +1048,7 @@ public sealed class ShellViewModel : ObservableObject
             }
         }
 
-        SpaceBudgetText =
-            $"Selected: {lastPlan.TotalBytes} bytes of {lastPreflight!.FreeBytes} free (need {lastPreflight.RequiredBytes} with margin)";
+        SpaceBudgetText = FormatSpaceBudget(lastPlan.TotalBytes, lastPreflight!.RequiredBytes, lastPreflight.FreeBytes);
         ScanStatus = lastPreflight.CanProceed
             ? $"Preview: {lastPlan.Items.Count} copy operations, {Conflicts.Count} conflicts, and {recipeWrites} app writes. Windows.old has not been changed."
             : string.Join(" ", lastPreflight.BlockingIssues);
@@ -1178,6 +1249,24 @@ public sealed class ShellViewModel : ObservableObject
         {
             ShowHandledFailure(exception);
         }
+    }
+
+    private static string FormatSpaceBudget(long selectedBytes, long requiredBytes, long freeBytes)
+    {
+        string core =
+            $"Selected: {selectedBytes} bytes of {freeBytes} free (need {requiredBytes} with margin)";
+        if (requiredBytes > freeBytes)
+        {
+            return core + " Will not fit.";
+        }
+
+        long amberAt = (long)(0.9 * Math.Max(0, freeBytes - PreflightChecker.AbsoluteMarginBytes));
+        if (selectedBytes >= amberAt)
+        {
+            return core + " Approaching the free-space limit.";
+        }
+
+        return core;
     }
 
     private void ShowHandledFailure(Exception exception)

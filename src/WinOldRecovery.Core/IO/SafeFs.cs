@@ -50,6 +50,12 @@ public sealed class SafeFs
         return new FileStream(validatedPath, mode, FileAccess.Write, share);
     }
 
+    public FileStream OpenShareRead(string path)
+    {
+        string validatedPath = sourceGuard.GetValidatedWritePath(path, purgeToken: null);
+        return new FileStream(validatedPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+    }
+
     public void MoveFile(
         string sourcePath,
         string destinationPath,

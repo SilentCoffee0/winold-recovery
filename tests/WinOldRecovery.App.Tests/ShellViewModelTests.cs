@@ -153,11 +153,17 @@ public sealed class ShellViewModelTests
         Assert.True(context.ViewModel.HelpVisible);
         Assert.Contains("Chrome", context.ViewModel.HelpText, StringComparison.OrdinalIgnoreCase);
 
-        await context.ViewModel.ShowLogCommand.ExecuteAsync(null);
-        Assert.Contains(
-            context.Runner.Requests,
-            request => request.FileName == "explorer.exe" &&
-                request.Arguments.Any(argument => argument.Contains("log.txt", StringComparison.OrdinalIgnoreCase)));
+        context.ViewModel.ShowLogCommand.Execute(null);
+        Assert.True(context.ViewModel.LogVisible);
+        Assert.DoesNotContain("WINOLD_RECOVERY_CANARY_DO_NOT_LOG_7F3A91", context.ViewModel.LogText, StringComparison.Ordinal);
+
+        context.ViewModel.SetWindowWidth(1100);
+        Assert.True(context.ViewModel.CompactLayout);
+        context.ViewModel.ShowInspectCommand.Execute(null);
+        Assert.True(context.ViewModel.CompactInspect);
+        context.ViewModel.SetWindowWidth(1400);
+        Assert.False(context.ViewModel.CompactLayout);
+        Assert.False(context.ViewModel.CompactInspect);
     }
 
     private sealed class ShellTestContext : IAsyncDisposable

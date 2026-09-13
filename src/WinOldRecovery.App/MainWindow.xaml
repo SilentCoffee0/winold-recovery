@@ -10,7 +10,9 @@
         MinHeight="640"
         MinWidth="1024"
         WindowStartupLocation="CenterScreen"
-        PreviewKeyDown="OnPreviewKeyDown">
+        PreviewKeyDown="OnPreviewKeyDown"
+        Loaded="OnWindowSizeChanged"
+        SizeChanged="OnWindowSizeChanged">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="VisibleWhenTrue" />
     </Window.Resources>
@@ -66,9 +68,9 @@
 
         <Grid Margin="12">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2*" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="MainColumn" Width="2*" />
+                <ColumnDefinition x:Name="SplitterColumn" Width="12" />
+                <ColumnDefinition x:Name="DetailColumn" Width="*" />
             </Grid.ColumnDefinitions>
 
             <Grid Grid.Column="0">
@@ -80,7 +82,8 @@
                 <StackPanel Grid.Row="0" Margin="0,0,0,8">
                     <TextBlock Text="{Binding ScanStatus}" TextWrapping="Wrap" />
                     <TextBlock Margin="0,4,0,0" Foreground="Gray" Text="{Binding ElevationNote}" TextWrapping="Wrap" />
-                    <TextBlock Margin="0,4,0,0" Text="{Binding CurrentPath}" />
+                    <TextBlock Margin="0,4,0,0" Text="{Binding CurrentPath}"
+                               ToolTip="{Binding CurrentPathFull}" />
                 </StackPanel>
 
                 <Grid Grid.Row="1">
@@ -103,6 +106,19 @@
                         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
                             <Button Content="Cards" Command="{Binding ShowCardsCommand}" Margin="0,0,8,0" />
                             <Button Content="Files" Command="{Binding ShowFilesCommand}" Margin="0,0,8,0" />
+                            <Button Content="Inspect" Command="{Binding ShowInspectCommand}" Margin="0,0,8,0"
+                                    AutomationProperties.Name="Inspect pane">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CompactLayout}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
                             <ComboBox Width="120"
                                       ItemsSource="{Binding FilesViewModes}"
                                       SelectedItem="{Binding FilesViewMode}" />
@@ -122,9 +138,13 @@
                                 <Style TargetType="ListBox">
                                     <Setter Property="Visibility" Value="Collapsed" />
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding DecidePane}" Value="Cards">
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding DecidePane}" Value="Cards" />
+                                                <Condition Binding="{Binding CompactInspect}" Value="False" />
+                                            </MultiDataTrigger.Conditions>
                                             <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
+                                        </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </ListBox.Style>
@@ -150,9 +170,13 @@
                                 <Style TargetType="ListView">
                                     <Setter Property="Visibility" Value="Collapsed" />
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding DecidePane}" Value="Files">
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding DecidePane}" Value="Files" />
+                                                <Condition Binding="{Binding CompactInspect}" Value="False" />
+                                            </MultiDataTrigger.Conditions>
                                             <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
+                                        </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </ListView.Style>
@@ -176,7 +200,21 @@
                                 <GridViewColumn Header="Badges" DisplayMemberBinding="{Binding BadgeText}" Width="160" />
                             </GridView>
                         </ListView.View>
-                    </ListView>
+                        </ListView>
+                        <TextBox IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                 Text="{Binding DetailText, Mode=OneWay}"
+                                 AutomationProperties.Name="Inspect details">
+                            <TextBox.Style>
+                                <Style TargetType="TextBox">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CompactInspect}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
                     </DockPanel>
 
                     <StackPanel Grid.Row="2" Orientation="Horizontal">
@@ -309,6 +347,24 @@
                          VerticalScrollBarVisibility="Auto"
                          Text="{Binding HelpText, Mode=OneWay}"
                          AutomationProperties.Name="Help page" />
+            </DockPanel>
+        </Border>
+        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                Panel.ZIndex="1"
+                Visibility="{Binding LogVisible, Converter={StaticResource VisibleWhenTrue}}">
+            <DockPanel Margin="24">
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                    <Button DockPanel.Dock="Right" Content="Close log" Command="{Binding CloseLogCommand}"
+                            AutomationProperties.Name="Close log"
+                            AutomationProperties.AutomationId="CloseLogButton" />
+                    <TextBlock FontWeight="SemiBold" VerticalAlignment="Center" Text="Session log (redacted, no secrets)" />
+                </DockPanel>
+                <TextBox IsReadOnly="True"
+                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"
+                         Text="{Binding LogText, Mode=OneWay}"
+                         AutomationProperties.Name="Session log"
+                         AutomationProperties.AutomationId="SessionLogView" />
             </DockPanel>
         </Border>
         <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
