@@ -23,6 +23,10 @@ public partial class MainWindow : Window
             Enum.IsDefined(typeof(WorkflowStep), step))
         {
             ViewModel.CurrentStep = (WorkflowStep)step;
+            if (ViewModel.CurrentStep == WorkflowStep.Preview)
+            {
+                _ = ViewModel.PreparePreviewAsync();
+            }
         }
     }
 

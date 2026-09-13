@@ -1,0 +1,249 @@
+using System.Diagnostics;
+using Microsoft.Data.Sqlite;
+using WinOldRecovery.Core.IO;
+using WinOldRecovery.Core.Persistence;
+using WinOldRecovery.Core.Planning;
+using WinOldRecovery.Core.Restore;
+using WinOldRecovery.Core.Safety;
+using WinOldRecovery.Core.Verify;
+
+namespace WinOldRecovery.Core.Tests.Restore;
+
+public sealed class CopyEngineTests
+{
+    [Fact]
+    public async Task I2_KeepBothLeavesExistingDestinationUnchanged()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string sourceFile = Path.Combine(context.Source, "note.txt");
+        await File.WriteAllTextAsync(sourceFile, "from-old");
+        File.SetLastWriteTimeUtc(sourceFile, new DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc));
+        string destFile = Path.Combine(context.Destination, "note.txt");
+        await File.WriteAllTextAsync(destFile, "already-here");
+
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyFile,
+            sourceFile,
+            destFile,
+            ConflictPolicy.KeepBoth);
+        CopyEngine engine = new(context.Database, context.SafeFs);
+        RestoreItemResult result = await engine.CopyAsync(item);
+
+        Assert.Equal("Completed", result.State);
+        Assert.Equal("already-here", await File.ReadAllTextAsync(destFile));
+        string keepBoth = Path.Combine(context.Destination, "note (from Windows.old).txt");
+        Assert.Equal("from-old", await File.ReadAllTextAsync(keepBoth));
+        Assert.False(Directory.EnumerateFiles(context.Destination, "*" + CopyEngine.PartialSuffix).Any());
+        Assert.Equal("from-old", await File.ReadAllTextAsync(sourceFile));
+        FileInfo restored = new(keepBoth);
+        Assert.Equal(new DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc), restored.LastWriteTimeUtc);
+        Assert.False(restored.Attributes.HasFlag(FileAttributes.ReadOnly));
+    }
+
+    [Fact]
+    public async Task SkipPolicy_DoesNotReplaceExistingFile()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string sourceFile = Path.Combine(context.Source, "note.txt");
+        await File.WriteAllTextAsync(sourceFile, "from-old");
+        string destFile = Path.Combine(context.Destination, "note.txt");
+        await File.WriteAllTextAsync(destFile, "keep");
+
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyFile,
+            sourceFile,
+            destFile,
+            ConflictPolicy.Skip);
+        await new CopyEngine(context.Database, context.SafeFs).CopyAsync(item);
+
+        Assert.Equal("keep", await File.ReadAllTextAsync(destFile));
+        Assert.False(File.Exists(Path.Combine(context.Destination, "note (from Windows.old).txt")));
+    }
+
+    [Fact]
+    public async Task CopyTree_SkipsReparsePointsAndVerifiesHashes()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string tree = Path.Combine(context.Source, "Desktop");
+        Directory.CreateDirectory(tree);
+        await File.WriteAllTextAsync(Path.Combine(tree, "a.txt"), "aaa");
+        string live = Path.Combine(context.Root, "live");
+        Directory.CreateDirectory(live);
+        await File.WriteAllTextAsync(Path.Combine(live, "secret.txt"), "no");
+        CreateJunction(Path.Combine(tree, "link"), live);
+
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyTree,
+            tree,
+            Path.Combine(context.Destination, "Desktop"),
+            ConflictPolicy.KeepBoth);
+        await new CopyEngine(context.Database, context.SafeFs).CopyAsync(item);
+
+        Assert.True(File.Exists(Path.Combine(context.Destination, "Desktop", "a.txt")));
+        Assert.False(Directory.Exists(Path.Combine(context.Destination, "Desktop", "link")));
+        Assert.False(File.Exists(Path.Combine(context.Destination, "Desktop", "link", "secret.txt")));
+
+        RestorePlan plan = new(
+            context.SessionId,
+            context.Source,
+            context.Destination,
+            [item],
+            3);
+        VerifyReport report = await new Verifier(context.Database, context.SafeFs).VerifyAsync(plan);
+        Assert.True(report.AllOk);
+        Assert.Contains(report.Rows, row => row.Level == 2 && row.Ok);
+    }
+
+    [Fact]
+    public async Task Resume_SkipsCompletedItems()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string sourceFile = Path.Combine(context.Source, "note.txt");
+        await File.WriteAllTextAsync(sourceFile, "once");
+        string destFile = Path.Combine(context.Destination, "note.txt");
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyFile,
+            sourceFile,
+            destFile,
+            ConflictPolicy.KeepBoth);
+        CopyEngine engine = new(context.Database, context.SafeFs);
+        await engine.CopyAsync(item);
+        await File.WriteAllTextAsync(sourceFile, "changed");
+        RestoreItemResult second = await engine.CopyAsync(item);
+        Assert.Equal("Completed", second.State);
+        Assert.Equal("once", await File.ReadAllTextAsync(destFile));
+    }
+
+    [Fact]
+    public void Preflight_I16_BlocksWhenFreeSpaceBelowMargin()
+    {
+        RestorePlan plan = new(
+            "session-1",
+            @"C:\old",
+            @"C:\new",
+            [],
+            TotalBytes: 10);
+        PreflightResult result = new PreflightChecker(new FixedFreeSpace(100)).Check(plan);
+        Assert.False(result.CanProceed);
+        Assert.Contains(result.BlockingIssues, issue => issue.Contains("free space", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed class FixedFreeSpace(long bytes) : IFreeSpaceProvider
+    {
+        public long GetFreeBytes(string directoryPath) => bytes;
+    }
+
+    private sealed class CopyContext : IAsyncDisposable
+    {
+        private CopyContext(string root, SessionDb database, SafeFs safeFs, SourceGuard guard)
+        {
+            Root = root;
+            Database = database;
+            SafeFs = safeFs;
+            Guard = guard;
+            Source = Path.Combine(root, "Windows.old");
+            Destination = Path.Combine(root, "Recovered");
+            Directory.CreateDirectory(Source);
+            Directory.CreateDirectory(Destination);
+            Guard.RegisterSourceRoot(Source);
+        }
+
+        public string Root { get; }
+        public SessionDb Database { get; }
+        public SafeFs SafeFs { get; }
+        public SourceGuard Guard { get; }
+        public string Source { get; }
+        public string Destination { get; }
+        public string SessionId => "session-1";
+
+        public static async Task<CopyContext> CreateAsync()
+        {
+            string root = Path.Combine(Path.GetTempPath(), $"WinOldRecovery-Copy-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(root);
+            SourceGuard guard = new();
+            SafeFs safeFs = new(guard);
+            SessionDb database = await SessionDb.OpenAsync(Path.Combine(root, "session.db"), safeFs);
+            await database.CreateSessionAsync(
+                new SessionRecord("session-1", DateTimeOffset.UtcNow, "Restoring", "0.1.0"));
+            return new CopyContext(root, database, safeFs, guard);
+        }
+
+        public async Task<PlanItem> StoreAsync(
+            PlanOperation operation,
+            string source,
+            string dest,
+            ConflictPolicy policy)
+        {
+            PlanItem item = new(
+                SessionId,
+                1,
+                operation,
+                source,
+                dest,
+                1,
+                policy,
+                OverwriteApproved: policy == ConflictPolicy.OverwriteApproved,
+                RecipeId: null);
+            IReadOnlyList<PlanItem> stored = await Database.ReplacePlanItemsAsync(SessionId, [item]);
+            return stored[0];
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Database.DisposeAsync();
+            SqliteConnection.ClearAllPools();
+            DeleteTree(Root);
+        }
+    }
+
+    private static void CreateJunction(string junction, string target)
+    {
+        ProcessStartInfo startInfo = new(
+            Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+        };
+        startInfo.ArgumentList.Add("/d");
+        startInfo.ArgumentList.Add("/c");
+        startInfo.ArgumentList.Add("mklink");
+        startInfo.ArgumentList.Add("/J");
+        startInfo.ArgumentList.Add(junction);
+        startInfo.ArgumentList.Add(target);
+        using Process process = Process.Start(startInfo) ?? throw new InvalidOperationException("mklink");
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(process.StandardError.ReadToEnd());
+        }
+    }
+
+    private static void DeleteTree(string root)
+    {
+        if (!Directory.Exists(root))
+        {
+            return;
+        }
+
+        foreach (string entry in Directory.EnumerateFileSystemEntries(root))
+        {
+            FileAttributes attributes = File.GetAttributes(entry);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                Directory.Delete(entry);
+            }
+            else if ((attributes & FileAttributes.Directory) != 0)
+            {
+                DeleteTree(entry);
+            }
+            else
+            {
+                File.Delete(entry);
+            }
+        }
+
+        Directory.Delete(root);
+    }
+}

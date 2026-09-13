@@ -5,6 +5,7 @@ using Microsoft.Data.Sqlite;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Planning;
 using WinOldRecovery.Core.Scan;
+using WinOldRecovery.Core.Verify;
 
 namespace WinOldRecovery.Core.Persistence;
 
@@ -391,7 +392,7 @@ public sealed class SessionDb : IAsyncDisposable
             cancellationToken);
     }
 
-    public Task ReplacePlanItemsAsync(
+    public Task<IReadOnlyList<PlanItem>> ReplacePlanItemsAsync(
         string sessionId,
         IReadOnlyList<PlanItem> items,
         CancellationToken cancellationToken = default)
@@ -430,6 +431,7 @@ public sealed class SessionDb : IAsyncDisposable
                 SqliteParameter overwriteApproved = command.Parameters.Add("$overwriteApproved", SqliteType.Integer);
                 SqliteParameter recipeId = command.Parameters.Add("$recipeId", SqliteType.Text);
 
+                List<PlanItem> stored = [];
                 foreach (PlanItem item in items)
                 {
                     sessionParam.Value = item.SessionId;
@@ -441,6 +443,135 @@ public sealed class SessionDb : IAsyncDisposable
                     conflictPolicy.Value = item.ConflictPolicy.ToString();
                     overwriteApproved.Value = item.OverwriteApproved ? 1 : 0;
                     recipeId.Value = (object?)item.RecipeId ?? DBNull.Value;
+                    await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                    await using SqliteCommand idCommand = connection.CreateCommand();
+                    idCommand.Transaction = transaction;
+                    idCommand.CommandText = "SELECT last_insert_rowid();";
+                    long id = (long)(await idCommand.ExecuteScalarAsync(token).ConfigureAwait(false) ?? 0L);
+                    stored.Add(item with { Id = id });
+                }
+
+                transaction.Commit();
+                return (IReadOnlyList<PlanItem>)stored;
+            },
+            cancellationToken);
+    }
+
+    public IReadOnlyList<PlanItem> ListPlanItems(string sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id, session_id, job_id, operation, source_path, destination_path,
+                   bytes, conflict_policy, overwrite_approved, recipe_id
+            FROM plan_items
+            WHERE session_id = $sessionId
+            ORDER BY id;
+            """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        List<PlanItem> items = [];
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            items.Add(
+                new PlanItem(
+                    reader.GetString(1),
+                    reader.GetInt32(2),
+                    Enum.Parse<PlanOperation>(reader.GetString(3)),
+                    reader.GetString(4),
+                    reader.GetString(5),
+                    reader.GetInt64(6),
+                    Enum.Parse<ConflictPolicy>(reader.GetString(7)),
+                    reader.GetInt64(8) != 0,
+                    reader.IsDBNull(9) ? null : reader.GetString(9),
+                    reader.GetInt64(0)));
+        }
+
+        return items;
+    }
+
+    public Task AppendJournalAsync(
+        long planItemId,
+        string state,
+        string? error = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(state);
+        return WriteAsync(
+            async (connection, token) =>
+            {
+                await using SqliteCommand command = connection.CreateCommand();
+                command.CommandText =
+                    """
+                    INSERT INTO journal(plan_item_id, state, recorded_at_utc, error)
+                    VALUES ($planItemId, $state, $at, $error);
+                    """;
+                command.Parameters.AddWithValue("$planItemId", planItemId);
+                command.Parameters.AddWithValue("$state", state);
+                command.Parameters.AddWithValue(
+                    "$at",
+                    DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
+                command.Parameters.AddWithValue("$error", (object?)error ?? DBNull.Value);
+                await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+            },
+            cancellationToken);
+    }
+
+    public string? GetLatestJournalState(long planItemId)
+    {
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT state
+            FROM journal
+            WHERE plan_item_id = $id
+            ORDER BY recorded_at_utc DESC, id DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$id", planItemId);
+        return command.ExecuteScalar() as string;
+    }
+
+    public Task InsertVerifyResultsAsync(
+        IReadOnlyList<VerifyResultRow> rows,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        if (rows.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        return WriteAsync(
+            async (connection, token) =>
+            {
+                using SqliteTransaction transaction = connection.BeginTransaction();
+                await using SqliteCommand command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText =
+                    """
+                    INSERT INTO verify_results(
+                        plan_item_id, report_id, level, ok, detail, recorded_at_utc)
+                    VALUES ($planItemId, $reportId, $level, $ok, $detail, $at);
+                    """;
+                SqliteParameter planItemId = command.Parameters.Add("$planItemId", SqliteType.Integer);
+                SqliteParameter reportId = command.Parameters.Add("$reportId", SqliteType.Text);
+                SqliteParameter level = command.Parameters.Add("$level", SqliteType.Integer);
+                SqliteParameter ok = command.Parameters.Add("$ok", SqliteType.Integer);
+                SqliteParameter detail = command.Parameters.Add("$detail", SqliteType.Text);
+                SqliteParameter at = command.Parameters.Add("$at", SqliteType.Text);
+                foreach (VerifyResultRow row in rows)
+                {
+                    planItemId.Value = row.PlanItemId;
+                    reportId.Value = row.ReportId;
+                    level.Value = row.Level;
+                    ok.Value = row.Ok ? 1 : 0;
+                    detail.Value = row.Detail;
+                    at.Value = row.RecordedAtUtc.ToUniversalTime()
+                        .ToString("O", CultureInfo.InvariantCulture);
                     await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
                 }
 

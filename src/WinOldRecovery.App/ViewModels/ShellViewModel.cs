@@ -8,10 +8,13 @@ using WinOldRecovery.Core.Decisions;
 using WinOldRecovery.Core.Hashing;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Persistence;
+using WinOldRecovery.Core.Planning;
 using WinOldRecovery.Core.Processes;
+using WinOldRecovery.Core.Restore;
 using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Core.Scan;
 using WinOldRecovery.Core.Sessions;
+using WinOldRecovery.Core.Verify;
 
 namespace WinOldRecovery.App.ViewModels;
 
@@ -50,6 +53,14 @@ public sealed class ShellViewModel : ObservableObject
     private OverviewCard? selectedCard;
     private IReadOnlyList<DetectedProfile> lastProfiles = [];
     private ClassificationSummary? lastClassification;
+    private RestorePlan? lastPlan;
+    private PreflightResult? lastPreflight;
+    private bool restoreCompleted;
+    private bool verifyCompleted;
+    private string spaceBudgetText = "Selected: — of destination free space";
+    private string destinationRoot = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        "Recovered");
 
     public ShellViewModel(
         SessionDb sessionDb,
@@ -85,6 +96,9 @@ public sealed class ShellViewModel : ObservableObject
             },
             () => SelectedNode is not null);
         CopyPathCommand = new RelayCommand(CopyPath, () => SelectedNode is not null && SourceRoot is not null);
+        ExecuteRestoreCommand = new AsyncRelayCommand(ExecuteRestoreAsync, () => lastPlan is not null && lastPreflight is { CanProceed: true } && !IsScanning);
+        ExecuteVerifyCommand = new AsyncRelayCommand(ExecuteVerifyAsync, () => restoreCompleted);
+        PreparePreviewCommand = new AsyncRelayCommand(PreparePreviewAsync, () => scanCompleted && SourceRoot is not null);
     }
 
     public IAsyncRelayCommand ScanCommand { get; }
@@ -99,6 +113,9 @@ public sealed class ShellViewModel : ObservableObject
     public IRelayCommand SearchCommand { get; }
     public IRelayCommand InspectCommand { get; }
     public IRelayCommand CopyPathCommand { get; }
+    public IAsyncRelayCommand ExecuteRestoreCommand { get; }
+    public IAsyncRelayCommand ExecuteVerifyCommand { get; }
+    public IAsyncRelayCommand PreparePreviewCommand { get; }
 
     public ObservableCollection<SourceCandidate> Sources { get; } = [];
 
@@ -135,9 +152,17 @@ public sealed class ShellViewModel : ObservableObject
 
     public bool ScanCompleted => scanCompleted;
 
+    public bool RestoreCompleted => restoreCompleted;
+
+    public bool VerifyCompleted => verifyCompleted;
+
     public string SourceIntegrityText { get; } = "Windows.old untouched";
 
-    public string SpaceBudgetText { get; } = "Selected: — of destination free space";
+    public string SpaceBudgetText
+    {
+        get => spaceBudgetText;
+        private set => SetProperty(ref spaceBudgetText, value);
+    }
 
     public string ElevationNote { get; } =
         "Files in Windows.old belong to a user account that no longer exists; reading them needs administrator rights.";
@@ -170,6 +195,12 @@ public sealed class ShellViewModel : ObservableObject
                 ScanCommand.NotifyCanExecuteChanged();
             }
         }
+    }
+
+    public string DestinationRoot
+    {
+        get => destinationRoot;
+        set => SetProperty(ref destinationRoot, value);
     }
 
     public string? SourceRoot { get; private set; }
@@ -313,6 +344,8 @@ public sealed class ShellViewModel : ObservableObject
         {
             WorkflowStep.Decide => scanCompleted,
             WorkflowStep.Preview => scanCompleted,
+            WorkflowStep.Restore => lastPlan is not null && lastPreflight is { CanProceed: true },
+            WorkflowStep.Verify => restoreCompleted,
             _ => false,
         };
     }
@@ -430,6 +463,7 @@ public sealed class ShellViewModel : ObservableObject
             ReloadView();
             OnPropertyChanged(nameof(WindowTitle));
             OnPropertyChanged(nameof(ScanCompleted));
+            PreparePreviewCommand.NotifyCanExecuteChanged();
         }
         catch (OperationCanceledException)
         {
@@ -628,5 +662,61 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(TreeRows));
+    }
+
+    public async Task PreparePreviewAsync()
+    {
+        if (SourceRoot is null)
+        {
+            return;
+        }
+
+        safeFs.CreateDirectory(DestinationRoot);
+        PlanBuilder builder = new(sessionDb);
+        lastPlan = await builder.BuildAsync(
+                new PlanRequest(workspace.SessionId, SourceRoot, DestinationRoot))
+            .ConfigureAwait(true);
+        lastPreflight = new PreflightChecker().Check(lastPlan);
+        SpaceBudgetText =
+            $"Selected: {lastPlan.TotalBytes} bytes of {lastPreflight.FreeBytes} free (need {lastPreflight.RequiredBytes} with margin)";
+        ScanStatus = lastPreflight.CanProceed
+            ? $"Preview: {lastPlan.Items.Count} copy operations. Windows.old has not been changed."
+            : string.Join(" ", lastPreflight.BlockingIssues);
+        ExecuteRestoreCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(WindowTitle));
+    }
+
+    private async Task ExecuteRestoreAsync()
+    {
+        if (lastPlan is null)
+        {
+            return;
+        }
+
+        RestoreRunner runner = new(new CopyEngine(sessionDb, safeFs));
+        RestoreResult result = await runner.RunAsync(lastPlan).ConfigureAwait(true);
+        restoreCompleted = result.Completed;
+        ScanStatus = result.PausedDiskFull
+            ? "Restore paused: the destination volume is full. Nothing was deleted to make room."
+            : result.Completed
+                ? "Restore finished. Verify the copies before considering a purge."
+                : "Restore did not finish.";
+        ExecuteVerifyCommand.NotifyCanExecuteChanged();
+        CurrentStep = WorkflowStep.Restore;
+    }
+
+    private async Task ExecuteVerifyAsync()
+    {
+        if (lastPlan is null)
+        {
+            return;
+        }
+
+        VerifyReport report = await new Verifier(sessionDb, safeFs).VerifyAsync(lastPlan).ConfigureAwait(true);
+        verifyCompleted = report.AllOk;
+        ScanStatus = report.AllOk
+            ? "Verify report: every checked item passed existence, size/time, and hash samples."
+            : "Verify report: at least one item failed. Purge stays locked.";
+        CurrentStep = WorkflowStep.Verify;
     }
 }

@@ -34,3 +34,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Optional post-scan SHA-256 hashing of clean files at most 64 MB, stored per node in the session database.
 - Classification rules (high-value, regeneratable, game saves, sensitive) with badges, suggested defaults, and High-value / Regeneratable summary cards. Regeneratable and unknown items are never auto-left-behind.
 - Restore `PlanBuilder` that emits copy-tree and copy-file items, rejects source/destination containment, and never plans whole AppData folders.
+- Journaled copy engine using `.winold-partial` then rename, keep-both conflicts, preflight space margin, and L0–L2 verification reports.

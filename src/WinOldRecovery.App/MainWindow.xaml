@@ -153,6 +153,9 @@
                         <Button Content="Leave Behind (L)" Command="{Binding LeaveBehindCommand}" Margin="0,0,8,0" />
                         <Button Content="Undecided (U)" Command="{Binding UndecidedCommand}" Margin="0,0,8,0" />
                         <Button Content="Open Folder (O)" Command="{Binding OpenFolderCommand}" Margin="0,0,8,0" />
+                        <Button Content="Preview plan" Command="{Binding PreparePreviewCommand}" Margin="0,0,8,0" />
+                        <Button Content="Run restore" Command="{Binding ExecuteRestoreCommand}" Margin="0,0,8,0" />
+                        <Button Content="Verify" Command="{Binding ExecuteVerifyCommand}" Margin="0,0,8,0" />
                         <Button Content="Expand" Command="{Binding ExpandCommand}" CommandParameter="{Binding SelectedNode}" />
                     </StackPanel>
                 </Grid>

@@ -50,8 +50,10 @@ public sealed class PlanBuilder
             destinationRoot,
             items,
             items.Sum(static item => item.Bytes));
-        await sessionDb.ReplacePlanItemsAsync(request.SessionId, plan.Items, cancellationToken).ConfigureAwait(false);
-        return plan;
+        IReadOnlyList<PlanItem> stored = await sessionDb
+            .ReplacePlanItemsAsync(request.SessionId, plan.Items, cancellationToken)
+            .ConfigureAwait(false);
+        return plan with { Items = stored };
 
         void Walk(PlanNode node)
         {

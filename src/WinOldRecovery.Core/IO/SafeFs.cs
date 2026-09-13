@@ -48,7 +48,7 @@ public sealed class SafeFs
         string validatedSource = sourceGuard.GetValidatedWritePath(sourcePath, purgeToken);
         string validatedDestination =
             sourceGuard.GetValidatedWritePath(destinationPath, purgeToken);
-        File.Move(validatedSource, validatedDestination, overwrite);
+        NativeFile.Move(validatedSource, validatedDestination, overwrite);
     }
 
     public void DeleteFile(string path, PurgeToken? purgeToken = null)
