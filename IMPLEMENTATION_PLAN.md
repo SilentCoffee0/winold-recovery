@@ -20,7 +20,7 @@ Global definition of done for any milestone:
 - M0 item 4 external check still required: run the full elevated generator with its default 100,000 files on NTFS and pass the self-check. This agent environment is not elevated, so privileged hazard creation was not claimed as tested.
 - M0 plan work item 5: implementation complete on 13 Sep 2026. Startup creates the dated session folder, exports/temp directories, WAL database, initial session row, and rolling redacted log under `%LOCALAPPDATA%\WinOldRecovery\sessions`. Canary, sensitive-path, log-rotation, source-containment, and folder-layout tests pass.
 - M0 handoff item 5 (technical spikes): partially complete on 13 Sep 2026. The published single-file console harness successfully parsed a copied Windows 11 Default-profile hive with `Registry` and loaded/round-tripped SQLite. ReadyToRun/non-ReadyToRun console size and warm-run measurements are recorded in `docs/spikes/`. Elevated deny-ACL/orphan-SID enumeration and reads, the real-VM cleanup-handler check, elevated WPF startup measurement, and interactive Explorer long-path behavior remain explicitly pending in `docs/spikes/PENDING_MANUAL.md`.
-- M0 CI/release work: not started.
+- M0 CI/release work: not started. Development paused at a clean checkpoint on 13 Sep 2026; the next exact implementation step is the CI and tag-release workflow. Do not create the M0 tag while external acceptance checks remain pending.
 
 ---
 

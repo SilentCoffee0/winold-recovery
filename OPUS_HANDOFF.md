@@ -66,6 +66,14 @@ Follow IMPLEMENTATION_PLAN.md: **M0 foundation and spikes → M1 scan + tree →
 5. Run the six spikes and record results in `docs/spikes/`. In particular: enumerate the fixture's deny-ACL and orphan-SID folders with backup privilege; read a file inside them via `CreateFileW`; parse the fixture `NTUSER.DAT` with the `Registry` package from inside the published single-file EXE; load SQLite inside the bundle; measure startup and size.
 6. Set up CI. Tag `v0.1.0-m0`.
 
+## Current implementation handoff — 13 Sep 2026
+
+- **Current item:** M0 item 5, technical spikes. Development is paused at a clean checkpoint after commit `fa73500`.
+- **Complete:** M0 items 1–4; session workspace/redacted logging from plan work item 5; portable FixtureGen generation/self-check; offline Registry parsing from a copied hive; SQLite and Registry operation inside a published self-contained single-file bundle; preliminary console ReadyToRun size/timing measurements.
+- **Remaining:** elevated deny-ACL/orphan-SID enumeration and backup-mode read spikes; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch/session creation check; real-VM `cleanmgr` handler test; interactive Explorer long-path test. These are recorded in `docs/spikes/PENDING_MANUAL.md` and have not been claimed as passed.
+- **Verified tests:** strict Release build has 0 warnings/errors; 24 Core, 5 Integration, 1 Recipes, and 1 App test pass (31 total). The WPF single-file publish succeeds.
+- **Next exact implementation step:** add M0 CI and tag-release workflows (handoff item 6). Do not tag `v0.1.0-m0` until the pending M0 acceptance checks are resolved or explicitly recorded as externally blocked.
+
 ## What not to redesign
 
 - The seven-step workflow and the three-state decision model.
