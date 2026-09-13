@@ -14,6 +14,22 @@ internal static class Program
                 return args.Length == 0 ? 2 : 0;
             }
 
+            if (string.Equals(args[0], "--bundle-self-test", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length != 1)
+                {
+                    PrintUsage();
+                    return 2;
+                }
+
+                BundleSelfTestResult bundleResult = await BundleSelfTest.RunAsync();
+                Console.WriteLine(
+                    $"Bundle self-test passed: Registry={bundleResult.RegistryParsed}, " +
+                    $"SQLite={bundleResult.SqliteLoaded}, " +
+                    $"elapsed={bundleResult.ElapsedMilliseconds} ms.");
+                return 0;
+            }
+
             if (string.Equals(args[0], "--self-check-only", StringComparison.OrdinalIgnoreCase))
             {
                 if (args.Length != 2)
@@ -85,6 +101,7 @@ internal static class Program
             Usage:
               FixtureGen <target-Windows.old> [--files <count>] [--portable]
               FixtureGen --self-check-only <target-Windows.old>
+              FixtureGen --bundle-self-test
 
             Full generation requires an elevated administrator process.
             --portable is intended only for automated development tests and records

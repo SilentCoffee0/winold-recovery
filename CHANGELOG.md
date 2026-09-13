@@ -22,3 +22,5 @@ All notable changes to WinOld Recovery will be documented here.
 - Dated per-run session workspace with database, log, exports, and temporary directories.
 - Rolling structured text logger with sensitive-path and secret-literal redaction.
 - Application startup initialization of privileges, session state, and an auditable untouched-source log entry.
+- Offline registry parsing from a session-local copy made with backup-mode reads.
+- Single-file dependency self-test proving bundled Registry and SQLite operation.

@@ -19,7 +19,8 @@ Global definition of done for any milestone:
 - M0 handoff item 4: implementation complete on 13 Sep 2026. `FixtureGen` creates two profiles, live-target and loop junctions, file/directory symlinks, long/offline/invalid-name/large-`node_modules` hazards, privileged deny-ACL/orphan-SID/EFS hazards, and canary-bearing recipe shells; it refuses non-empty targets and writes a secret-free manifest consumed by its self-check. Portable generation and self-check pass in integration tests.
 - M0 item 4 external check still required: run the full elevated generator with its default 100,000 files on NTFS and pass the self-check. This agent environment is not elevated, so privileged hazard creation was not claimed as tested.
 - M0 plan work item 5: implementation complete on 13 Sep 2026. Startup creates the dated session folder, exports/temp directories, WAL database, initial session row, and rolling redacted log under `%LOCALAPPDATA%\WinOldRecovery\sessions`. Canary, sensitive-path, log-rotation, source-containment, and folder-layout tests pass.
-- M0 handoff item 5 (technical spikes) and later M0 work: not started.
+- M0 handoff item 5 (technical spikes): partially complete on 13 Sep 2026. The published single-file console harness successfully parsed a copied Windows 11 Default-profile hive with `Registry` and loaded/round-tripped SQLite. ReadyToRun/non-ReadyToRun console size and warm-run measurements are recorded in `docs/spikes/`. Elevated deny-ACL/orphan-SID enumeration and reads, the real-VM cleanup-handler check, elevated WPF startup measurement, and interactive Explorer long-path behavior remain explicitly pending in `docs/spikes/PENDING_MANUAL.md`.
+- M0 CI/release work: not started.
 
 ---
 

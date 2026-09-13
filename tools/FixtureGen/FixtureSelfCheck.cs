@@ -13,6 +13,7 @@ public sealed class FixtureSelfCheck
     [
         "profile-alice",
         "profile-bob",
+        "registry-hive",
         "legacy-junction",
         "junction-loop",
         "directory-symlink",

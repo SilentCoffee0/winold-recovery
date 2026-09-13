@@ -26,5 +26,17 @@ Copyright .NET Foundation and contributors. Licensed under the MIT License.
 
 https://github.com/dotnet/runtime
 
+## Registry
+
+Copyright Eric Zimmerman and contributors. Licensed under the MIT License.
+
+https://github.com/EricZimmerman/Registry
+
+## Serilog
+
+Copyright Serilog contributors. Licensed under the Apache License 2.0.
+
+https://github.com/serilog/serilog
+
 Third-party test-only dependencies are distributed under their respective
 licenses and are not bundled into the WinOld Recovery executable.

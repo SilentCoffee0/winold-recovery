@@ -62,7 +62,7 @@ public sealed class FixtureGenerator
         safeFs.CreateDirectory(liveProfile);
         WriteText(Path.Combine(liveProfile, "live-only.txt"), "must never be scanned");
 
-        CreateProfiles(targetRoot, hazards);
+        CreateProfiles(targetRoot, options.PortableMode, hazards);
         await CreateReparseHazardsAsync(
             targetRoot,
             liveProfile,
@@ -124,13 +124,45 @@ public sealed class FixtureGenerator
 
     private void CreateProfiles(
         string targetRoot,
+        bool portableMode,
         IDictionary<string, FixtureHazard> hazards)
     {
+        string defaultProfileHive = Path.Combine(
+            Directory.GetParent(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))?.FullName
+                ?? string.Empty,
+            "Default",
+            "NTUSER.DAT");
+        bool templateHiveAvailable = File.Exists(defaultProfileHive);
+        if (!templateHiveAvailable && !portableMode)
+        {
+            throw new FileNotFoundException(
+                "The clean Default profile NTUSER.DAT template was not found.",
+                defaultProfileHive);
+        }
+
         foreach (string profile in new[] { "Alice", "Bob" })
         {
             string profileRoot = Path.Combine(targetRoot, "Users", profile);
             safeFs.CreateDirectory(profileRoot);
-            WriteText(Path.Combine(profileRoot, "NTUSER.DAT"), "REGF fixture shell");
+            string fixtureHive = Path.Combine(profileRoot, "NTUSER.DAT");
+            if (templateHiveAvailable)
+            {
+                CopyFile(defaultProfileHive, fixtureHive);
+                foreach (string suffix in new[] { ".LOG1", ".LOG2" })
+                {
+                    string sourceLog = defaultProfileHive + suffix;
+                    if (File.Exists(sourceLog))
+                    {
+                        CopyFile(sourceLog, fixtureHive + suffix);
+                    }
+                }
+            }
+            else
+            {
+                WriteText(fixtureHive, "REGF fixture unavailable in portable mode");
+            }
+
             WriteText(
                 Path.Combine(profileRoot, "Desktop", $"{profile}-document.txt"),
                 $"fixture document for {profile}");
@@ -143,6 +175,12 @@ public sealed class FixtureGenerator
         WriteText(Path.Combine(publicRoot, "shared.txt"), "shared fixture");
         safeFs.CreateDirectory(Path.Combine(targetRoot, "Windows", "System32", "config"));
         safeFs.CreateDirectory(Path.Combine(targetRoot, "ProgramData"));
+        hazards["registry-hive"] = templateHiveAvailable
+            ? Created(targetRoot, Path.Combine(targetRoot, "Users", "Alice", "NTUSER.DAT"))
+            : Unavailable(
+                targetRoot,
+                Path.Combine(targetRoot, "Users", "Alice", "NTUSER.DAT"),
+                "The clean Windows Default profile hive was not available.");
     }
 
     private async Task CreateReparseHazardsAsync(
@@ -485,6 +523,20 @@ public sealed class FixtureGenerator
                 ?? throw new ArgumentException("The fixture path needs a parent.", nameof(path)));
         using FileStream writer = safeFs.OpenWrite(path, FileMode.CreateNew);
         writer.Write(contents);
+    }
+
+    private void CopyFile(string sourcePath, string destinationPath)
+    {
+        safeFs.CreateDirectory(
+            Path.GetDirectoryName(destinationPath)
+                ?? throw new ArgumentException(
+                    "The fixture path needs a parent.",
+                    nameof(destinationPath)));
+        using FileStream source = safeFs.OpenRead(sourcePath);
+        using FileStream destination = safeFs.OpenWrite(
+            destinationPath,
+            FileMode.CreateNew);
+        source.CopyTo(destination);
     }
 
     private static FixtureHazard Created(string root, string path)

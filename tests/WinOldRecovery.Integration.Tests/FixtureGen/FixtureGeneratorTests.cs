@@ -1,4 +1,7 @@
 using WinOldRecovery.Core.Processes;
+using WinOldRecovery.Core.IO;
+using WinOldRecovery.Core.Registry;
+using WinOldRecovery.Core.Safety;
 using WinOldRecovery.FixtureGen;
 
 namespace WinOldRecovery.Integration.Tests.FixtureGen;
@@ -91,6 +94,52 @@ public sealed class FixtureGeneratorTests
         {
             DeleteTestFixture(testRoot);
         }
+    }
+
+    [Fact]
+    public async Task OfflineRegistryParser_ReadsCopiedFixtureHive()
+    {
+        string testRoot = CreateTestRoot();
+        string fixtureRoot = Path.Combine(testRoot, "Windows.old");
+
+        try
+        {
+            FixtureGenerator generator = new(new ProcessRunner());
+            FixtureManifest manifest = await generator.GenerateAsync(
+                new FixtureOptions(
+                    fixtureRoot,
+                    NodeModulesFileCount: 5,
+                    PortableMode: true));
+            Assert.Equal("Created", manifest.Hazards["registry-hive"].Status);
+
+            string hivePath = Path.Combine(fixtureRoot, "Users", "Alice", "NTUSER.DAT");
+            DateTime before = File.GetLastWriteTimeUtc(hivePath);
+            SourceGuard guard = new();
+            guard.RegisterSourceRoot(fixtureRoot);
+            SafeFs safeFs = new(guard);
+
+            OfflineRegistryHive hive = await OfflineRegistryHive.OpenCopyAsync(
+                hivePath,
+                Path.Combine(testRoot, "session-tmp"),
+                safeFs);
+
+            Assert.True(hive.ContainsKey("Software"));
+            Assert.Equal(before, File.GetLastWriteTimeUtc(hivePath));
+        }
+        finally
+        {
+            DeleteTestFixture(testRoot);
+        }
+    }
+
+    [Fact]
+    public async Task BundleSelfTest_RoundTripsRegistryAndSqlite()
+    {
+        BundleSelfTestResult result = await BundleSelfTest.RunAsync();
+
+        Assert.True(result.RegistryParsed);
+        Assert.True(result.SqliteLoaded);
+        Assert.True(result.ElapsedMilliseconds >= 0);
     }
 
     private static string CreateTestRoot()
