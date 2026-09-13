@@ -2,7 +2,7 @@ namespace WinOldRecovery.Core.Persistence;
 
 internal static class SessionDbSchema
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
 
     public static IReadOnlyList<SchemaMigration> Migrations { get; } =
     [
@@ -133,6 +133,23 @@ internal static class SessionDbSchema
             CREATE INDEX ix_journal_item_latest
                 ON journal(plan_item_id, recorded_at_utc DESC, id DESC);
             CREATE INDEX ix_verify_report ON verify_results(report_id, plan_item_id);
+            """),
+        new(
+            2,
+            """
+            CREATE TABLE decisions_v2 (
+                node_id INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+                source TEXT NOT NULL,
+                decision TEXT NOT NULL,
+                decided_at_utc TEXT NOT NULL,
+                PRIMARY KEY (node_id, source)
+            ) STRICT;
+
+            INSERT INTO decisions_v2(node_id, source, decision, decided_at_utc)
+            SELECT node_id, source, decision, decided_at_utc FROM decisions;
+
+            DROP TABLE decisions;
+            ALTER TABLE decisions_v2 RENAME TO decisions;
             """),
     ];
 }

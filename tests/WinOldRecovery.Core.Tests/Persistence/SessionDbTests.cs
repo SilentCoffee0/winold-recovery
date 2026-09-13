@@ -154,7 +154,7 @@ public sealed class SessionDbTests
             versions.Add(rows.GetInt64(0));
         }
 
-        Assert.Equal([1L], versions);
+        Assert.Equal([1L, 2L], versions);
     }
 
     [Fact]
