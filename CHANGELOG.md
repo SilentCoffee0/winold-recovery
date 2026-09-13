@@ -26,3 +26,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Single-file dependency self-test proving bundled Registry and SQLite operation.
 - GitHub Actions CI workflow that builds, tests, and uploads an unsigned x64 single-file artifact.
 - Tag-triggered release workflow that attaches the executable and a SHA-256 checksum.
+- Read-only Windows.old source discovery across fixed volumes, numbered `Windows.old*` variants, old system volumes, and browsed folders.

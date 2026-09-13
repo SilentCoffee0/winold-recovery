@@ -68,11 +68,11 @@ Follow IMPLEMENTATION_PLAN.md: **M0 foundation and spikes → M1 scan + tree →
 
 ## Current implementation handoff — 13 Sep 2026
 
-- **Current item:** M0 is still open because elevated/manual acceptance checks remain pending. Automated M0 coding through CI/release workflows is complete after this slice.
-- **Complete:** M0 items 1–4; session workspace/redacted logging; portable FixtureGen generation/self-check; offline Registry parsing from a copied hive; SQLite and Registry operation inside a published self-contained single-file bundle; console ReadyToRun size/timing measurements; GitHub Actions CI (build, test, single-file publish artifact) and tag-release workflow with SHA-256 checksums.
-- **Remaining:** elevated deny-ACL/orphan-SID enumeration and backup-mode read spikes; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch/session creation check; real-VM `cleanmgr` handler test; interactive Explorer long-path test. These are recorded in `docs/spikes/PENDING_MANUAL.md` and have not been claimed as passed. Do not tag `v0.1.0-m0` until those checks are resolved or explicitly recorded as externally blocked.
-- **Verified tests:** strict Release build has 0 warnings/errors. The WPF single-file publish succeeds. Workflow files are covered by named tests asserting build, test, publish, and checksum steps without creating the M0 tag.
-- **Next exact implementation step:** either perform the pending elevated/manual M0 spikes in `docs/spikes/PENDING_MANUAL.md`, or if those remain blocked, start M1 item 1 (source discovery) without claiming M0 tagged acceptance.
+- **Current item:** M1 item 2 — `FileSystemWalker`.
+- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 item 1 source discovery: `Windows.old*` variants, old system volumes, browsed-folder inspection, 10-day estimate, read-only `SetupCleanupTask` query.
+- **Remaining M0 (explicitly pending, not claimed passed):** elevated deny-ACL/orphan-SID enumeration and backup-mode reads; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch; real-VM `cleanmgr` handler; Explorer long-path selection. See `docs/spikes/PENDING_MANUAL.md`.
+- **Verified tests:** strict Release build has 0 warnings/errors. Core tests include source-discovery coverage. Do not tag `v0.1.0-m0` while those external checks remain pending.
+- **Next exact implementation step:** implement `FileSystemWalker` per ARCHITECTURE §5.1 (manual recursion, reparse leaves, placeholder/EFS/access-denied problems, post-order aggregates, batched inserts, cancel/resume checkpoints).
 
 ## What not to redesign
 
