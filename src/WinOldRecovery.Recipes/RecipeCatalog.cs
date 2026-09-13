@@ -15,5 +15,11 @@ public static class RecipeCatalog
         new AnkiRecipe(),
         new WslRecipe(),
         new GpgRecipe(),
+        new KeePassRecipe(),
+        new OutlookRecipe(),
+        new ThunderbirdRecipe(),
+        new VsCodeRecipe(),
+        new TerminalRecipe(),
+        new ObsidianRecipe(),
     ];
 }

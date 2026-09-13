@@ -63,6 +63,7 @@ public partial class App : Application
                 orchestrator,
                 processRunner,
                 safeFs,
+                sourceGuard,
                 RecipeCatalog.All);
             viewModel.LoadSourcesAsync().GetAwaiter().GetResult();
 

@@ -27,34 +27,48 @@ public sealed class SourceGuard
 
     public bool IsSourcePath(string path)
     {
-        string canonicalPath = PathCanonicalizer.Canonicalize(path);
-        return FindContainingRoot(canonicalPath) is not null;
+        string lexicalPath = PathCanonicalizer.NormalizeLexically(path);
+        if (FindContainingRoot(lexicalPath) is not null)
+        {
+            return true;
+        }
+
+        try
+        {
+            return FindContainingRoot(PathCanonicalizer.Canonicalize(path)) is not null;
+        }
+        catch (Exception exception) when (exception is IOException or ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
     }
 
     public void DemandWriteAllowed(string path, PurgeToken? purgeToken = null)
     {
-        string canonicalPath = PathCanonicalizer.Canonicalize(path);
-        ValidateWrite(canonicalPath, purgeToken);
+        _ = GetValidatedWritePath(path, purgeToken);
     }
 
     internal string GetValidatedWritePath(string path, PurgeToken? purgeToken)
     {
+        string lexicalPath = PathCanonicalizer.NormalizeLexically(path);
         if (!HasSourceRoots)
         {
-            return PathCanonicalizer.NormalizeLexically(path);
+            return lexicalPath;
         }
 
-        string canonicalPath = PathCanonicalizer.Canonicalize(path);
-        ValidateWrite(canonicalPath, purgeToken);
-        return canonicalPath;
-    }
+        string identityPath = lexicalPath;
+        try
+        {
+            identityPath = PathCanonicalizer.Canonicalize(path);
+        }
+        catch (Exception exception) when (exception is IOException or ArgumentException or NotSupportedException)
+        {
+        }
 
-    private void ValidateWrite(string canonicalPath, PurgeToken? purgeToken)
-    {
-        string? containingRoot = FindContainingRoot(canonicalPath);
+        string? containingRoot = FindContainingRoot(lexicalPath) ?? FindContainingRoot(identityPath);
         if (containingRoot is null)
         {
-            return;
+            return lexicalPath;
         }
 
         if (purgeToken is not null &&
@@ -63,10 +77,10 @@ public sealed class SourceGuard
                 containingRoot,
                 StringComparison.OrdinalIgnoreCase))
         {
-            return;
+            return lexicalPath;
         }
 
-        throw new SourceWriteDeniedException(canonicalPath);
+        throw new SourceWriteDeniedException(lexicalPath);
     }
 
     private string? FindContainingRoot(string canonicalPath)

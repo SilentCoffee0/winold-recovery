@@ -333,6 +333,130 @@ public sealed class RecipeTests
         Assert.Contains(context.Runner.Requests, request => request.FileName == "gpg.exe");
     }
 
+    [Fact]
+    public async Task HighValueDetectors_CopyKeePassVsCodeThunderbirdTerminalObsidianAndOutlookPst()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        Directory.CreateDirectory(Path.Combine(alice, "Documents", "Passwords"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "Documents", "Passwords", "fixture.kdbx"), Canary);
+        await File.WriteAllTextAsync(Path.Combine(alice, "Documents", "Passwords", "fixture.keyx"), "key");
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Roaming", "Code", "User", "snippets"));
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, "AppData", "Roaming", "Code", "User", "settings.json"),
+            """{"editor.fontSize":14}""");
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, "AppData", "Roaming", "Code", "User", "snippets", "csharp.json"),
+            "{}");
+        Directory.CreateDirectory(Path.Combine(alice, ".vscode", "extensions"));
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, ".vscode", "extensions", "extensions.json"),
+            """[{"identifier":{"id":"ms-python.python"}}]""");
+        string thunder = Path.Combine(alice, "AppData", "Roaming", "Thunderbird", "Profiles", "mail.default");
+        Directory.CreateDirectory(Path.Combine(thunder, "Mail", "Local Folders"));
+        await File.WriteAllTextAsync(Path.Combine(thunder, "prefs.js"), "user_pref(\"test\",1);");
+        await File.WriteAllTextAsync(Path.Combine(thunder, "key4.db"), Canary);
+        await File.WriteAllTextAsync(Path.Combine(thunder, "Mail", "Local Folders", "Inbox"), "mail");
+        await File.WriteAllTextAsync(Path.Combine(thunder, "panacea.dat"), "regen");
+        Directory.CreateDirectory(
+            Path.Combine(
+                alice,
+                "AppData",
+                "Local",
+                "Packages",
+                "Microsoft.WindowsTerminal_8wekyb3d8bbwe",
+                "LocalState"));
+        await File.WriteAllTextAsync(
+            Path.Combine(
+                alice,
+                "AppData",
+                "Local",
+                "Packages",
+                "Microsoft.WindowsTerminal_8wekyb3d8bbwe",
+                "LocalState",
+                "settings.json"),
+            """{"profiles":{}}""");
+        Directory.CreateDirectory(Path.Combine(alice, "Documents", "Notes", ".obsidian"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "Documents", "Notes", "welcome.md"), "hello");
+        Directory.CreateDirectory(Path.Combine(alice, "Documents", "Outlook Files"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "Documents", "Outlook Files", "archive.pst"), "pst");
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "Microsoft", "Outlook"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Local", "Microsoft", "Outlook", "user.ost"), "ost");
+        Directory.CreateDirectory(Path.Combine(context.Destination, "AppData", "Local", "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState"));
+        await File.WriteAllTextAsync(
+            Path.Combine(context.Destination, "AppData", "Local", "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState", "settings.json"),
+            """{"existing":true}""");
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, RecipeCatalog.All);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+
+        string dump = string.Join('\n', cards.Select(card => card.Title + string.Join(';', card.Facts.Values)));
+        Assert.DoesNotContain(Canary, dump, StringComparison.Ordinal);
+
+        RecipeCard keepass = Assert.Single(cards, card => card.RecipeId == "keepass");
+        PlanResult keepassPlan = host.PlanCard(new KeePassRecipe(), keepass, Dest(context));
+        await host.ExecuteAsync("session-1", new KeePassRecipe(), keepassPlan);
+        Assert.True(new KeePassRecipe().Verify(keepassPlan).Ok);
+        Assert.True(File.Exists(Path.Combine(context.Destination, "Documents", "Passwords", "fixture.kdbx")));
+        Assert.True(File.Exists(Path.Combine(context.Destination, "Documents", "Passwords", "fixture.keyx")));
+
+        RecipeCard vscode = Assert.Single(cards, card => card.RecipeId == "vscode");
+        PlanResult vscodePlan = host.PlanCard(new VsCodeRecipe(), vscode, Dest(context));
+        await host.ExecuteAsync("session-1", new VsCodeRecipe(), vscodePlan);
+        Assert.True(new VsCodeRecipe().Verify(vscodePlan).Ok);
+        Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "Code", "User", "settings.json")));
+        string cmd = await File.ReadAllTextAsync(Path.Combine(context.Exports, "install-extensions.cmd"));
+        Assert.Contains("code --install-extension ms-python.python", cmd, StringComparison.Ordinal);
+        Assert.DoesNotContain(Canary, cmd, StringComparison.Ordinal);
+
+        RecipeCard thunderbird = Assert.Single(cards, card => card.RecipeId == "thunderbird");
+        PlanResult thunderPlan = host.PlanCard(new ThunderbirdRecipe(), thunderbird, Dest(context));
+        await host.ExecuteAsync("session-1", new ThunderbirdRecipe(), thunderPlan);
+        Assert.True(new ThunderbirdRecipe().Verify(thunderPlan).Ok);
+        Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "Thunderbird", "Profiles", "mail.default-recovered", "key4.db")));
+        Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "Thunderbird", "Profiles", "mail.default-recovered", "Mail", "Local Folders", "Inbox")));
+        Assert.False(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "Thunderbird", "Profiles", "mail.default-recovered", "panacea.dat")));
+
+        RecipeCard terminal = Assert.Single(cards, card => card.RecipeId == "windows-terminal");
+        PlanResult terminalPlan = host.PlanCard(new TerminalRecipe(), terminal, Dest(context));
+        await host.ExecuteAsync("session-1", new TerminalRecipe(), terminalPlan);
+        Assert.True(new TerminalRecipe().Verify(terminalPlan).Ok);
+        Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Local", "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState", "settings.from-windows-old.json")));
+        Assert.Contains("existing", await File.ReadAllTextAsync(Path.Combine(context.Destination, "AppData", "Local", "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState", "settings.json")), StringComparison.Ordinal);
+
+        RecipeCard obsidian = Assert.Single(cards, card => card.RecipeId == "obsidian");
+        PlanResult obsidianPlan = host.PlanCard(new ObsidianRecipe(), obsidian, Dest(context));
+        await host.ExecuteAsync("session-1", new ObsidianRecipe(), obsidianPlan);
+        Assert.True(new ObsidianRecipe().Verify(obsidianPlan).Ok);
+        Assert.True(File.Exists(Path.Combine(context.Destination, "Documents", "Notes", "welcome.md")));
+
+        RecipeCard pst = Assert.Single(cards, card => card.Title.Contains("PST", StringComparison.Ordinal));
+        PlanResult pstPlan = host.PlanCard(new OutlookRecipe(), pst, Dest(context));
+        await host.ExecuteAsync("session-1", new OutlookRecipe(), pstPlan);
+        Assert.True(new OutlookRecipe().Verify(pstPlan).Ok);
+        Assert.True(File.Exists(Path.Combine(context.Destination, "Documents", "Outlook Files", "archive.pst")));
+
+        RecipeCard ost = Assert.Single(cards, card => card.Title.Contains("OST", StringComparison.Ordinal));
+        PlanResult ostPlan = host.PlanCard(new OutlookRecipe(), ost, Dest(context));
+        Assert.Empty(ostPlan.Writes);
+    }
+
     private static string CreateCertificatePem()
     {
         using System.Security.Cryptography.RSA rsa = System.Security.Cryptography.RSA.Create(2048);

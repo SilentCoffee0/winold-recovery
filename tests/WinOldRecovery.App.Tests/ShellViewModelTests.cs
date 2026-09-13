@@ -149,20 +149,22 @@ public sealed class ShellViewModelTests
                 Path.GetTempPath(),
                 $"WinOldRecovery-Shell-{Guid.NewGuid():N}");
             Directory.CreateDirectory(root);
-            SafeFs safeFs = new(new SourceGuard());
-            SessionWorkspace workspace = SessionWorkspace.Create(safeFs, root);
-            SessionDb database = await SessionDb.OpenAsync(workspace.DatabasePath, safeFs);
+            RecordingProcessRunner runner = new();
+            SourceGuard sourceGuard = new();
+            SafeFs sharedFs = new(sourceGuard);
+            SessionWorkspace workspace = SessionWorkspace.Create(sharedFs, root);
+            SessionDb database = await SessionDb.OpenAsync(workspace.DatabasePath, sharedFs);
             await database.CreateSessionAsync(
                 new SessionRecord(workspace.SessionId, DateTimeOffset.UtcNow, "Created", "0.1.0"));
-            RecordingProcessRunner runner = new();
             SourceDiscovery discovery = new(new StubVolumes([]), runner);
             ShellViewModel viewModel = new(
                 database,
                 workspace,
                 discovery,
-                new ScanOrchestrator(database, safeFs, new SourceGuard()),
+                new ScanOrchestrator(database, sharedFs, sourceGuard),
                 runner,
-                safeFs);
+                sharedFs,
+                sourceGuard);
             return new ShellTestContext(root, database, runner, viewModel);
         }
 

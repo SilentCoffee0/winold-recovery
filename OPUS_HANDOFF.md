@@ -68,11 +68,11 @@ Follow IMPLEMENTATION_PLAN.md: **M0 foundation and spikes → M1 scan + tree →
 
 ## Current implementation handoff — 13 Sep 2026
 
-- **Current item:** remaining M5 high-value detectors (KeePass/Thunderbird/VS Code cards), then M3 chaos/disk-full/overwrite UI, then M6 gated purge. Remaining M4: Chromium autofill CSV and optional new-profile bookmark transplant (feature-flagged). Do not tag `v0.1.0-m0` while elevated/manual M0 checks remain pending.
-- **Complete:** Automated M0 coding through CI/release (M0 tag withheld). M1–M2. M3 PlanBuilder/copy/verify. M4 recipes. M5 Syncthing, Anki (WAL+media, no trash/media.db2), WSL VHDX copy with `vhdxfile` verify and recorded `wsl --import-in-place` flags, GPG keyring without `random_seed`.
+- **Current item:** M3 chaos/disk-full/overwrite UI, remaining M4 Chromium autofill CSV and optional new-profile bookmark transplant (feature-flagged), then M7 hardening/docs/release. Do not tag `v0.1.0-m0` while elevated/manual M0 checks remain pending.
+- **Complete:** Automated M0 coding through CI/release (M0 tag withheld). M1–M2. M3 PlanBuilder/copy/verify. M4 recipes. M5 Syncthing, Anki, WSL, GPG, and R9 detector cards (KeePass, Outlook, Thunderbird, VS Code, Terminal, Obsidian). M6 gated purge (token minting, cleanmgr-preferred manual fallback, support bundle). Registry StateFlags for Disk Cleanup and real-VM `cleanmgr` remain pending.
 - **Remaining M0 (explicitly pending, not claimed passed):** elevated deny-ACL/orphan-SID enumeration and backup-mode reads; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch; real-VM `cleanmgr` handler; Explorer long-path selection. See `docs/spikes/PENDING_MANUAL.md`.
-- **Verified tests:** strict Release build has 0 warnings/errors (77 tests). Do not tag `v0.1.0-m0` while those external checks remain pending.
-- **Next exact implementation step:** remaining R9 detector cards (KeePass copy, VS Code settings + install-extensions.cmd), then M6 purge after verify. Do not purge before gates exist.
+- **Verified tests:** strict Release build has 0 warnings/errors (82 tests). Do not tag `v0.1.0-m0` while those external checks remain pending.
+- **Next exact implementation step:** M3 overwrite-approval list UI and chaos/disk-full tests, then M4 autofill CSV, then M7. Do not tag `v0.1.0-m0`.
 
 ## What not to redesign
 

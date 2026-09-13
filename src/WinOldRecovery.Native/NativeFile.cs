@@ -44,7 +44,37 @@ public static class NativeFile
         }
     }
 
+    public static void RemoveDirectory(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        if (!RemoveDirectoryW(path))
+        {
+            throw new Win32Exception(
+                Marshal.GetLastWin32Error(),
+                $"Could not remove directory '{path}'.");
+        }
+    }
+
+    public static void Delete(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        if (!DeleteFileW(path))
+        {
+            throw new Win32Exception(
+                Marshal.GetLastWin32Error(),
+                $"Could not delete '{path}'.");
+        }
+    }
+
     [DllImport("kernel32.dll", EntryPoint = "MoveFileExW", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool MoveFileEx(string existingFileName, string newFileName, uint flags);
+
+    [DllImport("kernel32.dll", EntryPoint = "RemoveDirectoryW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RemoveDirectoryW(string pathName);
+
+    [DllImport("kernel32.dll", EntryPoint = "DeleteFileW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeleteFileW(string fileName);
 }

@@ -10,6 +10,7 @@ using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Persistence;
 using WinOldRecovery.Core.Planning;
 using WinOldRecovery.Core.Processes;
+using WinOldRecovery.Core.Purge;
 using WinOldRecovery.Core.Recipes;
 using WinOldRecovery.Core.Restore;
 using WinOldRecovery.Core.Safety;
@@ -38,6 +39,7 @@ public sealed class ShellViewModel : ObservableObject
     private readonly ScanOrchestrator scanOrchestrator;
     private readonly IProcessRunner processRunner;
     private readonly SafeFs safeFs;
+    private readonly SourceGuard sourceGuard;
     private readonly RecipeHost? recipeHost;
     private readonly DecisionEngine decisionEngine;
     private readonly NodeBrowser nodeBrowser;
@@ -61,6 +63,11 @@ public sealed class ShellViewModel : ObservableObject
     private PreflightResult? lastPreflight;
     private bool restoreCompleted;
     private bool verifyCompleted;
+    private bool filesChecked;
+    private bool undecidedAcknowledged;
+    private bool customRootConfirmed;
+    private bool preferCleanupHandler = true;
+    private string purgeTypedFolderName = string.Empty;
     private string spaceBudgetText = "Selected: — of destination free space";
     private string destinationRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -76,6 +83,7 @@ public sealed class ShellViewModel : ObservableObject
         ScanOrchestrator scanOrchestrator,
         IProcessRunner processRunner,
         SafeFs safeFs,
+        SourceGuard sourceGuard,
         IReadOnlyList<IRecipe>? recipes = null)
     {
         this.sessionDb = sessionDb;
@@ -84,6 +92,7 @@ public sealed class ShellViewModel : ObservableObject
         this.scanOrchestrator = scanOrchestrator;
         this.processRunner = processRunner;
         this.safeFs = safeFs;
+        this.sourceGuard = sourceGuard;
         recipeHost = recipes is { Count: > 0 }
             ? new RecipeHost(sessionDb, safeFs, processRunner, recipes)
             : null;
@@ -110,6 +119,8 @@ public sealed class ShellViewModel : ObservableObject
         ExecuteRestoreCommand = new AsyncRelayCommand(ExecuteRestoreAsync, () => lastPlan is not null && lastPreflight is { CanProceed: true } && !IsScanning);
         ExecuteVerifyCommand = new AsyncRelayCommand(ExecuteVerifyAsync, () => restoreCompleted);
         PreparePreviewCommand = new AsyncRelayCommand(PreparePreviewAsync, () => scanCompleted && SourceRoot is not null);
+        ExecutePurgeCommand = new AsyncRelayCommand(ExecutePurgeAsync, () => verifyCompleted && !IsScanning);
+        CreateSupportBundleCommand = new RelayCommand(CreateSupportBundle, () => verifyCompleted);
     }
 
     public IAsyncRelayCommand ScanCommand { get; }
@@ -127,6 +138,8 @@ public sealed class ShellViewModel : ObservableObject
     public IAsyncRelayCommand ExecuteRestoreCommand { get; }
     public IAsyncRelayCommand ExecuteVerifyCommand { get; }
     public IAsyncRelayCommand PreparePreviewCommand { get; }
+    public IAsyncRelayCommand ExecutePurgeCommand { get; }
+    public IRelayCommand CreateSupportBundleCommand { get; }
 
     public ObservableCollection<SourceCandidate> Sources { get; } = [];
 
@@ -166,6 +179,36 @@ public sealed class ShellViewModel : ObservableObject
     public bool RestoreCompleted => restoreCompleted;
 
     public bool VerifyCompleted => verifyCompleted;
+
+    public bool FilesChecked
+    {
+        get => filesChecked;
+        set => SetProperty(ref filesChecked, value);
+    }
+
+    public bool UndecidedAcknowledged
+    {
+        get => undecidedAcknowledged;
+        set => SetProperty(ref undecidedAcknowledged, value);
+    }
+
+    public bool CustomRootConfirmed
+    {
+        get => customRootConfirmed;
+        set => SetProperty(ref customRootConfirmed, value);
+    }
+
+    public bool PreferCleanupHandler
+    {
+        get => preferCleanupHandler;
+        set => SetProperty(ref preferCleanupHandler, value);
+    }
+
+    public string PurgeTypedFolderName
+    {
+        get => purgeTypedFolderName;
+        set => SetProperty(ref purgeTypedFolderName, value);
+    }
 
     public string SourceIntegrityText { get; } = "Windows.old untouched";
 
@@ -389,6 +432,7 @@ public sealed class ShellViewModel : ObservableObject
             WorkflowStep.Preview => scanCompleted,
             WorkflowStep.Restore => lastPlan is not null && lastPreflight is { CanProceed: true },
             WorkflowStep.Verify => restoreCompleted,
+            WorkflowStep.Purge => verifyCompleted,
             _ => false,
         };
     }
@@ -825,6 +869,62 @@ public sealed class ShellViewModel : ObservableObject
         ScanStatus = report.AllOk
             ? "Verify report: every checked item passed existence, size/time, and hash samples."
             : "Verify report: at least one item failed. Purge stays locked.";
+        ExecutePurgeCommand.NotifyCanExecuteChanged();
+        CreateSupportBundleCommand.NotifyCanExecuteChanged();
         CurrentStep = WorkflowStep.Verify;
+    }
+
+    private async Task ExecutePurgeAsync()
+    {
+        if (SourceRoot is null)
+        {
+            return;
+        }
+
+        string folderName = Path.GetFileName(SourceRoot.TrimEnd('\\'));
+        string canonical = sourceGuard.SourceRoots.FirstOrDefault(
+            root => root.Equals(
+                PathCanonicalizer.Canonicalize(SourceRoot),
+                StringComparison.OrdinalIgnoreCase)) ?? PathCanonicalizer.Canonicalize(SourceRoot);
+        PurgeGateResult gate = PurgeAuthorization.Evaluate(
+            new PurgeGateRequest(
+                verifyCompleted,
+                filesChecked,
+                undecidedAcknowledged,
+                RestoreJobActive: IsScanning,
+                PurgeTypedFolderName,
+                folderName,
+                canonical,
+                Environment.ProcessPath,
+                workspace.RootPath,
+                [destinationRoot],
+                customRootConfirmed));
+        if (!gate.Authorized || gate.Token is null)
+        {
+            ScanStatus = "Purge blocked: " + string.Join(", ", gate.BlockedGates);
+            return;
+        }
+
+        PurgeExecuteResult result = await new PurgeExecutor()
+            .ExecuteAsync(
+                new PurgeExecuteRequest(
+                    canonical,
+                    gate.Token,
+                    safeFs,
+                    sourceGuard,
+                    processRunner,
+                    workspace.RootPath,
+                    preferCleanupHandler))
+            .ConfigureAwait(true);
+        ScanStatus = result.Completed
+            ? "Purge finished (" + result.Method + "). Session records remain in this app's data folder."
+            : "Purge did not finish: " + result.Detail;
+        CurrentStep = WorkflowStep.Purge;
+    }
+
+    private void CreateSupportBundle()
+    {
+        string zip = SupportBundle.Create(safeFs, workspace);
+        ScanStatus = "Support bundle written to " + zip;
     }
 }

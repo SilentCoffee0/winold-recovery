@@ -387,6 +387,7 @@ public sealed class FixtureGenerator
         WriteText(Path.Combine(anki, "collection.media", "image.png"), "fixture media");
 
         WriteText(Path.Combine(alice, "Documents", "Passwords", "fixture.kdbx"), Canary);
+        WriteText(Path.Combine(alice, "Documents", "Passwords", "fixture.keyx"), "keyfile");
         WriteText(
             Path.Combine(
                 alice,
@@ -396,6 +397,32 @@ public sealed class FixtureGenerator
                 "private-keys-v1.d",
                 "fixture.key"),
             Canary);
+        WriteText(
+            Path.Combine(alice, "AppData", "Roaming", "Code", "User", "settings.json"),
+            """{"editor.fontSize":14}""");
+        WriteText(
+            Path.Combine(alice, ".vscode", "extensions", "extensions.json"),
+            """[{"identifier":{"id":"ms-python.python"}}]""");
+        WriteText(
+            Path.Combine(alice, "AppData", "Roaming", "Thunderbird", "Profiles", "fixture.default", "prefs.js"),
+            "user_pref(\"mail.identity.id1.useremail\",\"alice@example.com\");");
+        WriteText(
+            Path.Combine(alice, "AppData", "Roaming", "Thunderbird", "Profiles", "fixture.default", "key4.db"),
+            Canary);
+        WriteText(
+            Path.Combine(
+                alice,
+                "AppData",
+                "Local",
+                "Packages",
+                "Microsoft.WindowsTerminal_8wekyb3d8bbwe",
+                "LocalState",
+                "settings.json"),
+            """{"profiles":{}}""");
+        WriteText(Path.Combine(alice, "Documents", "Notes", ".obsidian", "app.json"), "{}");
+        WriteText(Path.Combine(alice, "Documents", "Notes", "welcome.md"), "hello");
+        WriteText(Path.Combine(alice, "Documents", "Outlook Files", "archive.pst"), "pst");
+        WriteText(Path.Combine(alice, "AppData", "Local", "Microsoft", "Outlook", "user.ost"), "ost");
 
         hazards["recipe-shells"] = Created(
             targetRoot,

@@ -54,7 +54,7 @@ public sealed class SafeFs
     public void DeleteFile(string path, PurgeToken? purgeToken = null)
     {
         string validatedPath = sourceGuard.GetValidatedWritePath(path, purgeToken);
-        File.Delete(validatedPath);
+        NativeFile.Delete(validatedPath);
     }
 
     public void DeleteDirectory(
@@ -63,6 +63,13 @@ public sealed class SafeFs
         PurgeToken? purgeToken = null)
     {
         string validatedPath = sourceGuard.GetValidatedWritePath(path, purgeToken);
+        FileAttributes attributes = File.GetAttributes(validatedPath);
+        if ((attributes & FileAttributes.ReparsePoint) != 0)
+        {
+            NativeFile.RemoveDirectory(validatedPath);
+            return;
+        }
+
         Directory.Delete(validatedPath, recursive);
     }
 

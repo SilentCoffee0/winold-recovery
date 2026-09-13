@@ -63,6 +63,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <ListBox Grid.Row="0" MaxHeight="140"
@@ -158,6 +159,28 @@
                         <Button Content="Run restore" Command="{Binding ExecuteRestoreCommand}" Margin="0,0,8,0" />
                         <Button Content="Verify" Command="{Binding ExecuteVerifyCommand}" Margin="0,0,8,0" />
                         <Button Content="Expand" Command="{Binding ExpandCommand}" CommandParameter="{Binding SelectedNode}" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="3" Margin="0,8,0,0">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CurrentStep}" Value="Purge">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock TextWrapping="Wrap" Text="Purge deletes Windows.old after a successful verify. Type the folder name. Leave Behind never deletes; only this step does." />
+                        <CheckBox Margin="0,8,0,0" Content="I have checked my restored files" IsChecked="{Binding FilesChecked}" />
+                        <CheckBox Content="I acknowledge remaining Undecided items" IsChecked="{Binding UndecidedAcknowledged}" />
+                        <CheckBox Content="This is a custom source root (not named Windows.old)" IsChecked="{Binding CustomRootConfirmed}" />
+                        <CheckBox Content="Prefer Windows Disk Cleanup (Previous Installations)" IsChecked="{Binding PreferCleanupHandler}" />
+                        <TextBox Margin="0,8,0,0" Text="{Binding PurgeTypedFolderName, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Content="Purge source" Command="{Binding ExecutePurgeCommand}" Margin="0,0,8,0" />
+                            <Button Content="Create support bundle" Command="{Binding CreateSupportBundleCommand}" />
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </Grid>
