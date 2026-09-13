@@ -20,6 +20,12 @@ public sealed class ChromiumRecipe : IRecipe
 
     public string Id { get; }
 
+    public static bool NewProfileTransplantEnabled { get; set; } =
+        string.Equals(
+            Environment.GetEnvironmentVariable("WINOLD_RECOVERY_CHROMIUM_TRANSPLANT"),
+            "1",
+            StringComparison.Ordinal);
+
     public DetectResult Detect(ProfileContext context)
     {
         string userData = Path.Combine(context.OldProfileRoot, relativeUserData);
@@ -50,6 +56,71 @@ public sealed class ChromiumRecipe : IRecipe
             int extensionCount = CountTag(extensionsHtml, "<li>");
             (int historyCount, string historyHtml, string historyCsv) = ReadHistory(context, entry, name);
             (int tabCount, string tabsHtml) = ReadTabs(context, Path.Combine(entry, "Sessions"));
+            (int autofillCount, string autofillCsv) = ReadAutofill(context, entry, name);
+            List<RecipeComponent> components =
+            [
+                new RecipeComponent(
+                    "bookmarks-export",
+                    "Bookmarks HTML export",
+                    count + " bookmarks",
+                    Decision.Restore,
+                    false,
+                    null,
+                    false),
+                new RecipeComponent(
+                    "history-export",
+                    "History export",
+                    historyCount + " URLs",
+                    historyCount > 0 ? Decision.Restore : Decision.LeaveBehind,
+                    false,
+                    null,
+                    true),
+                new RecipeComponent(
+                    "tabs-export",
+                    "Open tabs list",
+                    tabCount + " tabs",
+                    tabCount > 0 ? Decision.Restore : Decision.LeaveBehind,
+                    false,
+                    null,
+                    false),
+                new RecipeComponent(
+                    "extensions-export",
+                    "Extensions list",
+                    extensionCount + " extensions",
+                    Decision.Restore,
+                    false,
+                    null,
+                    false),
+                new RecipeComponent(
+                    "autofill-export",
+                    "Autofill CSV export",
+                    autofillCount + " fields",
+                    Decision.Undecided,
+                    false,
+                    null,
+                    true),
+                new RecipeComponent(
+                    "passwords",
+                    "Passwords, cookies and cards",
+                    "Cannot be recovered",
+                    Decision.Undecided,
+                    true,
+                    "Chrome and Edge encrypt them with keys that only existed on the old Windows installation.",
+                    true),
+            ];
+            if (NewProfileTransplantEnabled)
+            {
+                components.Add(
+                    new RecipeComponent(
+                        "bookmarks-transplant",
+                        "Bookmarks file into a new profile folder",
+                        "Feature-flagged copy of Bookmarks.json into Recovered-from-Windows.old",
+                        Decision.Undecided,
+                        false,
+                        null,
+                        false));
+            }
+
             cards.Add(
                 new RecipeCard(
                     Id,
@@ -60,48 +131,7 @@ public sealed class ChromiumRecipe : IRecipe
                     "Sign in to your Google or Microsoft account if sync was on.",
                     "Bookmarks do not regenerate. Caches do.",
                     "You keep a clean browser but lose local bookmarks that were not synced.",
-                    [
-                        new RecipeComponent(
-                            "bookmarks-export",
-                            "Bookmarks HTML export",
-                            count + " bookmarks",
-                            Decision.Restore,
-                            false,
-                            null,
-                            false),
-                        new RecipeComponent(
-                            "history-export",
-                            "History export",
-                            historyCount + " URLs",
-                            historyCount > 0 ? Decision.Restore : Decision.LeaveBehind,
-                            false,
-                            null,
-                            true),
-                        new RecipeComponent(
-                            "tabs-export",
-                            "Open tabs list",
-                            tabCount + " tabs",
-                            tabCount > 0 ? Decision.Restore : Decision.LeaveBehind,
-                            false,
-                            null,
-                            false),
-                        new RecipeComponent(
-                            "extensions-export",
-                            "Extensions list",
-                            extensionCount + " extensions",
-                            Decision.Restore,
-                            false,
-                            null,
-                            false),
-                        new RecipeComponent(
-                            "passwords",
-                            "Passwords, cookies and cards",
-                            "Cannot be recovered",
-                            Decision.Undecided,
-                            true,
-                            "Chrome and Edge encrypt them with keys that only existed on the old Windows installation.",
-                            true),
-                    ],
+                    components,
                     context.ProfileName + ":" + name,
                     new Dictionary<string, string>
                     {
@@ -113,6 +143,7 @@ public sealed class ChromiumRecipe : IRecipe
                         ["historyHtml"] = historyHtml,
                         ["historyCsv"] = historyCsv,
                         ["tabsHtml"] = tabsHtml,
+                        ["autofillCsv"] = autofillCsv,
                     }));
         }
 
@@ -179,6 +210,36 @@ public sealed class ChromiumRecipe : IRecipe
                     "extensions-export"));
         }
 
+        if (RecipeDecisions.ShouldRestore(decisions, "autofill-export"))
+        {
+            string csv = decisions.Card.Facts.GetValueOrDefault("autofillCsv") ?? "kind,name,value\n";
+            writes.Add(
+                new RecipeWrite(
+                    RecipeWriteKind.WriteContent,
+                    null,
+                    Path.Combine(exportRoot, "autofill.csv"),
+                    csv,
+                    csv.Length,
+                    "autofill-export"));
+        }
+
+        if (NewProfileTransplantEnabled &&
+            RecipeDecisions.ShouldRestore(decisions, "bookmarks-transplant"))
+        {
+            string source = Path.Combine(decisions.Card.Facts["profileDir"], "Bookmarks");
+            string dest = Path.Combine(
+                destination.DestinationProfileRoot,
+                relativeUserData,
+                "Recovered-from-Windows.old",
+                "Bookmarks");
+            if (destination.SafeFs.FileExists(dest))
+            {
+                dest = RecipeDecisions.ConflictName(dest);
+            }
+
+            writes.Add(new RecipeWrite(RecipeWriteKind.CopyFile, source, dest, null, 1, "bookmarks-transplant"));
+        }
+
         return new PlanResult(decisions.Card, writes);
     }
 
@@ -233,6 +294,29 @@ public sealed class ChromiumRecipe : IRecipe
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
         {
             return (0, string.Empty, "url,title,visit_count\n");
+        }
+    }
+
+    private (int Count, string Csv) ReadAutofill(ProfileContext context, string profileDir, string profileName)
+    {
+        string webData = Path.Combine(profileDir, "Web Data");
+        if (!context.SafeFs.FileExists(webData))
+        {
+            return (0, "kind,name,value\n");
+        }
+
+        try
+        {
+            string copy = ReadOnlySqlite.CopyToTemp(
+                context.SafeFs,
+                webData,
+                Path.Combine(context.SessionTemporaryDirectory, Id, profileName),
+                "Web Data");
+            return SqliteExports.ChromiumAutofill(copy);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            return (0, "kind,name,value\n");
         }
     }
 

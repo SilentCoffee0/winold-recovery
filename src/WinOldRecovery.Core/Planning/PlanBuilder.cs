@@ -169,8 +169,10 @@ public sealed class PlanBuilder
                     sourcePath,
                     destinationPath,
                     bytes,
-                    request.ConflictPolicy,
-                    OverwriteApproved: request.ConflictPolicy == ConflictPolicy.OverwriteApproved,
+                    request.ConflictPolicy == ConflictPolicy.OverwriteApproved
+                        ? ConflictPolicy.KeepBoth
+                        : request.ConflictPolicy,
+                    OverwriteApproved: false,
                     RecipeId: null));
         }
     }

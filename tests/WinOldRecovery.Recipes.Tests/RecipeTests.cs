@@ -334,6 +334,106 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Chromium_AutofillCsvOmitsPaymentCardsAndTransplantStaysFlagged()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string chrome = Path.Combine(alice, "AppData", "Local", "Google", "Chrome", "User Data", "Default");
+        Directory.CreateDirectory(chrome);
+        await File.WriteAllTextAsync(
+            Path.Combine(chrome, "Bookmarks"),
+            """{"roots":{"bookmark_bar":{"children":[{"type":"url","url":"https://example.com"}]}}}""");
+        WriteSqlite(
+            Path.Combine(chrome, "Web Data"),
+            """
+            CREATE TABLE autofill(name TEXT, value TEXT);
+            CREATE TABLE credit_cards(name_on_card TEXT, card_number_encrypted TEXT);
+            INSERT INTO autofill(name, value) VALUES ('name', 'Alice Fixture');
+            INSERT INTO credit_cards(name_on_card, card_number_encrypted) VALUES ('CANARY', 'WINOLD_RECOVERY_CANARY_DO_NOT_LOG_7F3A91');
+            """);
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, RecipeCatalog.All);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+
+        RecipeCard chromeCard = cards.Single(card => card.RecipeId == "chrome");
+        string dump = string.Join(';', chromeCard.Facts.Values);
+        Assert.DoesNotContain(Canary, dump, StringComparison.Ordinal);
+        Assert.Contains("Alice Fixture", chromeCard.Facts["autofillCsv"], StringComparison.Ordinal);
+        Assert.DoesNotContain(chromeCard.Components, component => component.Key == "bookmarks-transplant");
+
+        ChromiumRecipe recipe = (ChromiumRecipe)RecipeCatalog.All.Single(item => item.Id == "chrome");
+        Dictionary<string, Decision> decisions = chromeCard.Components.ToDictionary(
+            static component => component.Key,
+            static component => component.Key == "autofill-export" ? Decision.Restore : component.SuggestedDefault);
+        PlanResult autofillPlan = recipe.Plan(new CardDecisions(chromeCard, decisions), Dest(context));
+        await host.ExecuteAsync("session-1", recipe, autofillPlan with { Destination = Dest(context) });
+        string csv = await File.ReadAllTextAsync(
+            autofillPlan.Writes.Single(write => write.DestinationPath.EndsWith("autofill.csv", StringComparison.Ordinal)).DestinationPath);
+        Assert.Contains("Alice Fixture", csv, StringComparison.Ordinal);
+        Assert.DoesNotContain(Canary, csv, StringComparison.Ordinal);
+
+        ChromiumRecipe.NewProfileTransplantEnabled = true;
+        try
+        {
+            IReadOnlyList<RecipeCard> flagged = await host.DetectAsync(
+                "session-1",
+                [
+                    new DetectedProfile(
+                        "Alice",
+                        "Alice",
+                        alice,
+                        @"Users\Alice",
+                        ProfileKind.Human,
+                        null,
+                        [],
+                        [],
+                        []),
+                ],
+                context.Destination,
+                context.Temp,
+                context.Exports);
+            RecipeCard flaggedCard = flagged.Single(card => card.RecipeId == "chrome");
+            Assert.Contains(flaggedCard.Components, component => component.Key == "bookmarks-transplant");
+            Dictionary<string, Decision> transplant = flaggedCard.Components.ToDictionary(
+                static component => component.Key,
+                static component => component.Key == "bookmarks-transplant" ? Decision.Restore : Decision.Undecided);
+            PlanResult transplantPlan = recipe.Plan(new CardDecisions(flaggedCard, transplant), Dest(context));
+            await host.ExecuteAsync("session-1", recipe, transplantPlan with { Destination = Dest(context) });
+            Assert.True(
+                File.Exists(
+                    Path.Combine(
+                        context.Destination,
+                        "AppData",
+                        "Local",
+                        "Google",
+                        "Chrome",
+                        "User Data",
+                        "Recovered-from-Windows.old",
+                        "Bookmarks")));
+        }
+        finally
+        {
+            ChromiumRecipe.NewProfileTransplantEnabled = false;
+        }
+    }
+
+    [Fact]
     public async Task HighValueDetectors_CopyKeePassVsCodeThunderbirdTerminalObsidianAndOutlookPst()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();

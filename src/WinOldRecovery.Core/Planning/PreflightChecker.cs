@@ -1,4 +1,3 @@
-using WinOldRecovery.Core.Planning;
 using WinOldRecovery.Native;
 
 namespace WinOldRecovery.Core.Planning;
@@ -47,7 +46,10 @@ public sealed class PreflightChecker
         this.freeSpace = freeSpace ?? new Win32FreeSpaceProvider();
     }
 
-    public PreflightResult Check(RestorePlan plan)
+    public PreflightResult Check(
+        RestorePlan plan,
+        ConflictPolicy conflictPolicy = ConflictPolicy.KeepBoth,
+        IReadOnlySet<string>? overwriteDestinations = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
 
@@ -56,6 +58,7 @@ public sealed class PreflightChecker
         List<string> blocking = [];
         List<string> warnings = [];
         List<PlanConflict> conflicts = [];
+        IReadOnlySet<string> approved = overwriteDestinations ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         if (free < required)
         {
@@ -76,14 +79,16 @@ public sealed class PreflightChecker
                 warnings.Add("Long destination path: " + item.DestinationPath);
             }
 
-            if (File.Exists(item.DestinationPath))
+            AddConflicts(item, conflicts);
+        }
+
+        if (conflictPolicy == ConflictPolicy.OverwriteApproved)
+        {
+            int missing = conflicts.Count(conflict => !approved.Contains(conflict.DestinationPath));
+            if (missing > 0)
             {
-                FileInfo info = new(item.DestinationPath);
-                conflicts.Add(
-                    new PlanConflict(
-                        item.DestinationPath,
-                        info.Length,
-                        info.LastWriteTimeUtc));
+                blocking.Add(
+                    "Overwrite requires per-file confirmation. Review the conflict list and confirm each file.");
             }
         }
 
@@ -94,6 +99,87 @@ public sealed class PreflightChecker
             conflicts,
             blocking,
             warnings);
+    }
+
+    private static void AddConflicts(PlanItem item, List<PlanConflict> conflicts)
+    {
+        if (item.Operation == PlanOperation.CopyFile)
+        {
+            AddIfExists(item.DestinationPath, conflicts);
+            return;
+        }
+
+        if (!Directory.Exists(item.SourcePath))
+        {
+            return;
+        }
+
+        foreach (string sourceFile in EnumerateFiles(item.SourcePath))
+        {
+            string relative = Path.GetRelativePath(item.SourcePath, sourceFile);
+            AddIfExists(Path.Combine(item.DestinationPath, relative), conflicts);
+        }
+    }
+
+    private static IEnumerable<string> EnumerateFiles(string root)
+    {
+        if (!Directory.Exists(root))
+        {
+            yield break;
+        }
+
+        Stack<string> directories = new();
+        directories.Push(root);
+        while (directories.Count > 0)
+        {
+            string directory = directories.Pop();
+            IEnumerable<string> entries;
+            try
+            {
+                entries = Directory.EnumerateFileSystemEntries(directory);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (string entry in entries)
+            {
+                FileAttributes attributes;
+                try
+                {
+                    attributes = File.GetAttributes(entry);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    continue;
+                }
+
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    continue;
+                }
+
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    directories.Push(entry);
+                    continue;
+                }
+
+                yield return entry;
+            }
+        }
+    }
+
+    private static void AddIfExists(string destinationPath, List<PlanConflict> conflicts)
+    {
+        if (!File.Exists(destinationPath))
+        {
+            return;
+        }
+
+        FileInfo info = new(destinationPath);
+        conflicts.Add(new PlanConflict(destinationPath, info.Length, info.LastWriteTimeUtc));
     }
 
     public static bool IsInvalidDestinationName(string name)

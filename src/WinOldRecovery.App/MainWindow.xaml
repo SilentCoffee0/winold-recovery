@@ -64,6 +64,7 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <ListBox Grid.Row="0" MaxHeight="140"
@@ -156,11 +157,38 @@
                         <Button Content="Undecided (U)" Command="{Binding UndecidedCommand}" Margin="0,0,8,0" />
                         <Button Content="Open Folder (O)" Command="{Binding OpenFolderCommand}" Margin="0,0,8,0" />
                         <Button Content="Preview plan" Command="{Binding PreparePreviewCommand}" Margin="0,0,8,0" />
+                        <ComboBox Width="160" Margin="0,0,8,0"
+                                  ItemsSource="{Binding ConflictPolicies}"
+                                  SelectedItem="{Binding SelectedConflictPolicy}" />
                         <Button Content="Run restore" Command="{Binding ExecuteRestoreCommand}" Margin="0,0,8,0" />
                         <Button Content="Verify" Command="{Binding ExecuteVerifyCommand}" Margin="0,0,8,0" />
                         <Button Content="Expand" Command="{Binding ExpandCommand}" CommandParameter="{Binding SelectedNode}" />
                     </StackPanel>
-                    <StackPanel Grid.Row="3" Margin="0,8,0,0">
+                    <DockPanel Grid.Row="3">
+                        <DockPanel.Style>
+                            <Style TargetType="DockPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CurrentStep}" Value="Preview">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DockPanel.Style>
+                        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
+                                   Text="Conflicts: existing destination files. Keep both is the default. Overwrite needs a per-file tick and the confirmation button." />
+                        <Button DockPanel.Dock="Bottom" Margin="0,8,0,0"
+                                Content="{Binding OverwriteButtonLabel}"
+                                Command="{Binding ApproveOverwritesCommand}" />
+                        <ListBox MaxHeight="120" ItemsSource="{Binding Conflicts}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox Content="{Binding DisplayName}" IsChecked="{Binding Approved, Mode=TwoWay}" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                    <StackPanel Grid.Row="4" Margin="0,8,0,0">
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
                                 <Setter Property="Visibility" Value="Collapsed" />

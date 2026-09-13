@@ -53,3 +53,14 @@ Pending interactive test:
 2. Run the application's eventual Open Containing Folder action.
 3. Confirm whether `explorer.exe /select,` selects it.
 4. If not, implement and test opening the nearest shorter ancestor.
+
+## Disk-full VHDX destination
+
+Pending elevated test:
+
+1. Attach a 200 MB VHDX as the restore destination.
+2. Start a restore larger than free space.
+3. Confirm the job pauses, Windows.old is untouched, and already-copied destination files are not deleted to make room.
+4. Free space and resume.
+
+The unit suite maps `ERROR_DISK_FULL` (112) to `Paused(DiskFull)` and is not a substitute for this volume test.

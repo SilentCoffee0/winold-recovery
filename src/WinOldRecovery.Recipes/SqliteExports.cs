@@ -97,6 +97,57 @@ internal static class SqliteExports
         return csv.ToString();
     }
 
+    public static (int Count, string Csv) ChromiumAutofill(string webDataCopy)
+    {
+        using SqliteConnection connection = ReadOnlySqlite.OpenReadOnly(webDataCopy);
+        StringBuilder csv = new();
+        csv.AppendLine("kind,name,value");
+        int count = 0;
+        count += AppendAutofillTable(
+            connection,
+            csv,
+            "SELECT name, value FROM autofill LIMIT 5000",
+            "field");
+        count += AppendAutofillTable(
+            connection,
+            csv,
+            """
+            SELECT 'address', TRIM(COALESCE(street_address, '') || ' ' || COALESCE(city, '') || ' ' || COALESCE(zipcode, ''))
+            FROM autofill_profiles
+            LIMIT 500
+            """,
+            "profile");
+        return (count, csv.ToString());
+    }
+
+    private static int AppendAutofillTable(
+        SqliteConnection connection,
+        StringBuilder csv,
+        string sql,
+        string kind)
+    {
+        try
+        {
+            using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = sql;
+            using SqliteDataReader reader = command.ExecuteReader();
+            int count = 0;
+            while (reader.Read())
+            {
+                string name = reader.GetString(0);
+                string value = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+                csv.Append(Csv(kind)).Append(',').Append(Csv(name)).Append(',').Append(Csv(value)).AppendLine();
+                count++;
+            }
+
+            return count;
+        }
+        catch (SqliteException)
+        {
+            return 0;
+        }
+    }
+
     private static string Csv(string value)
     {
         return "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";

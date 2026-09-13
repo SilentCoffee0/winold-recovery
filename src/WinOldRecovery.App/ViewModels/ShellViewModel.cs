@@ -68,6 +68,7 @@ public sealed class ShellViewModel : ObservableObject
     private bool customRootConfirmed;
     private bool preferCleanupHandler = true;
     private string purgeTypedFolderName = string.Empty;
+    private ConflictPolicy selectedConflictPolicy = ConflictPolicy.KeepBoth;
     private string spaceBudgetText = "Selected: — of destination free space";
     private string destinationRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -119,6 +120,7 @@ public sealed class ShellViewModel : ObservableObject
         ExecuteRestoreCommand = new AsyncRelayCommand(ExecuteRestoreAsync, () => lastPlan is not null && lastPreflight is { CanProceed: true } && !IsScanning);
         ExecuteVerifyCommand = new AsyncRelayCommand(ExecuteVerifyAsync, () => restoreCompleted);
         PreparePreviewCommand = new AsyncRelayCommand(PreparePreviewAsync, () => scanCompleted && SourceRoot is not null);
+        ApproveOverwritesCommand = new AsyncRelayCommand(ApproveOverwritesAsync, CanApproveOverwrites);
         ExecutePurgeCommand = new AsyncRelayCommand(ExecutePurgeAsync, () => verifyCompleted && !IsScanning);
         CreateSupportBundleCommand = new RelayCommand(CreateSupportBundle, () => verifyCompleted);
     }
@@ -138,6 +140,7 @@ public sealed class ShellViewModel : ObservableObject
     public IAsyncRelayCommand ExecuteRestoreCommand { get; }
     public IAsyncRelayCommand ExecuteVerifyCommand { get; }
     public IAsyncRelayCommand PreparePreviewCommand { get; }
+    public IAsyncRelayCommand ApproveOverwritesCommand { get; }
     public IAsyncRelayCommand ExecutePurgeCommand { get; }
     public IRelayCommand CreateSupportBundleCommand { get; }
 
@@ -146,6 +149,31 @@ public sealed class ShellViewModel : ObservableObject
     public ObservableCollection<TreeNodeRow> TreeRows { get; } = [];
 
     public ObservableCollection<OverviewCard> Cards { get; } = [];
+
+    public ObservableCollection<ConflictRow> Conflicts { get; } = [];
+
+    public IReadOnlyList<ConflictPolicy> ConflictPolicies { get; } =
+    [
+        ConflictPolicy.KeepBoth,
+        ConflictPolicy.Skip,
+        ConflictPolicy.OverwriteApproved,
+    ];
+
+    public ConflictPolicy SelectedConflictPolicy
+    {
+        get => selectedConflictPolicy;
+        set
+        {
+            if (SetProperty(ref selectedConflictPolicy, value))
+            {
+                RefreshPreflight();
+                ApproveOverwritesCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public string OverwriteButtonLabel =>
+        "Overwrite these " + Conflicts.Count(static row => row.Approved) + " files";
 
     public IReadOnlyList<FilesViewMode> FilesViewModes { get; } =
     [
@@ -789,9 +817,18 @@ public sealed class ShellViewModel : ObservableObject
         safeFs.CreateDirectory(DestinationRoot);
         PlanBuilder builder = new(sessionDb);
         lastPlan = await builder.BuildAsync(
-                new PlanRequest(workspace.SessionId, SourceRoot, DestinationRoot))
+                new PlanRequest(workspace.SessionId, SourceRoot, DestinationRoot, ConflictPolicy: selectedConflictPolicy))
             .ConfigureAwait(true);
-        lastPreflight = new PreflightChecker().Check(lastPlan);
+        ApplyPreflight();
+        Conflicts.Clear();
+        if (lastPreflight is not null)
+        {
+            foreach (PlanConflict conflict in lastPreflight.Conflicts)
+            {
+                Conflicts.Add(new ConflictRow(conflict.DestinationPath, conflict.ExistingSize, conflict.ExistingWriteUtc));
+            }
+        }
+
         int recipeWrites = 0;
         if (recipeHost is not null)
         {
@@ -809,12 +846,61 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         SpaceBudgetText =
-            $"Selected: {lastPlan.TotalBytes} bytes of {lastPreflight.FreeBytes} free (need {lastPreflight.RequiredBytes} with margin)";
+            $"Selected: {lastPlan.TotalBytes} bytes of {lastPreflight!.FreeBytes} free (need {lastPreflight.RequiredBytes} with margin)";
         ScanStatus = lastPreflight.CanProceed
-            ? $"Preview: {lastPlan.Items.Count} copy operations and {recipeWrites} app writes. Windows.old has not been changed."
+            ? $"Preview: {lastPlan.Items.Count} copy operations, {Conflicts.Count} conflicts, and {recipeWrites} app writes. Windows.old has not been changed."
             : string.Join(" ", lastPreflight.BlockingIssues);
         ExecuteRestoreCommand.NotifyCanExecuteChanged();
+        ApproveOverwritesCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(OverwriteButtonLabel));
         OnPropertyChanged(nameof(WindowTitle));
+        CurrentStep = WorkflowStep.Preview;
+    }
+
+    private async Task ApproveOverwritesAsync()
+    {
+        IReadOnlyList<string> approved = Conflicts
+            .Where(static row => row.Approved)
+            .Select(static row => row.DestinationPath)
+            .ToArray();
+        await sessionDb.SetKvAsync(
+                workspace.SessionId,
+                OverwriteApprovals.KvKey,
+                OverwriteApprovals.Format(approved))
+            .ConfigureAwait(true);
+        RefreshPreflight();
+        ScanStatus = "Overwrite confirmed for " + approved.Count + " files. Other conflicts keep both copies.";
+        OnPropertyChanged(nameof(OverwriteButtonLabel));
+    }
+
+    private bool CanApproveOverwrites()
+    {
+        return selectedConflictPolicy == ConflictPolicy.OverwriteApproved &&
+            Conflicts.Any(static row => row.Approved);
+    }
+
+    private void RefreshPreflight()
+    {
+        if (lastPlan is null)
+        {
+            return;
+        }
+
+        ApplyPreflight();
+        ExecuteRestoreCommand.NotifyCanExecuteChanged();
+        ApproveOverwritesCommand.NotifyCanExecuteChanged();
+    }
+
+    private void ApplyPreflight()
+    {
+        if (lastPlan is null)
+        {
+            return;
+        }
+
+        IReadOnlySet<string> approved = OverwriteApprovals.Parse(
+            sessionDb.GetKv(workspace.SessionId, OverwriteApprovals.KvKey));
+        lastPreflight = new PreflightChecker().Check(lastPlan, selectedConflictPolicy, approved);
     }
 
     private async Task ExecuteRestoreAsync()

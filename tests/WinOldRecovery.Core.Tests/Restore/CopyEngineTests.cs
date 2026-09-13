@@ -61,6 +61,115 @@ public sealed class CopyEngineTests
     }
 
     [Fact]
+    public async Task I2_OverwriteOnlyReplacesWhenThatFileIsApproved()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string sourceFile = Path.Combine(context.Source, "note.txt");
+        await File.WriteAllTextAsync(sourceFile, "from-old");
+        string destFile = Path.Combine(context.Destination, "note.txt");
+        await File.WriteAllTextAsync(destFile, "already-here");
+        await context.Database.SetKvAsync(
+            context.SessionId,
+            OverwriteApprovals.KvKey,
+            destFile);
+
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyFile,
+            sourceFile,
+            destFile,
+            ConflictPolicy.KeepBoth);
+        await new CopyEngine(context.Database, context.SafeFs).CopyAsync(item);
+
+        Assert.Equal("from-old", await File.ReadAllTextAsync(destFile));
+        Assert.False(File.Exists(Path.Combine(context.Destination, "note (from Windows.old).txt")));
+    }
+
+    [Fact]
+    public async Task CrashResume_DeletesPartialAndFinishesWithoutLeftovers()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string sourceFile = Path.Combine(context.Source, "note.txt");
+        await File.WriteAllTextAsync(sourceFile, "complete");
+        string destFile = Path.Combine(context.Destination, "note.txt");
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyFile,
+            sourceFile,
+            destFile,
+            ConflictPolicy.KeepBoth);
+        await context.Database.AppendJournalAsync(item.Id!.Value, "Started");
+        await File.WriteAllTextAsync(destFile + CopyEngine.PartialSuffix, "torn");
+
+        RestoreItemResult result = await new CopyEngine(context.Database, context.SafeFs).CopyAsync(item);
+
+        Assert.Equal("Completed", result.State);
+        Assert.Equal("complete", await File.ReadAllTextAsync(destFile));
+        Assert.False(File.Exists(destFile + CopyEngine.PartialSuffix));
+        Assert.Equal("complete", await File.ReadAllTextAsync(sourceFile));
+    }
+
+    [Fact]
+    public async Task DiskFull_PausesWithoutDeletingExistingDestination()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string sourceFile = Path.Combine(context.Source, "note.txt");
+        await File.WriteAllTextAsync(sourceFile, "from-old");
+        string destFile = Path.Combine(context.Destination, "note.txt");
+        await File.WriteAllTextAsync(destFile, "keep");
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyFile,
+            sourceFile,
+            destFile,
+            ConflictPolicy.KeepBoth);
+        context.SafeFs.FailNextWriteAsDiskFull = true;
+        RestoreResult result = await new RestoreRunner(new CopyEngine(context.Database, context.SafeFs))
+            .RunAsync(new RestorePlan(context.SessionId, context.Source, context.Destination, [item], 1));
+
+        Assert.True(result.PausedDiskFull);
+        Assert.False(result.Completed);
+        Assert.Equal("keep", await File.ReadAllTextAsync(destFile));
+        Assert.False(Directory.EnumerateFiles(context.Destination, "*" + CopyEngine.PartialSuffix).Any());
+    }
+
+    [Fact]
+    public void Preflight_OverwritePolicyBlocksUntilEachConflictIsApproved()
+    {
+        string dest = Path.Combine(Path.GetTempPath(), $"WinOldRecovery-conflict-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(dest, "exists");
+        try
+        {
+            RestorePlan plan = new(
+                "session-1",
+                @"C:\old",
+                Path.GetTempPath(),
+                [
+                    new PlanItem(
+                        "session-1",
+                        1,
+                        PlanOperation.CopyFile,
+                        Path.Combine(Path.GetTempPath(), "src.txt"),
+                        dest,
+                        4,
+                        ConflictPolicy.KeepBoth,
+                        false,
+                        null),
+                ],
+                4);
+            PreflightResult blocked = new PreflightChecker(new FixedFreeSpace(long.MaxValue))
+                .Check(plan, ConflictPolicy.OverwriteApproved);
+            Assert.False(blocked.CanProceed);
+            Assert.Contains(blocked.BlockingIssues, issue => issue.Contains("per-file", StringComparison.OrdinalIgnoreCase));
+
+            PreflightResult allowed = new PreflightChecker(new FixedFreeSpace(long.MaxValue))
+                .Check(plan, ConflictPolicy.OverwriteApproved, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { dest });
+            Assert.True(allowed.CanProceed);
+        }
+        finally
+        {
+            File.Delete(dest);
+        }
+    }
+
+    [Fact]
     public async Task CopyTree_SkipsReparsePointsAndVerifiesHashes()
     {
         await using CopyContext context = await CopyContext.CreateAsync();

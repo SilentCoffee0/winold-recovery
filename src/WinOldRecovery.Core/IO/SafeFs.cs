@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Native;
 
@@ -11,6 +12,8 @@ public sealed class SafeFs
     {
         this.sourceGuard = sourceGuard ?? throw new ArgumentNullException(nameof(sourceGuard));
     }
+
+    internal bool FailNextWriteAsDiskFull { get; set; }
 
     public FileStream OpenRead(string path)
     {
@@ -36,6 +39,14 @@ public sealed class SafeFs
         FileShare share = FileShare.None)
     {
         string validatedPath = sourceGuard.GetValidatedWritePath(path, purgeToken);
+        if (FailNextWriteAsDiskFull)
+        {
+            FailNextWriteAsDiskFull = false;
+            throw new IOException(
+                "There is not enough space on the disk.",
+                new Win32Exception(112));
+        }
+
         return new FileStream(validatedPath, mode, FileAccess.Write, share);
     }
 

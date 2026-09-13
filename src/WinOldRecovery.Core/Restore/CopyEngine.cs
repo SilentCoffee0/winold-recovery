@@ -143,14 +143,17 @@ public sealed class CopyEngine
         }
 
         string finalPath = destinationPath;
+        IReadOnlySet<string> approved = OverwriteApprovals.Parse(
+            sessionDb.GetKv(item.SessionId, OverwriteApprovals.KvKey));
+        bool overwriteThis = item.OverwriteApproved || approved.Contains(finalPath);
         if (File.Exists(finalPath))
         {
-            if (item.ConflictPolicy == ConflictPolicy.Skip && !item.OverwriteApproved)
+            if (item.ConflictPolicy == ConflictPolicy.Skip && !overwriteThis)
             {
                 return;
             }
 
-            if (!item.OverwriteApproved)
+            if (!overwriteThis)
             {
                 finalPath = KeepBothPath(finalPath);
             }
@@ -187,7 +190,7 @@ public sealed class CopyEngine
 
             safeFs.SetCreationTimeUtc(partial, creation);
             safeFs.SetLastWriteTimeUtc(partial, written);
-            safeFs.MoveFile(partial, finalPath, overwrite: item.OverwriteApproved && File.Exists(finalPath));
+            safeFs.MoveFile(partial, finalPath, overwrite: overwriteThis && File.Exists(finalPath));
         }
         catch (Exception exception) when (IsDiskFull(exception))
         {
