@@ -33,3 +33,4 @@ All notable changes to WinOld Recovery will be documented here.
 - WPF Scan/Decide shell with a step bar, untouched-source status strip, Decide Cards, Files view switcher, virtualized files list with badges and context menu, Inspect pane, and Open Folder through the process runner.
 - Optional post-scan SHA-256 hashing of clean files at most 64 MB, stored per node in the session database.
 - Classification rules (high-value, regeneratable, game saves, sensitive) with badges, suggested defaults, and High-value / Regeneratable summary cards. Regeneratable and unknown items are never auto-left-behind.
+- Restore `PlanBuilder` that emits copy-tree and copy-file items, rejects source/destination containment, and never plans whole AppData folders.

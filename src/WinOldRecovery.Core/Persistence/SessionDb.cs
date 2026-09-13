@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Data.Sqlite;
 using WinOldRecovery.Core.IO;
+using WinOldRecovery.Core.Planning;
 using WinOldRecovery.Core.Scan;
 
 namespace WinOldRecovery.Core.Persistence;
@@ -382,6 +383,64 @@ public sealed class SessionDb : IAsyncDisposable
                 foreach (long nodeId in nodeIds)
                 {
                     id.Value = nodeId;
+                    await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                }
+
+                transaction.Commit();
+            },
+            cancellationToken);
+    }
+
+    public Task ReplacePlanItemsAsync(
+        string sessionId,
+        IReadOnlyList<PlanItem> items,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentNullException.ThrowIfNull(items);
+
+        return WriteAsync(
+            async (connection, token) =>
+            {
+                using SqliteTransaction transaction = connection.BeginTransaction();
+                await using SqliteCommand clear = connection.CreateCommand();
+                clear.Transaction = transaction;
+                clear.CommandText = "DELETE FROM plan_items WHERE session_id = $sessionId;";
+                clear.Parameters.AddWithValue("$sessionId", sessionId);
+                await clear.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+
+                await using SqliteCommand command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText =
+                    """
+                    INSERT INTO plan_items(
+                        session_id, job_id, operation, source_path, destination_path,
+                        bytes, conflict_policy, overwrite_approved, recipe_id)
+                    VALUES (
+                        $sessionId, $jobId, $operation, $sourcePath, $destinationPath,
+                        $bytes, $conflictPolicy, $overwriteApproved, $recipeId);
+                    """;
+                SqliteParameter sessionParam = command.Parameters.Add("$sessionId", SqliteType.Text);
+                SqliteParameter jobId = command.Parameters.Add("$jobId", SqliteType.Integer);
+                SqliteParameter operation = command.Parameters.Add("$operation", SqliteType.Text);
+                SqliteParameter sourcePath = command.Parameters.Add("$sourcePath", SqliteType.Text);
+                SqliteParameter destinationPath = command.Parameters.Add("$destinationPath", SqliteType.Text);
+                SqliteParameter bytes = command.Parameters.Add("$bytes", SqliteType.Integer);
+                SqliteParameter conflictPolicy = command.Parameters.Add("$conflictPolicy", SqliteType.Text);
+                SqliteParameter overwriteApproved = command.Parameters.Add("$overwriteApproved", SqliteType.Integer);
+                SqliteParameter recipeId = command.Parameters.Add("$recipeId", SqliteType.Text);
+
+                foreach (PlanItem item in items)
+                {
+                    sessionParam.Value = item.SessionId;
+                    jobId.Value = item.JobId;
+                    operation.Value = item.Operation.ToString();
+                    sourcePath.Value = item.SourcePath;
+                    destinationPath.Value = item.DestinationPath;
+                    bytes.Value = item.Bytes;
+                    conflictPolicy.Value = item.ConflictPolicy.ToString();
+                    overwriteApproved.Value = item.OverwriteApproved ? 1 : 0;
+                    recipeId.Value = (object?)item.RecipeId ?? DBNull.Value;
                     await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
                 }
 

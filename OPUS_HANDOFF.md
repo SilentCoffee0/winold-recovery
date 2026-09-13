@@ -68,11 +68,11 @@ Follow IMPLEMENTATION_PLAN.md: **M0 foundation and spikes → M1 scan + tree →
 
 ## Current implementation handoff — 13 Sep 2026
 
-- **Current item:** M3 plan, copy engine, journal, and verification L0–L2.
-- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 items 1–4, 6, and item 5 except FlaUI smoke. M2 classification rules, badges, suggested defaults, and summary cards.
+- **Current item:** M3 copy engine — `.winold-partial` + rename, journal, preflight space/conflicts, verifier L0–L2, then Preview/Restore/Verify UI.
+- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 items 1–4, 6, and item 5 except FlaUI smoke. M2 classification. M3 PlanBuilder first slice (I4/I13).
 - **Remaining M0 (explicitly pending, not claimed passed):** elevated deny-ACL/orphan-SID enumeration and backup-mode reads; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch; real-VM `cleanmgr` handler; Explorer long-path selection. See `docs/spikes/PENDING_MANUAL.md`.
 - **Verified tests:** strict Release build has 0 warnings/errors. Classification I6, hashing, NodeBrowser, and ShellViewModel tests pass. Do not tag `v0.1.0-m0` while those external checks remain pending.
-- **Next exact implementation step:** M3 PlanBuilder + preflight (space/conflicts), then the in-process copy engine (`.winold-partial` + rename, journal, no ACL copy) and verifier L0–L2. Add remaining native APIs (`GetDiskFreeSpaceExW`, `SetFileTime`, `MoveFileExW`) as the copy engine needs them. Do not start recipes or purge.
+- **Next exact implementation step:** PreflightChecker (free space with margin, conflicts, invalid names), then CopyEngine (backup reads, `.winold-partial`, `MoveFileExW`, journal Started/Completed, no ACL copy) and Verifier L0–L2. Do not start recipes or purge.
 
 ## What not to redesign
 
