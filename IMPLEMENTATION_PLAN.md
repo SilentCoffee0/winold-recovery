@@ -13,7 +13,9 @@ Global definition of done for any milestone:
 
 - M0 item 1: implementation complete on 13 Sep 2026. The solution and all specified projects target `net10.0-windows`; strict Release builds and tests pass; the WPF shell uses the system Fluent theme; the application manifest embeds `requireAdministrator`, PerMonitorV2 DPI awareness, and `longPathAware`; and the x64 self-contained ReadyToRun publish produces one 69,411,706-byte EXE.
 - M0 item 1 manual check still required: launch the published EXE on a clean Windows 11 VM and confirm the UAC/elevated startup path interactively.
-- M0 items 2–8: not started.
+- M0 handoff item 2: implementation complete on 13 Sep 2026. Startup enables `SeBackupPrivilege` and `SeRestorePrivilege`; backup-mode source reads use `CreateFileW`; `SourceGuard` canonicalizes paths through existing handles, resolves short names and reparse aliases, and blocks writes beneath registered source roots; `SafeFs` centralizes write operations; purge authorization is root-scoped. Eleven Core safety tests pass, including named I1 write/move tests and path-trick coverage.
+- Remaining native APIs listed in M0 work item 2 (`GetFileInformationByHandleEx`, reparse payload parsing, disk-space query, native file-time setting, and `MoveFileExW`) are not yet implemented; they will be added before the consumers that require them.
+- M0 handoff items 3–8: not started.
 
 ---
 
