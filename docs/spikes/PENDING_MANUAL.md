@@ -1,5 +1,9 @@
 # M0 spikes pending external or elevated testing
 
+The M0 tag `v0.1.0-m0` must not be created until the checks below are completed
+or explicitly accepted as blocked. CI and the tag-release workflow exist, but
+they do not substitute for these tests.
+
 These checks are not marked passed. The current agent process is not elevated
 and no disposable clean Windows 11 VM is attached.
 

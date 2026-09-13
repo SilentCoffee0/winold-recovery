@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore WinOldRecovery.slnx
+
+      - name: Build
+        run: dotnet build WinOldRecovery.slnx --configuration Release --no-restore -warnaserror
+
+      - name: Test
+        run: dotnet test WinOldRecovery.slnx --configuration Release --no-build --no-restore
+
+      - name: Restore publish runtime packs
+        run: >
+          dotnet restore src/WinOldRecovery.App/WinOldRecovery.App.csproj
+          --runtime win-x64
+          -p:PublishReadyToRun=true
+
+      - name: Publish single-file x64
+        run: >
+          dotnet publish src/WinOldRecovery.App/WinOldRecovery.App.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained
+          --no-restore
+          -p:PublishProfile=win-x64
+
+      - name: Verify one published executable
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem src/WinOldRecovery.App/bin/publish/win-x64 -File)
+          if ($files.Count -ne 1 -or $files[0].Name -ne 'WinOldRecovery.exe') {
+            throw "Expected exactly one WinOldRecovery.exe; found $($files.Count) files."
+          }
+          Write-Host "Published $($files[0].Name) ($($files[0].Length) bytes)"
+
+      - name: Upload unsigned x64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinOldRecovery-win-x64
+          path: src/WinOldRecovery.App/bin/publish/win-x64/WinOldRecovery.exe
+          if-no-files-found: error
