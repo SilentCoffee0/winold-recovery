@@ -11,5 +11,6 @@ public static class RecipeCatalog
         new ChromiumRecipe("edge", "Microsoft Edge", Path.Combine("AppData", "Local", "Microsoft", "Edge", "User Data")),
         new FirefoxRecipe(),
         new GitRecipe(),
+        new SyncthingRecipe(),
     ];
 }

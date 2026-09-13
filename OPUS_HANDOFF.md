@@ -68,11 +68,11 @@ Follow IMPLEMENTATION_PLAN.md: **M0 foundation and spikes → M1 scan + tree →
 
 ## Current implementation handoff — 13 Sep 2026
 
-- **Current item:** M5 Syncthing (paused folders, never restore index), then Anki/WSL/GPG detectors. Remaining M3 polish (kill/resume chaos, disk-full VHDX, overwrite-approval list) can proceed in parallel. Remaining M4 depth: Chromium autofill CSV and optional new-profile bookmark transplant (feature-flagged). Do not build purge before M3 chaos/disk-full are acceptable; verification reports already exist.
-- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 items 1–4, 6, and item 5 except FlaUI smoke. M2 classification. M3 PlanBuilder, preflight, copy engine, journal, RestoreRunner, Verifier L0–L2, and shell Preview/Restore/Verify commands. M4 `IRecipe` host, SmartCard, SSH/Chrome/Edge/Firefox/Git recipes including History/SNSS/extension-store exports, Firefox places HTML/CSV, `ssh -G` via `IProcessRunner`, git.exe analyze request flags, and help pages under `docs/help/`.
+- **Current item:** M5 Anki, then WSL/Docker VHDX copy and GPG/KeePass detectors. Remaining M3 polish (kill/resume chaos, disk-full VHDX, overwrite-approval list) can proceed in parallel. Remaining M4: Chromium autofill CSV and optional new-profile bookmark transplant (feature-flagged). Do not build purge before M3 chaos/disk-full are acceptable; verification reports already exist.
+- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 items 1–4, 6, and item 5 except FlaUI smoke. M2 classification. M3 PlanBuilder, preflight, copy engine, journal, RestoreRunner, Verifier L0–L2, and shell Preview/Restore/Verify commands. M4 `IRecipe` host and SSH/Chrome/Edge/Firefox/Git recipes. M5 Syncthing: paused-folder config rewrite, path remap, secret scrubbing, index never copied, device ID from cert DER.
 - **Remaining M0 (explicitly pending, not claimed passed):** elevated deny-ACL/orphan-SID enumeration and backup-mode reads; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch; real-VM `cleanmgr` handler; Explorer long-path selection. See `docs/spikes/PENDING_MANUAL.md`.
-- **Verified tests:** strict Release build has 0 warnings/errors (75 tests). Recipe canaries stay out of card facts; Chrome history/tabs/extensions exports and Firefox `places.sqlite` bookmark HTML are covered. Do not tag `v0.1.0-m0` while those external checks remain pending.
-- **Next exact implementation step:** M5 Syncthing recipe (paused config rewrite, never copy index). Do not purge.
+- **Verified tests:** strict Release build has 0 warnings/errors (76 tests). Syncthing restore pauses every folder, remaps old-profile paths, keeps API keys out of card facts, and omits `index-v2`. Do not tag `v0.1.0-m0` while those external checks remain pending.
+- **Next exact implementation step:** M5 Anki recipe (collection + WAL + media, no `media.trash`). Do not purge.
 
 ## What not to redesign
 

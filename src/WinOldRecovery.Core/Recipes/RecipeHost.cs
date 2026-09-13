@@ -46,6 +46,7 @@ public sealed class RecipeHost
         IReadOnlyList<ProfileRecord> storedProfiles = sessionDb.ListProfiles(sessionId);
         List<RecipeCard> cards = [];
         List<PersistedRecipeCard> rows = [];
+        HashSet<string> seen = new(StringComparer.Ordinal);
         foreach (DetectedProfile profile in profiles)
         {
             long? profileId = storedProfiles
@@ -65,6 +66,12 @@ public sealed class RecipeHost
                 DetectResult detected = recipe.Detect(context);
                 foreach (RecipeCard card in detected.Cards)
                 {
+                    string identity = recipe.Id + "\0" + card.InstanceKey;
+                    if (!seen.Add(identity))
+                    {
+                        continue;
+                    }
+
                     cards.Add(card);
                     rows.Add(
                         new PersistedRecipeCard(

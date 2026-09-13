@@ -180,6 +180,89 @@ public sealed class RecipeTests
         Assert.Contains("https://tabs.example/open", SnssReader.ReadTabUrls(session));
     }
 
+    [Fact]
+    public async Task Syncthing_PausesFoldersRemapsPathsAndNeverCopiesIndex()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string home = Path.Combine(alice, "AppData", "Local", "Syncthing");
+        Directory.CreateDirectory(Path.Combine(home, "index-v2"));
+        string certPem = CreateCertificatePem();
+        await File.WriteAllTextAsync(Path.Combine(home, "cert.pem"), certPem);
+        await File.WriteAllTextAsync(Path.Combine(home, "key.pem"), Canary);
+        await File.WriteAllTextAsync(Path.Combine(home, "index-v2", "index.db"), "index-must-not-copy");
+        string syncPath = Path.Combine(alice, "Sync");
+        await File.WriteAllTextAsync(
+            Path.Combine(home, "config.xml"),
+            $"""
+            <configuration version="37">
+              <folder id="default" label="Default Folder" path="{syncPath}" type="sendreceive" paused="false" />
+              <folder id="docs" label="Docs" path="{Path.Combine(alice, "Documents")}" paused="false" />
+              <folder id="ext" label="External" path="D:\Sync" paused="false" />
+              <device id="OTHERDEVICE" name="Peer" />
+              <gui>
+                <address>127.0.0.1:8384</address>
+                <apikey>SUPERSECRETAPIKEY</apikey>
+                <password>hashvalue</password>
+              </gui>
+            </configuration>
+            """);
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, RecipeCatalog.All);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+
+        RecipeCard card = Assert.Single(cards, item => item.RecipeId == "syncthing");
+        string dump = string.Join(';', card.Facts.Values);
+        Assert.DoesNotContain(Canary, dump, StringComparison.Ordinal);
+        Assert.DoesNotContain("SUPERSECRETAPIKEY", dump, StringComparison.Ordinal);
+        Assert.Contains("***", dump, StringComparison.Ordinal);
+        Assert.Equal(SyncthingDeviceId.FromCertificatePem(certPem), card.Facts["deviceId"]);
+        Assert.Contains(card.Components, component => component.Fixed && component.Key == "index");
+
+        PlanResult plan = host.PlanCard(new SyncthingRecipe(), card, Dest(context));
+        Assert.DoesNotContain(plan.Writes, write => write.DestinationPath.Contains("index", StringComparison.OrdinalIgnoreCase));
+        await host.ExecuteAsync("session-1", new SyncthingRecipe(), plan);
+        Assert.True(new SyncthingRecipe().Verify(plan).Ok);
+
+        string destConfig = await File.ReadAllTextAsync(Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "config.xml"));
+        Assert.True(SyncthingConfig.AllFoldersPaused(destConfig));
+        Assert.Contains(Path.Combine(context.Destination, "Sync"), destConfig, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(@"D:\Sync", destConfig, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "key.pem")));
+        Assert.False(Directory.Exists(Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "index-v2")));
+        Assert.Contains("SUPERSECRETAPIKEY", destConfig, StringComparison.Ordinal);
+    }
+
+    private static string CreateCertificatePem()
+    {
+        using System.Security.Cryptography.RSA rsa = System.Security.Cryptography.RSA.Create(2048);
+        System.Security.Cryptography.X509Certificates.CertificateRequest request = new(
+            "CN=syncthing-fixture",
+            rsa,
+            System.Security.Cryptography.HashAlgorithmName.SHA256,
+            System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+        using System.Security.Cryptography.X509Certificates.X509Certificate2 cert = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddDays(-1),
+            DateTimeOffset.UtcNow.AddYears(1));
+        return cert.ExportCertificatePem();
+    }
+
     private static DestinationContext Dest(RecipeContext context)
     {
         return new DestinationContext(context.Destination, context.Exports, context.SafeFs, context.Runner);
