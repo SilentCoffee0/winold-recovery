@@ -10,10 +10,12 @@ using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Persistence;
 using WinOldRecovery.Core.Planning;
 using WinOldRecovery.Core.Processes;
+using WinOldRecovery.Core.Recipes;
 using WinOldRecovery.Core.Restore;
 using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Core.Scan;
 using WinOldRecovery.Core.Sessions;
+using WinOldRecovery.Recipes;
 using WinOldRecovery.Core.Verify;
 
 namespace WinOldRecovery.App.ViewModels;
@@ -36,6 +38,7 @@ public sealed class ShellViewModel : ObservableObject
     private readonly ScanOrchestrator scanOrchestrator;
     private readonly IProcessRunner processRunner;
     private readonly SafeFs safeFs;
+    private readonly RecipeHost? recipeHost;
     private readonly DecisionEngine decisionEngine;
     private readonly NodeBrowser nodeBrowser;
     private CancellationTokenSource? scanCancellation;
@@ -52,6 +55,7 @@ public sealed class ShellViewModel : ObservableObject
     private bool hashDuringScan;
     private OverviewCard? selectedCard;
     private IReadOnlyList<DetectedProfile> lastProfiles = [];
+    private IReadOnlyList<RecipeCard> lastRecipeCards = [];
     private ClassificationSummary? lastClassification;
     private RestorePlan? lastPlan;
     private PreflightResult? lastPreflight;
@@ -62,13 +66,17 @@ public sealed class ShellViewModel : ObservableObject
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         "Recovered");
 
+    private static string LiveProfileRoot =>
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
     public ShellViewModel(
         SessionDb sessionDb,
         SessionWorkspace workspace,
         SourceDiscovery sourceDiscovery,
         ScanOrchestrator scanOrchestrator,
         IProcessRunner processRunner,
-        SafeFs safeFs)
+        SafeFs safeFs,
+        IReadOnlyList<IRecipe>? recipes = null)
     {
         this.sessionDb = sessionDb;
         this.workspace = workspace;
@@ -76,6 +84,9 @@ public sealed class ShellViewModel : ObservableObject
         this.scanOrchestrator = scanOrchestrator;
         this.processRunner = processRunner;
         this.safeFs = safeFs;
+        recipeHost = recipes is { Count: > 0 }
+            ? new RecipeHost(sessionDb, safeFs, processRunner, recipes)
+            : null;
         decisionEngine = new DecisionEngine(sessionDb, workspace.SessionId);
         nodeBrowser = new NodeBrowser(sessionDb, workspace.SessionId);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => !IsScanning && SelectedSourcePath is not null);
@@ -269,9 +280,16 @@ public sealed class ShellViewModel : ObservableObject
         get => selectedCard;
         set
         {
-            if (SetProperty(ref selectedCard, value) && value?.NodeId is long nodeId)
+            if (SetProperty(ref selectedCard, value))
             {
-                SelectedNode = nodeBrowser.GetNode(nodeId) ?? SelectedNode;
+                if (value?.NodeId is long nodeId)
+                {
+                    SelectedNode = nodeBrowser.GetNode(nodeId) ?? SelectedNode;
+                }
+
+                OnPropertyChanged(nameof(DetailText));
+                OnPropertyChanged(nameof(SelectedRecipeCard));
+                OnPropertyChanged(nameof(RecipeCardSelected));
             }
         }
     }
@@ -281,13 +299,38 @@ public sealed class ShellViewModel : ObservableObject
             ? $"WinOld Recovery — {CurrentStep}"
             : $"WinOld Recovery — {SourceRoot} — {CurrentStep}";
 
+    public RecipeCard? SelectedRecipeCard =>
+        SelectedCard is null
+            ? null
+            : lastRecipeCards.FirstOrDefault(card => card.Title == SelectedCard.Title);
+
+    public bool RecipeCardSelected => SelectedRecipeCard is not null;
+
     public string DetailText
     {
         get
         {
+            if (SelectedRecipeCard is RecipeCard recipe)
+            {
+                return string.Join(
+                    Environment.NewLine,
+                    [
+                        recipe.Title,
+                        "What is this? " + recipe.What,
+                        "Why does it matter? " + recipe.WhyItMatters,
+                        "What is restored? " + recipe.WhatIsRestored,
+                        "Can the cloud restore it? " + recipe.CloudAlternative,
+                        "Does it regenerate? " + recipe.Regeneratable,
+                        "If left behind: " + recipe.IfLeftBehind,
+                        .. recipe.Components.Select(static component =>
+                            component.Title + ": " + component.Summary +
+                            (component.Fixed ? " (cannot be recovered)" : " — " + component.SuggestedDefault)),
+                    ]);
+            }
+
             if (SelectedNode is null)
             {
-                return "Select a file or folder to inspect it.";
+                return "Select a file, folder, or app card to inspect it.";
             }
 
             TreeNodeRow node = SelectedNode;
@@ -457,6 +500,20 @@ public sealed class ShellViewModel : ObservableObject
 
             lastProfiles = result.Profiles;
             lastClassification = result.Classification;
+            lastRecipeCards = [];
+            if (recipeHost is not null)
+            {
+                lastRecipeCards = await recipeHost.DetectAsync(
+                        workspace.SessionId,
+                        result.Profiles,
+                        LiveProfileRoot,
+                        workspace.TemporaryPath,
+                        workspace.ExportsPath,
+                        scanCancellation.Token)
+                    .ConfigureAwait(true);
+                ScanStatus += $" Found {lastRecipeCards.Count} app cards.";
+            }
+
             RebuildCards(lastProfiles);
             CurrentStep = WorkflowStep.Decide;
             DecidePane = DecidePane.Cards;
@@ -619,6 +676,20 @@ public sealed class ShellViewModel : ObservableObject
                     "Regeneratable"));
         }
 
+        foreach (RecipeCard recipe in lastRecipeCards)
+        {
+            Cards.Add(
+                new OverviewCard(
+                    recipe.Title,
+                    recipe.What,
+                    recipe.WhyItMatters,
+                    recipe.Components.Any(static component => component.SuggestedDefault == Decision.Restore)
+                        ? "Restore (suggested)"
+                        : "Undecided",
+                    NodeId: null,
+                    recipe.RecipeId));
+        }
+
         OnPropertyChanged(nameof(Cards));
     }
 
@@ -677,10 +748,26 @@ public sealed class ShellViewModel : ObservableObject
                 new PlanRequest(workspace.SessionId, SourceRoot, DestinationRoot))
             .ConfigureAwait(true);
         lastPreflight = new PreflightChecker().Check(lastPlan);
+        int recipeWrites = 0;
+        if (recipeHost is not null)
+        {
+            DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs);
+            foreach (RecipeCard card in lastRecipeCards)
+            {
+                IRecipe? recipe = recipeHost.Find(card.RecipeId);
+                if (recipe is null)
+                {
+                    continue;
+                }
+
+                recipeWrites += recipeHost.PlanCard(recipe, card, destination).Writes.Count;
+            }
+        }
+
         SpaceBudgetText =
             $"Selected: {lastPlan.TotalBytes} bytes of {lastPreflight.FreeBytes} free (need {lastPreflight.RequiredBytes} with margin)";
         ScanStatus = lastPreflight.CanProceed
-            ? $"Preview: {lastPlan.Items.Count} copy operations. Windows.old has not been changed."
+            ? $"Preview: {lastPlan.Items.Count} copy operations and {recipeWrites} app writes. Windows.old has not been changed."
             : string.Join(" ", lastPreflight.BlockingIssues);
         ExecuteRestoreCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(WindowTitle));
@@ -695,6 +782,27 @@ public sealed class ShellViewModel : ObservableObject
 
         RestoreRunner runner = new(new CopyEngine(sessionDb, safeFs));
         RestoreResult result = await runner.RunAsync(lastPlan).ConfigureAwait(true);
+        if (result.Completed && recipeHost is not null)
+        {
+            DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs);
+            foreach (RecipeCard card in lastRecipeCards)
+            {
+                IRecipe? recipe = recipeHost.Find(card.RecipeId);
+                if (recipe is null)
+                {
+                    continue;
+                }
+
+                PlanResult recipePlan = recipeHost.PlanCard(recipe, card, destination);
+                if (recipePlan.Writes.Count == 0)
+                {
+                    continue;
+                }
+
+                await recipeHost.ExecuteAsync(workspace.SessionId, recipe, recipePlan).ConfigureAwait(true);
+            }
+        }
+
         restoreCompleted = result.Completed;
         ScanStatus = result.PausedDiskFull
             ? "Restore paused: the destination volume is full. Nothing was deleted to make room."

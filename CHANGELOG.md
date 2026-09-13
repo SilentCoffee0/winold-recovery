@@ -35,3 +35,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Classification rules (high-value, regeneratable, game saves, sensitive) with badges, suggested defaults, and High-value / Regeneratable summary cards. Regeneratable and unknown items are never auto-left-behind.
 - Restore `PlanBuilder` that emits copy-tree and copy-file items, rejects source/destination containment, and never plans whole AppData folders.
 - Journaled copy engine using `.winold-partial` then rename, keep-both conflicts, preflight space margin, and L0–L2 verification reports.
+- `IRecipe` host with SSH, Chrome, Edge, Firefox, and Git first-slice recipes: Netscape bookmark export, Firefox `*-recovered` transplant plus `profiles.ini` registration, scrubbed Git config, whole-tree Git repo restore, and a SmartCard six-question pane. Canary secrets stay out of card facts.

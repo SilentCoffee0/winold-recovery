@@ -68,11 +68,11 @@ Follow IMPLEMENTATION_PLAN.md: **M0 foundation and spikes → M1 scan + tree →
 
 ## Current implementation handoff — 13 Sep 2026
 
-- **Current item:** remaining M3 polish (kill/resume chaos test, disk-full VHDX, overwrite-approval list, richer Preview UI), then M4 `IRecipe` infrastructure. Do not start recipes before IRecipe exists. Do not build purge before verification reports exist (they now do).
-- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 items 1–4, 6, and item 5 except FlaUI smoke. M2 classification. M3 PlanBuilder, preflight, copy engine, journal, RestoreRunner, Verifier L0–L2, and shell Preview/Restore/Verify commands.
+- **Current item:** remaining M4 recipe depth (Chromium SNSS/history HTML, Firefox bookmark exports, SSH `ssh -G` verify, on-demand git.exe analysis, help pages), then M5 Syncthing/Anki/WSL/GPG. Remaining M3 polish (kill/resume chaos, disk-full VHDX, overwrite-approval list) can proceed in parallel. Do not build purge before those M3 items are acceptable; verification reports already exist.
+- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 items 1–4, 6, and item 5 except FlaUI smoke. M2 classification. M3 PlanBuilder, preflight, copy engine, journal, RestoreRunner, Verifier L0–L2, and shell Preview/Restore/Verify commands. M4 `IRecipe` host, SmartCard six-question pane, and first-slice SSH / Chrome / Edge / Firefox / Git recipes (detect, plan, execute, canary-safe facts).
 - **Remaining M0 (explicitly pending, not claimed passed):** elevated deny-ACL/orphan-SID enumeration and backup-mode reads; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch; real-VM `cleanmgr` handler; Explorer long-path selection. See `docs/spikes/PENDING_MANUAL.md`.
-- **Verified tests:** strict Release build has 0 warnings/errors. Copy keep-both (I2), tree copy skipping junctions, journal resume, L0–L2 verify, I16 preflight, classification I6, and shell tests pass. Do not tag `v0.1.0-m0` while those external checks remain pending.
-- **Next exact implementation step:** remaining M3 Preview layout and overwrite-approval list, then M4 `IRecipe` + Firefox/Chromium/SSH/Git. Do not purge.
+- **Verified tests:** strict Release build has 0 warnings/errors (73 tests). Recipe canaries stay out of card facts; Chrome bookmarks export as Netscape HTML; Firefox transplants into `*-recovered` and registers `profiles.ini`; Git writes a scrubbed `.gitconfig` and copies the whole working tree. Do not tag `v0.1.0-m0` while those external checks remain pending.
+- **Next exact implementation step:** Chromium History/SNSS/extension-store exports and Firefox places exports, then M5 Syncthing. Do not purge.
 
 ## What not to redesign
 

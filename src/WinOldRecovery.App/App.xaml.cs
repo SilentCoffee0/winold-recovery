@@ -9,6 +9,7 @@ using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Core.Scan;
 using WinOldRecovery.Core.Sessions;
 using WinOldRecovery.Native;
+using WinOldRecovery.Recipes;
 
 namespace WinOldRecovery.App;
 
@@ -61,7 +62,8 @@ public partial class App : Application
                 discovery,
                 orchestrator,
                 processRunner,
-                safeFs);
+                safeFs,
+                RecipeCatalog.All);
             viewModel.LoadSourcesAsync().GetAwaiter().GetResult();
 
             MainWindow window = new(viewModel);

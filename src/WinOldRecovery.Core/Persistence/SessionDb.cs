@@ -4,6 +4,7 @@ using System.Threading.Channels;
 using Microsoft.Data.Sqlite;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Planning;
+using WinOldRecovery.Core.Recipes;
 using WinOldRecovery.Core.Scan;
 using WinOldRecovery.Core.Verify;
 
@@ -457,6 +458,67 @@ public sealed class SessionDb : IAsyncDisposable
             cancellationToken);
     }
 
+    public Task<IReadOnlyList<PlanItem>> InsertPlanItemsAsync(
+        IReadOnlyList<PlanItem> items,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        if (items.Count == 0)
+        {
+            return Task.FromResult<IReadOnlyList<PlanItem>>([]);
+        }
+
+        return WriteAsync(
+            async (connection, token) =>
+            {
+                using SqliteTransaction transaction = connection.BeginTransaction();
+                await using SqliteCommand command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText =
+                    """
+                    INSERT INTO plan_items(
+                        session_id, job_id, operation, source_path, destination_path,
+                        bytes, conflict_policy, overwrite_approved, recipe_id)
+                    VALUES (
+                        $sessionId, $jobId, $operation, $sourcePath, $destinationPath,
+                        $bytes, $conflictPolicy, $overwriteApproved, $recipeId);
+                    """;
+                SqliteParameter sessionParam = command.Parameters.Add("$sessionId", SqliteType.Text);
+                SqliteParameter jobId = command.Parameters.Add("$jobId", SqliteType.Integer);
+                SqliteParameter operation = command.Parameters.Add("$operation", SqliteType.Text);
+                SqliteParameter sourcePath = command.Parameters.Add("$sourcePath", SqliteType.Text);
+                SqliteParameter destinationPath = command.Parameters.Add("$destinationPath", SqliteType.Text);
+                SqliteParameter bytes = command.Parameters.Add("$bytes", SqliteType.Integer);
+                SqliteParameter conflictPolicy = command.Parameters.Add("$conflictPolicy", SqliteType.Text);
+                SqliteParameter overwriteApproved = command.Parameters.Add("$overwriteApproved", SqliteType.Integer);
+                SqliteParameter recipeId = command.Parameters.Add("$recipeId", SqliteType.Text);
+
+                List<PlanItem> stored = [];
+                foreach (PlanItem item in items)
+                {
+                    sessionParam.Value = item.SessionId;
+                    jobId.Value = item.JobId;
+                    operation.Value = item.Operation.ToString();
+                    sourcePath.Value = item.SourcePath;
+                    destinationPath.Value = item.DestinationPath;
+                    bytes.Value = item.Bytes;
+                    conflictPolicy.Value = item.ConflictPolicy.ToString();
+                    overwriteApproved.Value = item.OverwriteApproved ? 1 : 0;
+                    recipeId.Value = (object?)item.RecipeId ?? DBNull.Value;
+                    await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                    await using SqliteCommand idCommand = connection.CreateCommand();
+                    idCommand.Transaction = transaction;
+                    idCommand.CommandText = "SELECT last_insert_rowid();";
+                    long id = (long)(await idCommand.ExecuteScalarAsync(token).ConfigureAwait(false) ?? 0L);
+                    stored.Add(item with { Id = id });
+                }
+
+                transaction.Commit();
+                return (IReadOnlyList<PlanItem>)stored;
+            },
+            cancellationToken);
+    }
+
     public IReadOnlyList<PlanItem> ListPlanItems(string sessionId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
@@ -578,6 +640,109 @@ public sealed class SessionDb : IAsyncDisposable
                 transaction.Commit();
             },
             cancellationToken);
+    }
+
+    public Task ReplaceRecipeCardsAsync(
+        string sessionId,
+        IReadOnlyList<PersistedRecipeCard> cards,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentNullException.ThrowIfNull(cards);
+        return WriteAsync(
+            async (connection, token) =>
+            {
+                using SqliteTransaction transaction = connection.BeginTransaction();
+                await using SqliteCommand clear = connection.CreateCommand();
+                clear.Transaction = transaction;
+                clear.CommandText = "DELETE FROM cards WHERE session_id = $sessionId;";
+                clear.Parameters.AddWithValue("$sessionId", sessionId);
+                await clear.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+
+                await using SqliteCommand command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText =
+                    """
+                    INSERT INTO cards(session_id, recipe_id, profile_id, title, json)
+                    VALUES ($sessionId, $recipeId, $profileId, $title, $json);
+                    """;
+                SqliteParameter sessionParam = command.Parameters.Add("$sessionId", SqliteType.Text);
+                SqliteParameter recipeId = command.Parameters.Add("$recipeId", SqliteType.Text);
+                SqliteParameter profileId = command.Parameters.Add("$profileId", SqliteType.Integer);
+                SqliteParameter title = command.Parameters.Add("$title", SqliteType.Text);
+                SqliteParameter json = command.Parameters.Add("$json", SqliteType.Text);
+                foreach (PersistedRecipeCard card in cards)
+                {
+                    sessionParam.Value = card.SessionId;
+                    recipeId.Value = card.RecipeId;
+                    profileId.Value = (object?)card.ProfileId ?? DBNull.Value;
+                    title.Value = card.Title;
+                    json.Value = card.Json;
+                    await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+
+                    if (card.Components is { Count: > 0 })
+                    {
+                        await using SqliteCommand idCommand = connection.CreateCommand();
+                        idCommand.Transaction = transaction;
+                        idCommand.CommandText = "SELECT last_insert_rowid();";
+                        long cardId = (long)(await idCommand.ExecuteScalarAsync(token).ConfigureAwait(false) ?? 0L);
+                        await using SqliteCommand componentCommand = connection.CreateCommand();
+                        componentCommand.Transaction = transaction;
+                        componentCommand.CommandText =
+                            """
+                            INSERT INTO components(card_id, key, decision, fixed, fixed_reason)
+                            VALUES ($cardId, $key, $decision, $fixed, $reason);
+                            """;
+                        SqliteParameter cardIdParam = componentCommand.Parameters.Add("$cardId", SqliteType.Integer);
+                        SqliteParameter keyParam = componentCommand.Parameters.Add("$key", SqliteType.Text);
+                        SqliteParameter decisionParam = componentCommand.Parameters.Add("$decision", SqliteType.Text);
+                        SqliteParameter fixedParam = componentCommand.Parameters.Add("$fixed", SqliteType.Integer);
+                        SqliteParameter reasonParam = componentCommand.Parameters.Add("$reason", SqliteType.Text);
+                        foreach (RecipeComponent component in card.Components)
+                        {
+                            cardIdParam.Value = cardId;
+                            keyParam.Value = component.Key;
+                            decisionParam.Value = component.SuggestedDefault.ToString();
+                            fixedParam.Value = component.Fixed ? 1 : 0;
+                            reasonParam.Value = (object?)component.FixedReason ?? DBNull.Value;
+                            await componentCommand.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                        }
+                    }
+                }
+
+                transaction.Commit();
+            },
+            cancellationToken);
+    }
+
+    public IReadOnlyList<PersistedRecipeCard> ListRecipeCards(string sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id, recipe_id, profile_id, title, json
+            FROM cards
+            WHERE session_id = $sessionId
+            ORDER BY id;
+            """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        List<PersistedRecipeCard> cards = [];
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            cards.Add(
+                new PersistedRecipeCard(
+                    sessionId,
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetInt64(2),
+                    reader.GetString(3),
+                    reader.GetString(4),
+                    reader.GetInt64(0)));
+        }
+
+        return cards;
     }
 
     public Task SetKvAsync(

@@ -104,4 +104,47 @@ public sealed class SafeFs
             ? Directory.CreateSymbolicLink(validatedPath, targetPath)
             : File.CreateSymbolicLink(validatedPath, targetPath);
     }
+
+    public bool FileExists(string path)
+    {
+        string normalizedPath = PathCanonicalizer.NormalizeLexically(path);
+        return File.Exists(normalizedPath);
+    }
+
+    public bool DirectoryExists(string path)
+    {
+        string normalizedPath = PathCanonicalizer.NormalizeLexically(path);
+        return Directory.Exists(normalizedPath);
+    }
+
+    public IReadOnlyList<string> EnumerateFileSystemEntries(string path)
+    {
+        string normalizedPath = PathCanonicalizer.NormalizeLexically(path);
+        if (!Directory.Exists(normalizedPath))
+        {
+            return [];
+        }
+
+        return Directory.EnumerateFileSystemEntries(normalizedPath).ToArray();
+    }
+
+    public string ReadAllText(string path)
+    {
+        using FileStream stream = OpenRead(path);
+        using StreamReader reader = new(stream);
+        return reader.ReadToEnd();
+    }
+
+    public void WriteAllText(string path, string contents, PurgeToken? purgeToken = null)
+    {
+        string? directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            CreateDirectory(directory, purgeToken);
+        }
+
+        using FileStream stream = OpenWrite(path, FileMode.Create, purgeToken);
+        using StreamWriter writer = new(stream);
+        writer.Write(contents);
+    }
 }
