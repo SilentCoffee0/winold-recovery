@@ -82,6 +82,50 @@ public sealed class SessionDb : IAsyncDisposable
             cancellationToken);
     }
 
+    public Task InsertProfilesAsync(
+        IReadOnlyList<ProfileRecord> profiles,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(profiles);
+        if (profiles.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        return WriteAsync(
+            async (connection, token) =>
+            {
+                using SqliteTransaction transaction = connection.BeginTransaction();
+                await using SqliteCommand command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText =
+                    """
+                    INSERT INTO profiles(session_id, name, source_path, kind, last_used_utc)
+                    VALUES ($sessionId, $name, $sourcePath, $kind, $lastUsed);
+                    """;
+                SqliteParameter sessionId = command.Parameters.Add("$sessionId", SqliteType.Text);
+                SqliteParameter name = command.Parameters.Add("$name", SqliteType.Text);
+                SqliteParameter sourcePath = command.Parameters.Add("$sourcePath", SqliteType.Text);
+                SqliteParameter kind = command.Parameters.Add("$kind", SqliteType.Text);
+                SqliteParameter lastUsed = command.Parameters.Add("$lastUsed", SqliteType.Text);
+
+                foreach (ProfileRecord profile in profiles)
+                {
+                    sessionId.Value = profile.SessionId;
+                    name.Value = profile.Name;
+                    sourcePath.Value = profile.SourcePath;
+                    kind.Value = profile.Kind.ToString();
+                    lastUsed.Value = profile.LastUsedUtc is { } used
+                        ? used.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
+                        : DBNull.Value;
+                    await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                }
+
+                transaction.Commit();
+            },
+            cancellationToken);
+    }
+
     public Task InsertNodesAsync(
         IReadOnlyList<PersistedNode> nodes,
         CancellationToken cancellationToken = default)

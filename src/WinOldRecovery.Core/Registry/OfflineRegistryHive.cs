@@ -44,4 +44,28 @@ public sealed class OfflineRegistryHive
         ArgumentNullException.ThrowIfNull(keyPath);
         return hive.GetKey(keyPath) is not null;
     }
+
+    public IReadOnlyDictionary<string, string> GetStringValues(string keyPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(keyPath);
+
+        global::Registry.Abstractions.RegistryKey? key = hive.GetKey(keyPath);
+        if (key is null)
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        Dictionary<string, string> values = new(StringComparer.OrdinalIgnoreCase);
+        foreach (global::Registry.Abstractions.KeyValue value in key.Values)
+        {
+            if (string.IsNullOrEmpty(value.ValueName) || value.ValueData is null)
+            {
+                continue;
+            }
+
+            values[value.ValueName] = value.ValueData;
+        }
+
+        return values;
+    }
 }

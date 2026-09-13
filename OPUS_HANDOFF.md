@@ -68,11 +68,11 @@ Follow IMPLEMENTATION_PLAN.md: **M0 foundation and spikes → M1 scan + tree →
 
 ## Current implementation handoff — 13 Sep 2026
 
-- **Current item:** M1 item 3 — profile detection (human vs. service vs. Default/Public) and standard-folder detection by name and by offline `User Shell Folders`.
-- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 item 1 source discovery. M1 item 2 `FileSystemWalker`: manual non-following recursion, reparse leaves with tag/target, cloud/EFS/invalid-name/long-path problems, post-order aggregates, 5,000-row batched inserts, 250 ms progress, and cancel/resume checkpoints per top-level directory.
+- **Current item:** M1 item 4 — decision engine: explicit decisions, inheritance, effective-decision materialisation, mixed-state summaries, undo (last 50 actions).
+- **Complete:** Automated M0 coding through CI/release workflows (the M0 tag is withheld). M1 items 1–3: source discovery, `FileSystemWalker`, and profile/standard-folder detection (human vs service vs Public (shared), name-based folders plus offline `User Shell Folders` redirects).
 - **Remaining M0 (explicitly pending, not claimed passed):** elevated deny-ACL/orphan-SID enumeration and backup-mode reads; full 100,000-file elevated FixtureGen self-check; clean-Windows-11 elevated WPF launch; real-VM `cleanmgr` handler; Explorer long-path selection. See `docs/spikes/PENDING_MANUAL.md`.
-- **Verified tests:** strict Release build has 0 warnings/errors. Walker unit tests cover junction non-follow, aggregates, and resume. Fixture integration asserts live-profile `live-only.txt` is never scanned. Do not tag `v0.1.0-m0` while those external checks remain pending.
-- **Next exact implementation step:** implement profile detection and standard-folder detection per IMPLEMENTATION_PLAN M1 work item 3 (name rules plus offline `User Shell Folders` from copied `NTUSER.DAT`).
+- **Verified tests:** strict Release build has 0 warnings/errors. Profile detection tests cover human/public/service classification, skipped templates, redirected folders inside and outside the source, hive `User Shell Folders` reads, and profile persistence. Do not tag `v0.1.0-m0` while those external checks remain pending.
+- **Next exact implementation step:** implement the decision engine per IMPLEMENTATION_PLAN M1 work item 4 and ARCHITECTURE §4 (User vs SuggestedDefault vs Inherited, `eff_decision` refresh, undo).
 
 ## What not to redesign
 

@@ -28,3 +28,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Tag-triggered release workflow that attaches the executable and a SHA-256 checksum.
 - Read-only Windows.old source discovery across fixed volumes, numbered `Windows.old*` variants, old system volumes, and browsed folders.
 - Reparse-aware `FileSystemWalker` that records junctions/symlinks as leaves, classifies cloud/EFS/long-path/invalid-name problems, stores post-order aggregates, and resumes from top-level directory checkpoints.
+- Profile detection for human, service, and Public (shared) accounts, with standard-folder matching by name and offline `User Shell Folders` redirects.
