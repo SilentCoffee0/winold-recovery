@@ -18,7 +18,8 @@ Global definition of done for any milestone:
 - M0 handoff item 3: implementation complete on 13 Sep 2026. `SessionDb` schema v1 contains all specified state tables and query indexes, uses WAL with `synchronous=NORMAL`, records migrations, rejects newer schemas, exposes read-only query connections, and serializes mutations through a bounded single-reader writer channel. Seventeen Core tests pass.
 - M0 handoff item 4: implementation complete on 13 Sep 2026. `FixtureGen` creates two profiles, live-target and loop junctions, file/directory symlinks, long/offline/invalid-name/large-`node_modules` hazards, privileged deny-ACL/orphan-SID/EFS hazards, and canary-bearing recipe shells; it refuses non-empty targets and writes a secret-free manifest consumed by its self-check. Portable generation and self-check pass in integration tests.
 - M0 item 4 external check still required: run the full elevated generator with its default 100,000 files on NTFS and pass the self-check. This agent environment is not elevated, so privileged hazard creation was not claimed as tested.
-- M0 handoff items 5–8: not started.
+- M0 plan work item 5: implementation complete on 13 Sep 2026. Startup creates the dated session folder, exports/temp directories, WAL database, initial session row, and rolling redacted log under `%LOCALAPPDATA%\WinOldRecovery\sessions`. Canary, sensitive-path, log-rotation, source-containment, and folder-layout tests pass.
+- M0 handoff item 5 (technical spikes) and later M0 work: not started.
 
 ---
 

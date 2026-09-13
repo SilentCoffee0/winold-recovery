@@ -19,3 +19,6 @@ All notable changes to WinOld Recovery will be documented here.
 - Synthetic Windows.old fixture generator with a self-check, canary recipe shells, reparse/path hazards, and explicit elevated-only hazards.
 - Central child-process runner with argument-list, timeout, cancellation, and output capture support.
 - Extended-path handling that preserves trailing-space names instead of normalizing them onto another path.
+- Dated per-run session workspace with database, log, exports, and temporary directories.
+- Rolling structured text logger with sensitive-path and secret-literal redaction.
+- Application startup initialization of privileges, session state, and an auditable untouched-source log entry.

@@ -20,5 +20,11 @@ SQLite is in the public domain.
 
 https://www.sqlite.org/copyright.html
 
+## Microsoft.Extensions.Logging
+
+Copyright .NET Foundation and contributors. Licensed under the MIT License.
+
+https://github.com/dotnet/runtime
+
 Third-party test-only dependencies are distributed under their respective
 licenses and are not bundled into the WinOld Recovery executable.

@@ -33,6 +33,53 @@ public sealed class SessionDb : IAsyncDisposable
 
     public static int CurrentSchemaVersion => SessionDbSchema.CurrentVersion;
 
+    public Task CreateSessionAsync(
+        SessionRecord session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentException.ThrowIfNullOrWhiteSpace(session.Id);
+        ArgumentException.ThrowIfNullOrWhiteSpace(session.Status);
+        ArgumentException.ThrowIfNullOrWhiteSpace(session.AppVersion);
+
+        return WriteAsync(
+            async (connection, token) =>
+            {
+                await using SqliteCommand command = connection.CreateCommand();
+                command.CommandText =
+                    """
+                    INSERT INTO sessions(
+                        id,
+                        started_at_utc,
+                        source_root,
+                        status,
+                        app_version,
+                        options_json)
+                    VALUES (
+                        $id,
+                        $startedAt,
+                        $sourceRoot,
+                        $status,
+                        $appVersion,
+                        $optionsJson);
+                    """;
+                command.Parameters.AddWithValue("$id", session.Id);
+                command.Parameters.AddWithValue(
+                    "$startedAt",
+                    session.StartedAt.ToUniversalTime().ToString(
+                        "O",
+                        CultureInfo.InvariantCulture));
+                command.Parameters.AddWithValue(
+                    "$sourceRoot",
+                    (object?)session.SourceRoot ?? DBNull.Value);
+                command.Parameters.AddWithValue("$status", session.Status);
+                command.Parameters.AddWithValue("$appVersion", session.AppVersion);
+                command.Parameters.AddWithValue("$optionsJson", session.OptionsJson);
+                await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+            },
+            cancellationToken);
+    }
+
     public static async Task<SessionDb> OpenAsync(
         string databasePath,
         SafeFs safeFs,
