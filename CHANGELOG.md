@@ -69,3 +69,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Restore Pause keeps already-copied files and journals `Paused`; resuming a paused CopyTree does not Keep Both files that already match. Verify offers Go to Purge.
 - Inspect shows how many destination files already exist and how many differ; Preview can Re-check the plan.
 - Restore progress shows percent, copied bytes, and a remaining-time estimate; Verify lists size/time and SHA-256 file counts.
+- Inspect shows owner SID (or "old account, no longer exists"), file attributes, and thousands-separated sizes.

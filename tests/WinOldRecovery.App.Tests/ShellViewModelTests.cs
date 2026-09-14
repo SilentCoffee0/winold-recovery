@@ -190,6 +190,8 @@ public sealed class ShellViewModelTests
 
         Assert.Contains("already has 1 files", context.ViewModel.DetailText, StringComparison.Ordinal);
         Assert.Contains("1 differ", context.ViewModel.DetailText, StringComparison.Ordinal);
+        Assert.Contains("Owner:", context.ViewModel.DetailText, StringComparison.Ordinal);
+        Assert.Contains("Attributes:", context.ViewModel.DetailText, StringComparison.Ordinal);
     }
 
     [Fact]
