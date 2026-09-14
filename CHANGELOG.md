@@ -80,3 +80,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Recipe cards expose Inspect, Open Folder, Restore, and Leave Behind in that order (UX 6).
 - Files tree greys junctions/symlinks with ⊘, a target tooltip, and dash columns; Problems rows explain what can be done.
 - Decision chips use ● / ◌ / ○; suggested defaults stay hollow with a confirm tooltip; inherited decisions are dimmed.
+- Files view uses Tree / Largest / Recent / Unknown / Problems radios (UX 3.2); Search stays a search box.

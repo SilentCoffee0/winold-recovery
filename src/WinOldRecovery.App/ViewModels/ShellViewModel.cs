@@ -470,7 +470,67 @@ public sealed class ShellViewModel : ObservableObject
         pagedTotal == 0 ? string.Empty : "Showing " + pagedLoaded.ToString("N0", CultureInfo.InvariantCulture) +
             " of " + pagedTotal.ToString("N0", CultureInfo.InvariantCulture);
 
-    public bool IsRecentView => FilesViewMode == FilesViewMode.Recent;
+    public bool IsRecentView
+    {
+        get => FilesViewMode == FilesViewMode.Recent;
+        set
+        {
+            if (value)
+            {
+                FilesViewMode = FilesViewMode.Recent;
+            }
+        }
+    }
+
+    public bool IsTreeView
+    {
+        get => FilesViewMode == FilesViewMode.Tree;
+        set
+        {
+            if (value)
+            {
+                FilesViewMode = FilesViewMode.Tree;
+            }
+        }
+    }
+
+    public bool IsLargestView
+    {
+        get => FilesViewMode == FilesViewMode.Largest;
+        set
+        {
+            if (value)
+            {
+                FilesViewMode = FilesViewMode.Largest;
+            }
+        }
+    }
+
+    public bool IsSearchView => FilesViewMode == FilesViewMode.Search;
+
+    public bool IsUnknownView
+    {
+        get => FilesViewMode == FilesViewMode.Unknown;
+        set
+        {
+            if (value)
+            {
+                FilesViewMode = FilesViewMode.Unknown;
+            }
+        }
+    }
+
+    public bool IsProblemsView
+    {
+        get => FilesViewMode == FilesViewMode.Problems;
+        set
+        {
+            if (value)
+            {
+                FilesViewMode = FilesViewMode.Problems;
+            }
+        }
+    }
 
     public string SpaceBudgetText
     {
@@ -814,6 +874,11 @@ public sealed class ShellViewModel : ObservableObject
             if (SetProperty(ref filesViewMode, value))
             {
                 OnPropertyChanged(nameof(IsRecentView));
+                OnPropertyChanged(nameof(IsTreeView));
+                OnPropertyChanged(nameof(IsLargestView));
+                OnPropertyChanged(nameof(IsSearchView));
+                OnPropertyChanged(nameof(IsUnknownView));
+                OnPropertyChanged(nameof(IsProblemsView));
                 ReloadView();
             }
         }

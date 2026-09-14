@@ -23,7 +23,11 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("DecisionTooltip", xaml, StringComparison.Ordinal);
         Assert.Contains("IsInheritedDecision", xaml, StringComparison.Ordinal);
         Assert.Contains("GrayTextBrushKey", xaml, StringComparison.Ordinal);
-        Assert.Contains("AutomationProperties.AutomationId=\"BrowseSourceButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"FilesViewTree\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"FilesViewLargest\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"FilesViewRecent\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"FilesViewUnknown\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"FilesViewProblems\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Pause scan", xaml, StringComparison.Ordinal);
         Assert.Contains("Compute folder sizes and counts", xaml, StringComparison.Ordinal);
         Assert.Contains("Hash files smaller than 64 MB during scan", xaml, StringComparison.Ordinal);

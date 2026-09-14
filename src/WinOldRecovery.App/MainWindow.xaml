@@ -129,9 +129,26 @@
                                     </Style>
                                 </Button.Style>
                             </Button>
-                            <ComboBox Width="120"
-                                      ItemsSource="{Binding FilesViewModes}"
-                                      SelectedItem="{Binding FilesViewMode}" />
+                            <RadioButton Content="Tree" IsChecked="{Binding IsTreeView}" Margin="8,0,8,0"
+                                         VerticalAlignment="Center"
+                                         AutomationProperties.Name="Tree view"
+                                         AutomationProperties.AutomationId="FilesViewTree" />
+                            <RadioButton Content="Largest" IsChecked="{Binding IsLargestView}" Margin="0,0,8,0"
+                                         VerticalAlignment="Center"
+                                         AutomationProperties.Name="Largest view"
+                                         AutomationProperties.AutomationId="FilesViewLargest" />
+                            <RadioButton Content="Recent" IsChecked="{Binding IsRecentView}" Margin="0,0,8,0"
+                                         VerticalAlignment="Center"
+                                         AutomationProperties.Name="Recent view"
+                                         AutomationProperties.AutomationId="FilesViewRecent" />
+                            <RadioButton Content="Unknown" IsChecked="{Binding IsUnknownView}" Margin="0,0,8,0"
+                                         VerticalAlignment="Center"
+                                         AutomationProperties.Name="Unknown view"
+                                         AutomationProperties.AutomationId="FilesViewUnknown" />
+                            <RadioButton Content="Problems" IsChecked="{Binding IsProblemsView}" Margin="0,0,8,0"
+                                         VerticalAlignment="Center"
+                                         AutomationProperties.Name="Problems view"
+                                         AutomationProperties.AutomationId="FilesViewProblems" />
                             <ComboBox Width="72" Margin="8,0,0,0"
                                       ItemsSource="{Binding RecentDayChoices}"
                                       SelectedItem="{Binding RecentDays}"

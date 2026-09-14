@@ -430,6 +430,20 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task FilesViewRadios_SwitchModesWithoutAComboBox()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        Assert.True(context.ViewModel.IsTreeView);
+        context.ViewModel.IsProblemsView = true;
+        Assert.Equal(FilesViewMode.Problems, context.ViewModel.FilesViewMode);
+        Assert.False(context.ViewModel.IsTreeView);
+        context.ViewModel.IsLargestView = true;
+        Assert.Equal(FilesViewMode.Largest, context.ViewModel.FilesViewMode);
+        context.ViewModel.IsTreeView = true;
+        Assert.True(context.ViewModel.IsTreeView);
+    }
+
+    [Fact]
     public async Task RevealInTree_SelectsTheSearchHitUnderItsParents()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();
