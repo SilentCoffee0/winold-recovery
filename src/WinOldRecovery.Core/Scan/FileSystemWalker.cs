@@ -38,6 +38,7 @@ public sealed class FileSystemWalker
     private readonly List<PersistedNode> pendingNodes = [];
     private readonly List<NodeAggregateUpdate> pendingUpdates = [];
     private readonly List<NodeBadgeRow> pendingBadges = [];
+    private bool computeFolderSizes = true;
 
     public FileSystemWalker(SessionDb sessionDb)
     {
@@ -52,6 +53,7 @@ public sealed class FileSystemWalker
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.SessionId);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.SourceRoot);
+        computeFolderSizes = request.ComputeFolderSizes;
 
         string sourceRoot = PathCanonicalizer.NormalizeLexically(request.SourceRoot);
         if (!Directory.Exists(sourceRoot))
@@ -91,12 +93,7 @@ public sealed class FileSystemWalker
                         cancellationToken)
                     .ConfigureAwait(false);
 
-                pendingUpdates.Add(
-                    new NodeAggregateUpdate(
-                        state.RootNodeId,
-                        result.AggSize,
-                        result.AggFiles,
-                        result.Problem));
+                QueueAggregate(state.RootNodeId, result.AggSize, result.AggFiles, result.Problem);
                 await FlushAsync(state, cancellationToken).ConfigureAwait(false);
                 completed.AddRange(state.CompletedTopLevel);
             }
@@ -278,12 +275,7 @@ public sealed class FileSystemWalker
 
                     aggSize += child.AggSize;
                     aggFiles += child.AggFiles;
-                    pendingUpdates.Add(
-                        new NodeAggregateUpdate(
-                            childId,
-                            child.AggSize,
-                            child.AggFiles,
-                            child.Problem));
+                    QueueAggregate(childId, child.AggSize, child.AggFiles, child.Problem);
                 }
                 else
                 {
@@ -332,6 +324,16 @@ public sealed class FileSystemWalker
             counters.AccessDenied++;
             return new DirectoryWalkResult(aggSize, aggFiles, NodeProblem.AccessDenied);
         }
+    }
+
+    private void QueueAggregate(long nodeId, long aggSize, long aggFiles, NodeProblem problem)
+    {
+        if (!computeFolderSizes)
+        {
+            return;
+        }
+
+        pendingUpdates.Add(new NodeAggregateUpdate(nodeId, aggSize, aggFiles, problem));
     }
 
     private static PersistedNode CreateNode(

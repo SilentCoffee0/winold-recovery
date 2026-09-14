@@ -4,7 +4,8 @@ public sealed record WalkRequest(
     string SessionId,
     string SourceRoot,
     IReadOnlyList<WalkScope>? Scopes = null,
-    bool Resume = false);
+    bool Resume = false,
+    bool ComputeFolderSizes = true);
 
 public sealed record WalkScope(string RelativeRoot, long? ProfileId = null);
 

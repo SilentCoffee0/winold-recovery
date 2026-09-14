@@ -20,6 +20,8 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("TextSearch.TextPath=\"Name\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"BrowseSourceButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Pause scan", xaml, StringComparison.Ordinal);
+        Assert.Contains("Compute folder sizes and counts", xaml, StringComparison.Ordinal);
+        Assert.Contains("Hash files smaller than 64 MB during scan", xaml, StringComparison.Ordinal);
         Assert.Contains("ScanButtonLabel", xaml, StringComparison.Ordinal);
         Assert.Contains("DisplayLabel", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"UndoDecisionButton\"", xaml, StringComparison.Ordinal);

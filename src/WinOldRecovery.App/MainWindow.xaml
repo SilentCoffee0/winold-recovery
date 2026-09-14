@@ -153,10 +153,6 @@
                                      AutomationProperties.AutomationId="SearchBox" />
                             <Button Content="Search" Command="{Binding SearchCommand}" Margin="8,0,0,0"
                                     AutomationProperties.Name="Search now" />
-                            <CheckBox Content="Hash files smaller than 64 MB during scan"
-                                      IsChecked="{Binding HashDuringScan}"
-                                      VerticalAlignment="Center"
-                                      Margin="16,0,0,0" />
                         </StackPanel>
                         <ListBox ItemsSource="{Binding Cards}"
                                  SelectedItem="{Binding SelectedCard}">
@@ -289,7 +285,8 @@
                         </TextBox>
                     </DockPanel>
 
-                    <StackPanel Grid.Row="2" Orientation="Horizontal">
+                    <StackPanel Grid.Row="2">
+                        <StackPanel Orientation="Horizontal">
                         <Button Content="{Binding ScanButtonLabel}" Command="{Binding ScanCommand}" Margin="0,0,8,0"
                                 AutomationProperties.Name="Start scan" AutomationProperties.AutomationId="ScanButton" />
                         <Button Content="Pause" Command="{Binding PauseScanCommand}" Margin="0,0,8,0"
@@ -332,6 +329,19 @@
                         <Button Content="Reveal in tree" Command="{Binding RevealInTreeCommand}" Margin="8,0,0,0"
                                 AutomationProperties.Name="Reveal in tree" />
                         <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="{Binding PagingStatus}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBlock VerticalAlignment="Center" Margin="0,0,12,0" Text="Scan options" />
+                            <CheckBox Content="Compute folder sizes and counts (recommended)"
+                                      IsChecked="{Binding ComputeFolderSizes}"
+                                      VerticalAlignment="Center"
+                                      Margin="0,0,16,0"
+                                      AutomationProperties.Name="Compute folder sizes and counts" />
+                            <CheckBox Content="Hash files smaller than 64 MB during scan (slower; enables strong verify)"
+                                      IsChecked="{Binding HashDuringScan}"
+                                      VerticalAlignment="Center"
+                                      AutomationProperties.Name="Hash files smaller than 64 MB during scan" />
+                        </StackPanel>
                     </StackPanel>
                     <DockPanel Grid.Row="3">
                         <DockPanel.Style>

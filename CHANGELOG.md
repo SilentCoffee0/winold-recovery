@@ -76,3 +76,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Purge tokens are minted only after `SessionDb` shows a settled journal and verify store for that session; caller-supplied verify/journal flags cannot authorize those gates.
 - Purge step lists verified job count, remaining Undecided items, estimated free space after delete, and the session folder (UX 7).
 - Purge offers Windows cleanup vs direct delete, a Delete Windows.old button, live delete progress, and Cancel that leaves a partial tree.
+- Scan options on the Scan step: compute folder sizes (default on) and optional hashing of files smaller than 64 MB.

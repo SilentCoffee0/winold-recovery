@@ -92,6 +92,25 @@ public sealed class FileSystemWalkerTests
     }
 
     [Fact]
+    public async Task Walk_SkipsFolderAggregatesWhenDisabled()
+    {
+        await using WalkerTestContext context = await WalkerTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "tree");
+        string nested = Path.Combine(source, "Projects", "app", "node_modules");
+        Directory.CreateDirectory(nested);
+        await File.WriteAllTextAsync(Path.Combine(nested, "package-00.tmp"), new string('a', 10));
+
+        FileSystemWalker walker = new(context.Database);
+        await walker.WalkAsync(new WalkRequest("session-1", source, ComputeFolderSizes: false));
+
+        Dictionary<string, NodeRow> nodes = LoadNodes(context.Database);
+        Assert.Equal(0, nodes[@"Projects\app\node_modules"].AggFiles);
+        Assert.Equal(0, nodes[@"Projects\app\node_modules"].AggSize);
+        Assert.Equal(0, nodes[string.Empty].AggFiles);
+        Assert.Contains(nodes.Keys, key => key.EndsWith("package-00.tmp", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task Walk_ResumeSkipsCompletedTopLevelDirectories()
     {
         await using WalkerTestContext context = await WalkerTestContext.CreateAsync();

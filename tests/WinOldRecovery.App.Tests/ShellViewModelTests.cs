@@ -612,6 +612,31 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task ComputeFolderSizesOff_LeavesFolderAggregatesZero()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "Desktop", "notes.txt"),
+            "abc");
+        context.ViewModel.SelectedSourcePath = source;
+        Assert.True(context.ViewModel.ComputeFolderSizes);
+        context.ViewModel.ComputeFolderSizes = false;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        ExpandDirectories(context);
+        ExpandDirectories(context);
+        TreeNodeRow alice = FindRow(context, "Alice");
+        Assert.Equal(0, alice.AggSize);
+        Assert.Equal(0, alice.AggFiles);
+        Assert.Equal("0", context.Database.GetKv(context.SessionId, "scan.computeFolderSizes"));
+    }
+
+    [Fact]
     public void ApplyKeyboard_DoesNotRestoreReparsePoints()
     {
         TreeNodeRow junction = new(

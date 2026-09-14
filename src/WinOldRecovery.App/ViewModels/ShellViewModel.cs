@@ -69,6 +69,7 @@ public sealed class ShellViewModel : ObservableObject
     private string searchText = string.Empty;
     private DecidePane decidePane = DecidePane.Cards;
     private bool hashDuringScan;
+    private bool computeFolderSizes = true;
     private OverviewCard? selectedCard;
     private IReadOnlyList<DetectedProfile> lastProfiles = [];
     private IReadOnlyList<RecipeCard> lastRecipeCards = [];
@@ -844,6 +845,12 @@ public sealed class ShellViewModel : ObservableObject
         set => SetProperty(ref hashDuringScan, value);
     }
 
+    public bool ComputeFolderSizes
+    {
+        get => computeFolderSizes;
+        set => SetProperty(ref computeFolderSizes, value);
+    }
+
     public OverviewCard? SelectedCard
     {
         get => selectedCard;
@@ -1430,7 +1437,20 @@ public sealed class ShellViewModel : ObservableObject
                     workspace.TemporaryPath,
                     progress: progress,
                     resume: resume,
+                    computeFolderSizes: computeFolderSizes,
                     cancellationToken: scanCancellation.Token)
+                .ConfigureAwait(true);
+            await sessionDb.SetKvAsync(
+                    workspace.SessionId,
+                    "scan.computeFolderSizes",
+                    computeFolderSizes ? "1" : "0",
+                    scanCancellation.Token)
+                .ConfigureAwait(true);
+            await sessionDb.SetKvAsync(
+                    workspace.SessionId,
+                    "scan.hashDuringScan",
+                    hashDuringScan ? "1" : "0",
+                    scanCancellation.Token)
                 .ConfigureAwait(true);
             SourceRoot = result.SourceRoot;
             scanCompleted = true;

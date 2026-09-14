@@ -25,6 +25,7 @@ public sealed class ScanOrchestrator
         IShellFolderValueSource? shellFolders = null,
         IProgress<WalkProgress>? progress = null,
         bool resume = false,
+        bool computeFolderSizes = true,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
@@ -53,7 +54,7 @@ public sealed class ScanOrchestrator
 
         FileSystemWalker walker = new(sessionDb);
         WalkResult walk = await walker.WalkAsync(
-                new WalkRequest(sessionId, registered, Resume: resume),
+                new WalkRequest(sessionId, registered, Resume: resume, ComputeFolderSizes: computeFolderSizes),
                 progress,
                 cancellationToken)
             .ConfigureAwait(false);
