@@ -110,13 +110,32 @@ public sealed class RecipeHost
         DestinationContext destination,
         string? sessionId = null)
     {
+        RecipeCard plannedCard = OverlayFolderMap(card, sessionId);
         Dictionary<string, Decision> decisions = sessionId is null
-            ? card.Components.ToDictionary(
+            ? plannedCard.Components.ToDictionary(
                 static component => component.Key,
                 static component => component.Fixed ? Decision.Undecided : component.SuggestedDefault)
-            : StoredRecipeDecisions.Load(sessionDb, sessionId, card);
-        PlanResult planned = recipe.Plan(new CardDecisions(card, decisions), destination);
+            : StoredRecipeDecisions.Load(sessionDb, sessionId, plannedCard);
+        PlanResult planned = recipe.Plan(new CardDecisions(plannedCard, decisions), destination);
         return planned with { Destination = destination };
+    }
+
+    private RecipeCard OverlayFolderMap(RecipeCard card, string? sessionId)
+    {
+        if (sessionId is null)
+        {
+            return card;
+        }
+
+        string? stored = sessionDb.GetKv(sessionId, RecipeFolderMap.KvKey(card.InstanceKey));
+        if (string.IsNullOrWhiteSpace(stored))
+        {
+            return card;
+        }
+
+        Dictionary<string, string> facts = new(card.Facts, StringComparer.Ordinal);
+        facts[RecipeFolderMap.FactKey] = stored;
+        return card with { Facts = facts };
     }
 
     public async Task ExecuteAsync(

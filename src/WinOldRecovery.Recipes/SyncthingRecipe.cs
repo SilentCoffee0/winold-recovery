@@ -90,10 +90,13 @@ public sealed class SyncthingRecipe : IRecipe
         if (RecipeDecisions.ShouldRestore(decisions, "config"))
         {
             string xml = destination.SafeFs.ReadAllText(Path.Combine(source, "config.xml"));
+            IReadOnlyDictionary<string, string> overrides = RecipeFolderMap.Parse(
+                decisions.Card.Facts.GetValueOrDefault(RecipeFolderMap.FactKey));
             string rewritten = SyncthingConfig.Rewrite(
                 xml,
                 decisions.Card.Facts.GetValueOrDefault("oldProfile") ?? string.Empty,
-                destination.DestinationProfileRoot);
+                destination.DestinationProfileRoot,
+                overrides.Count == 0 ? null : overrides);
             writes.Add(
                 new RecipeWrite(
                     RecipeWriteKind.WriteContent,

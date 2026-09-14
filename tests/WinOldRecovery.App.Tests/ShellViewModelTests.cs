@@ -297,6 +297,54 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task Preview_EditSyncthingMapping_PersistsOverrideAndRewritesThePlanLine()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync([new SyncthingRecipe()]);
+        string source = Path.Combine(context.Root, "Windows.old");
+        string alice = Path.Combine(source, "Users", "Alice");
+        string home = Path.Combine(alice, "AppData", "Local", "Syncthing");
+        Directory.CreateDirectory(home);
+        await File.WriteAllTextAsync(Path.Combine(alice, "NTUSER.DAT"), "hive");
+        await File.WriteAllTextAsync(Path.Combine(home, "cert.pem"), CreateSyncthingCertificatePem());
+        await File.WriteAllTextAsync(Path.Combine(home, "key.pem"), "key");
+        string syncPath = Path.Combine(alice, "Sync");
+        await File.WriteAllTextAsync(
+            Path.Combine(home, "config.xml"),
+            $"""
+            <configuration version="37">
+              <folder id="default" label="Default Folder" path="{syncPath}" paused="false" />
+              <folder id="ext" label="External" path="D:\Sync" paused="false" />
+            </configuration>
+            """);
+
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        await context.ViewModel.PreparePreviewAsync();
+
+        Assert.True(context.ViewModel.HasSyncthingMappings);
+        Assert.Contains("PAUSED", context.ViewModel.PreviewSummaryText, StringComparison.Ordinal);
+        Assert.Equal(2, context.ViewModel.SyncthingMappings.Count);
+        context.ViewModel.EditSyncthingMappingCommand.Execute(null);
+        Assert.True(context.ViewModel.SyncthingMappingEditorVisible);
+
+        string moved = Path.Combine(context.Root, "moved-sync");
+        SyncthingMappingRow ext = context.ViewModel.SyncthingMappings.First(row => row.FolderId == "ext");
+        ext.PlannedPath = moved;
+        await context.ViewModel.PersistSyncthingMappingsForTestsAsync();
+
+        string? stored = context.Database.GetKv(
+            context.SessionId,
+            RecipeFolderMap.KvKey(ext.InstanceKey));
+        Assert.Contains("moved-sync", stored, StringComparison.OrdinalIgnoreCase);
+        await context.ViewModel.PreparePreviewAsync();
+        Assert.Equal(
+            moved,
+            context.ViewModel.SyncthingMappings.First(row => row.FolderId == "ext").PlannedPath);
+        Assert.Contains("folder paths remapped", context.ViewModel.PreviewSummaryText, StringComparison.Ordinal);
+        Assert.True(context.ViewModel.SyncthingMappingEditorVisible);
+    }
+
+    [Fact]
     public async Task SecondScan_ReplacesTheTreeAndRelocksPurge()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();
@@ -971,6 +1019,20 @@ public sealed class ShellViewModelTests
         Assert.Contains("not-windows-old", context.ViewModel.SelectedSourcePath, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("does not contain Users", context.ViewModel.SourceHint, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("Scan", context.ViewModel.ScanButtonLabel);
+    }
+
+    private static string CreateSyncthingCertificatePem()
+    {
+        using System.Security.Cryptography.RSA rsa = System.Security.Cryptography.RSA.Create(2048);
+        System.Security.Cryptography.X509Certificates.CertificateRequest request = new(
+            "CN=syncthing-fixture",
+            rsa,
+            System.Security.Cryptography.HashAlgorithmName.SHA256,
+            System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+        using System.Security.Cryptography.X509Certificates.X509Certificate2 cert = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddDays(-1),
+            DateTimeOffset.UtcNow.AddYears(1));
+        return cert.ExportCertificatePem();
     }
 
     private static void ExpandDirectories(ShellTestContext context)

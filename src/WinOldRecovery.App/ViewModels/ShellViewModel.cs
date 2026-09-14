@@ -136,6 +136,8 @@ public sealed class ShellViewModel : ObservableObject
     private string restoreWarningSummary = string.Empty;
     private string restoreWarningDetail = string.Empty;
     private bool restoreWarningsExpanded;
+    private bool syncthingMappingEditorVisible;
+    private Task mappingsPersist = Task.CompletedTask;
 
     private static string LiveProfileRoot =>
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -228,6 +230,12 @@ public sealed class ShellViewModel : ObservableObject
         PreparePreviewCommand = new AsyncRelayCommand(
             PreparePreviewAsync,
             () => CanWriteSession && scanCompleted && SourceRoot is not null);
+        EditSyncthingMappingCommand = new RelayCommand(
+            () => SyncthingMappingEditorVisible = !SyncthingMappingEditorVisible,
+            () => HasSyncthingMappings);
+        BrowseSyncthingMappingCommand = new RelayCommand<SyncthingMappingRow>(
+            BrowseSyncthingMapping,
+            static row => row is not null);
         ApproveOverwritesCommand = new AsyncRelayCommand(ApproveOverwritesAsync, CanApproveOverwrites);
         ExecutePurgeCommand = new AsyncRelayCommand(
             ExecutePurgeAsync,
@@ -297,6 +305,8 @@ public sealed class ShellViewModel : ObservableObject
     public IAsyncRelayCommand ExecuteRestoreCommand { get; }
     public IAsyncRelayCommand ExecuteVerifyCommand { get; }
     public IAsyncRelayCommand PreparePreviewCommand { get; }
+    public IRelayCommand EditSyncthingMappingCommand { get; }
+    public IRelayCommand<SyncthingMappingRow> BrowseSyncthingMappingCommand { get; }
     public IAsyncRelayCommand ApproveOverwritesCommand { get; }
     public IAsyncRelayCommand ExecutePurgeCommand { get; }
     public IRelayCommand CancelPurgeCommand { get; }
@@ -327,6 +337,8 @@ public sealed class ShellViewModel : ObservableObject
     public ObservableCollection<OverviewCard> Cards { get; } = [];
 
     public ObservableCollection<ConflictRow> Conflicts { get; } = [];
+
+    public ObservableCollection<SyncthingMappingRow> SyncthingMappings { get; } = [];
 
     public ObservableCollection<RestoreJobRow> RestoreJobs { get; } = [];
 
@@ -631,6 +643,23 @@ public sealed class ShellViewModel : ObservableObject
         get => previewSummary;
         private set => SetProperty(ref previewSummary, value);
     }
+
+    public bool HasSyncthingMappings => SyncthingMappings.Count > 0;
+
+    public bool SyncthingMappingEditorVisible
+    {
+        get => syncthingMappingEditorVisible;
+        private set
+        {
+            if (SetProperty(ref syncthingMappingEditorVisible, value))
+            {
+                OnPropertyChanged(nameof(EditSyncthingMappingLabel));
+            }
+        }
+    }
+
+    public string EditSyncthingMappingLabel =>
+        SyncthingMappingEditorVisible ? "Hide mapping" : "Edit mapping";
 
     public string PurgeSummaryText
     {
@@ -1710,6 +1739,7 @@ public sealed class ShellViewModel : ObservableObject
         restoreCompleted = false;
         verifyCompleted = false;
         Conflicts.Clear();
+        ClearSyncthingMappings(hideEditor: true);
         destinationByRelPath.Clear();
         DiskFullVisible = false;
         PreviewSummaryText = string.Empty;
@@ -2508,6 +2538,7 @@ public sealed class ShellViewModel : ObservableObject
         int recipeWrites = 0;
         List<string> recipeLines = [];
         List<string> running = [];
+        ClearSyncthingMappings(hideEditor: false);
         if (recipeHost is not null)
         {
             DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner);
@@ -2521,7 +2552,16 @@ public sealed class ShellViewModel : ObservableObject
 
                 PlanResult recipePlan = recipeHost.PlanCard(recipe, card, destination, workspace.SessionId);
                 recipeWrites += recipePlan.Writes.Count;
-                recipeLines.Add(card.Title + ": " + card.WhatIsRestored);
+                if (card.RecipeId.Equals("syncthing", StringComparison.Ordinal))
+                {
+                    recipeLines.Add(FormatSyncthingPreviewLine(card, destination));
+                    AddSyncthingMappings(card, destination);
+                }
+                else
+                {
+                    recipeLines.Add(card.Title + ": " + card.WhatIsRestored);
+                }
+
                 foreach (Prerequisite prerequisite in recipe.Prerequisites(recipePlan))
                 {
                     if (processPresence.IsRunning(prerequisite.ProcessName))
@@ -2531,6 +2571,10 @@ public sealed class ShellViewModel : ObservableObject
                 }
             }
         }
+
+        OnPropertyChanged(nameof(HasSyncthingMappings));
+        EditSyncthingMappingCommand.NotifyCanExecuteChanged();
+        BrowseSyncthingMappingCommand.NotifyCanExecuteChanged();
 
         runningApps = running;
         PreviewInventory inventory = sessionDb.GetPreviewInventory(workspace.SessionId);
@@ -2553,6 +2597,169 @@ public sealed class ShellViewModel : ObservableObject
         catch (Exception exception)
         {
             ShowHandledFailure(exception);
+        }
+    }
+
+    private void ClearSyncthingMappings(bool hideEditor)
+    {
+        SyncthingMappings.Clear();
+        if (hideEditor)
+        {
+            SyncthingMappingEditorVisible = false;
+        }
+
+        OnPropertyChanged(nameof(HasSyncthingMappings));
+    }
+
+    private IReadOnlyList<SyncthingFolderMapping> LoadSyncthingMappings(
+        RecipeCard card,
+        DestinationContext destination)
+    {
+        if (!card.Facts.TryGetValue("source", out string? home) ||
+            string.IsNullOrWhiteSpace(home))
+        {
+            return [];
+        }
+
+        string config = Path.Combine(home, "config.xml");
+        if (!safeFs.FileExists(config))
+        {
+            return [];
+        }
+
+        IReadOnlyDictionary<string, string> overrides = RecipeFolderMap.Parse(
+            sessionDb.GetKv(workspace.SessionId, RecipeFolderMap.KvKey(card.InstanceKey)));
+        return SyncthingConfig.PlanMappings(
+            safeFs.ReadAllText(config),
+            card.Facts.GetValueOrDefault("oldProfile") ?? string.Empty,
+            destination.DestinationProfileRoot,
+            overrides.Count == 0 ? null : overrides);
+    }
+
+    private string FormatSyncthingPreviewLine(RecipeCard card, DestinationContext destination)
+    {
+        IReadOnlyList<SyncthingFolderMapping> mappings = LoadSyncthingMappings(card, destination);
+        int remapped = mappings.Count(static mapping =>
+            !string.Equals(mapping.SourcePath, mapping.PlannedPath, StringComparison.OrdinalIgnoreCase));
+        string remapText;
+        if (remapped == 0)
+        {
+            remapText = "no profile paths remapped";
+        }
+        else
+        {
+            SyncthingFolderMapping first = mappings.First(static mapping =>
+                !string.Equals(mapping.SourcePath, mapping.PlannedPath, StringComparison.OrdinalIgnoreCase));
+            remapText = remapped + " folder paths remapped (" + first.SourcePath + " → " + first.PlannedPath + ")";
+        }
+
+        return card.Title +
+            ": identity + config; " +
+            mappings.Count +
+            " folders will be PAUSED; " +
+            remapText;
+    }
+
+    private void AddSyncthingMappings(RecipeCard card, DestinationContext destination)
+    {
+        foreach (SyncthingFolderMapping mapping in LoadSyncthingMappings(card, destination))
+        {
+            SyncthingMappings.Add(
+                new SyncthingMappingRow(
+                    card.InstanceKey,
+                    mapping.Id,
+                    mapping.Label,
+                    mapping.SourcePath,
+                    mapping.PlannedPath,
+                    mapping.ExistsOnDestination,
+                    OnSyncthingMappingChanged));
+        }
+    }
+
+    private void OnSyncthingMappingChanged()
+    {
+        if (!CanWriteSession)
+        {
+            return;
+        }
+
+        mappingsPersist = PersistSyncthingMappingsAsync();
+    }
+
+    internal Task PersistSyncthingMappingsForTestsAsync()
+    {
+        return mappingsPersist;
+    }
+
+    private async Task PersistSyncthingMappingsAsync()
+    {
+        if (!CanWriteSession)
+        {
+            return;
+        }
+
+        foreach (IGrouping<string, SyncthingMappingRow> group in SyncthingMappings.GroupBy(static row => row.InstanceKey))
+        {
+            Dictionary<string, string> map = new(StringComparer.Ordinal);
+            foreach (SyncthingMappingRow row in group)
+            {
+                if (!string.IsNullOrWhiteSpace(row.PlannedPath))
+                {
+                    map[row.FolderId] = row.PlannedPath;
+                }
+            }
+
+            await sessionDb.SetKvAsync(
+                    workspace.SessionId,
+                    RecipeFolderMap.KvKey(group.Key),
+                    RecipeFolderMap.Format(map))
+                .ConfigureAwait(true);
+        }
+
+        RefreshPreviewRecipeLines();
+    }
+
+    private void RefreshPreviewRecipeLines()
+    {
+        if (lastPlan is null || lastPreflight is null || recipeHost is null)
+        {
+            return;
+        }
+
+        DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner);
+        List<string> recipeLines = [];
+        foreach (RecipeCard card in lastRecipeCards)
+        {
+            if (recipeHost.Find(card.RecipeId) is null)
+            {
+                continue;
+            }
+
+            recipeLines.Add(
+                card.RecipeId.Equals("syncthing", StringComparison.Ordinal)
+                    ? FormatSyncthingPreviewLine(card, destination)
+                    : card.Title + ": " + card.WhatIsRestored);
+        }
+
+        PreviewSummaryText = PreviewSummary.Format(
+            lastPlan,
+            lastPreflight,
+            sessionDb.GetPreviewInventory(workspace.SessionId),
+            recipeLines,
+            runningApps);
+    }
+
+    private void BrowseSyncthingMapping(SyncthingMappingRow? row)
+    {
+        if (row is null || !CanWriteSession)
+        {
+            return;
+        }
+
+        string? folder = folderPicker.PickFolder();
+        if (!string.IsNullOrWhiteSpace(folder))
+        {
+            row.PlannedPath = folder;
         }
     }
 
@@ -2890,6 +3097,7 @@ public sealed class ShellViewModel : ObservableObject
         BrowseDestinationCommand.NotifyCanExecuteChanged();
         GoToPurgeCommand.NotifyCanExecuteChanged();
         AnalyzeGitCommand.NotifyCanExecuteChanged();
+        BrowseSyncthingMappingCommand.NotifyCanExecuteChanged();
     }
 
     private bool CanAcknowledgeVerify()

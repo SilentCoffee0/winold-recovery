@@ -499,9 +499,36 @@
                             <Button Content="Re-check" Command="{Binding PreparePreviewCommand}" Margin="0,0,8,0"
                                     AutomationProperties.Name="Re-check restore plan"
                                     AutomationProperties.AutomationId="RecheckPreviewButton" />
+                            <Button Content="{Binding EditSyncthingMappingLabel}"
+                                    Command="{Binding EditSyncthingMappingCommand}"
+                                    Margin="0,0,8,0"
+                                    Visibility="{Binding HasSyncthingMappings, Converter={StaticResource VisibleWhenTrue}}"
+                                    AutomationProperties.Name="Edit Syncthing folder mapping"
+                                    AutomationProperties.AutomationId="EditSyncthingMappingButton" />
                             <Button Content="Review undecided" Command="{Binding ReviewUndecidedCommand}"
                                     AutomationProperties.Name="Review undecided items" />
                         </StackPanel>
+                        <ItemsControl DockPanel.Dock="Top" Margin="0,0,0,8"
+                                      ItemsSource="{Binding SyncthingMappings}"
+                                      Visibility="{Binding SyncthingMappingEditorVisible, Converter={StaticResource VisibleWhenTrue}}"
+                                      AutomationProperties.Name="Syncthing folder mapping">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <Button DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0"
+                                                Command="{Binding DataContext.BrowseSyncthingMappingCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                AutomationProperties.Name="Browse Syncthing folder path" />
+                                        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
+                                                   Text="{Binding Display, Mode=OneWay}" />
+                                        <TextBox MinWidth="280"
+                                                 IsEnabled="{Binding DataContext.CanMutateSession, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                 Text="{Binding PlannedPath, UpdateSourceTrigger=LostFocus}"
+                                                 AutomationProperties.Name="Syncthing folder destination path" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <Button DockPanel.Dock="Bottom" Margin="0,8,0,0"
                                 Content="{Binding OverwriteButtonLabel}"
                                 Command="{Binding ApproveOverwritesCommand}" />

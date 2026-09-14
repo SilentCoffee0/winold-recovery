@@ -533,6 +533,92 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public void SyncthingConfig_Rewrite_AppliesFolderPathOverridesAndPausesDefaults()
+    {
+        string alice = @"C:\Users\Alice";
+        string dest = @"C:\Users\New";
+        string xml =
+            $"""
+            <configuration version="37">
+              <folder id="default" label="Default Folder" path="{Path.Combine(alice, "Sync")}" paused="false" />
+              <folder id="ext" label="External" path="D:\Sync" paused="false" />
+              <defaults>
+                <folder path="{Path.Combine(alice, "Sync")}" />
+              </defaults>
+            </configuration>
+            """;
+
+        string rewritten = SyncthingConfig.Rewrite(
+            xml,
+            alice,
+            dest,
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["ext"] = @"E:\Moved" });
+
+        Assert.True(SyncthingConfig.AllFoldersPaused(rewritten));
+        Assert.Contains(Path.Combine(dest, "Sync"), rewritten, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(@"E:\Moved", rewritten, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(@"D:\Sync", rewritten, StringComparison.OrdinalIgnoreCase);
+        IReadOnlyList<SyncthingFolderMapping> mappings = SyncthingConfig.PlanMappings(
+            xml,
+            alice,
+            dest,
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["ext"] = @"E:\Moved" });
+        Assert.Equal(2, mappings.Count);
+        Assert.Equal(@"E:\Moved", mappings.Single(item => item.Id == "ext").PlannedPath);
+    }
+
+    [Fact]
+    public async Task Syncthing_PlanCardReadsPersistedFolderMap()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string home = Path.Combine(alice, "AppData", "Local", "Syncthing");
+        Directory.CreateDirectory(home);
+        await File.WriteAllTextAsync(Path.Combine(home, "cert.pem"), CreateCertificatePem());
+        await File.WriteAllTextAsync(Path.Combine(home, "key.pem"), Canary);
+        await File.WriteAllTextAsync(
+            Path.Combine(home, "config.xml"),
+            $"""
+            <configuration version="37">
+              <folder id="default" path="{Path.Combine(alice, "Sync")}" paused="false" />
+              <folder id="ext" path="D:\Sync" paused="false" />
+            </configuration>
+            """);
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, [new SyncthingRecipe()]);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+        RecipeCard card = Assert.Single(cards);
+        string moved = Path.Combine(context.Destination, "ExternalSync");
+        await context.Database.SetKvAsync(
+            "session-1",
+            RecipeFolderMap.KvKey(card.InstanceKey),
+            RecipeFolderMap.Format(new Dictionary<string, string> { ["ext"] = moved }));
+
+        PlanResult plan = host.PlanCard(new SyncthingRecipe(), card, Dest(context), "session-1");
+        RecipeWrite config = Assert.Single(
+            plan.Writes,
+            write => write.DestinationPath.EndsWith("config.xml", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(moved, config.Utf8Content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(@"D:\Sync", config.Utf8Content, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task AnkiWslAndGpg_RestoreWithoutTrashIndexOrRandomSeed()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
