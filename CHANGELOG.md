@@ -8,6 +8,7 @@ All notable changes to WinOld Recovery will be documented here.
 
 - Keep-both verification hashed the restored copy instead of the preexisting destination; CopyTree resume no longer Keep-Boths files that already match; leftover `.winold-partial` cleanup no longer follows destination junctions; `RestoreRunner.Completed` is false when any item Failed; purge consults stored verify rows and the copy journal and fails closed if those fields are omitted; `cleanmgr /sagerun:777` runs only after Previous Installations `StateFlags0777` is armed. See `BUG_AUDIT.md`.
 - CopyTree and verify skip the same Offline/EFS/reparse entries, so a restore of a mixed folder can complete and verify without requiring cloud placeholders.
+- `.gitignore` no longer matches `src/.../Sessions` source; session workspace and session-record export are tracked.
 
 ### Added
 

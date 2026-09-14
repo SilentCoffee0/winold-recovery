@@ -7,6 +7,13 @@ This document does **not** authorize tagging `v0.1.0` or `v0.1.0-m0`.
 
 ## Bugs found and fixed
 
+### P0 — `.gitignore` `sessions/` hid Core.Sessions source
+
+- **Location:** `.gitignore` had a bare `sessions/` rule meant for user session data.
+- **Reproduction:** Git treats that as any path component named `sessions`. `SessionWorkspace.cs`, `SessionRecordExport.cs`, and `SessionWorkspaceTests.cs` existed on disk and compiled locally but were never committed. A clean clone would fail to build `SessionWorkspace`.
+- **Fix:** Ignore only `/sessions/` and `**/WinOldRecovery/sessions/` (recovery data), then add the Core.Sessions source and tests.
+- **Test:** files appear in `git ls-files src/WinOldRecovery.Core/Sessions`.
+
 ### P0 — `cleanmgr /sagerun:777` without Previous Installations StateFlags
 
 - **Location:** `src/WinOldRecovery.Core/Purge/PurgeExecutor.cs` (before this audit).

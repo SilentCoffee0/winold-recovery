@@ -10,8 +10,10 @@ artifacts/
 *.userosscache
 *.sln.docstates
 
-# Recovery sessions and user data must never be committed.
-sessions/
+# Recovery session *data* must never be committed. Do not ignore source folders
+# named Sessions (WinOldRecovery.Core.Sessions).
+/sessions/
+**/WinOldRecovery/sessions/
 *.db
 *.db-shm
 *.db-wal
