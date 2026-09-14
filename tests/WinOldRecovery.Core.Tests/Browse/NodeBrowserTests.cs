@@ -66,6 +66,24 @@ public sealed class NodeBrowserTests
 
         NodePage page = new NodeBrowser(context.Database, "session-1").Search("kdbx", null);
         Assert.Equal("notes.kdbx", Assert.Single(page.Rows).Name);
+
+        NodePage glob = new NodeBrowser(context.Database, "session-1").Search("*.KDBX", null);
+        Assert.Equal("notes.kdbx", Assert.Single(glob.Rows).Name);
+    }
+
+    [Fact]
+    public async Task GetRecent_UsesTheSameUtcTimestampFormatAsInsert()
+    {
+        await using BrowserContext context = await BrowserContext.CreateAsync();
+        await context.InsertAsync(
+        [
+            Node(1, null, "", "root"),
+            Node(2, 1, "old.txt", "old.txt", mtimeUtc: DateTime.UtcNow.AddDays(-200)),
+            Node(3, 1, "new.txt", "new.txt", mtimeUtc: DateTime.UtcNow),
+        ]);
+
+        NodePage page = new NodeBrowser(context.Database, "session-1").GetRecent(30, null);
+        Assert.Equal("new.txt", Assert.Single(page.Rows).Name);
     }
 
     [Fact]
@@ -133,7 +151,8 @@ public sealed class NodeBrowserTests
         long? parentId,
         string relPath,
         string name,
-        NodeProblem problem = NodeProblem.None)
+        NodeProblem problem = NodeProblem.None,
+        DateTime? mtimeUtc = null)
     {
         return new PersistedNode(
             id,
@@ -146,7 +165,7 @@ public sealed class NodeBrowserTests
             1,
             1,
             1,
-            DateTime.UtcNow,
+            mtimeUtc ?? DateTime.UtcNow,
             0,
             problem);
     }

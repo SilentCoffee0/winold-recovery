@@ -128,7 +128,7 @@ public sealed class ShellViewModel : ObservableObject
             : null;
         decisionEngine = new DecisionEngine(sessionDb, workspace.SessionId);
         nodeBrowser = new NodeBrowser(sessionDb, workspace.SessionId);
-        ScanCommand = new AsyncRelayCommand(ScanAsync, () => !IsScanning && SelectedSourcePath is not null);
+        ScanCommand = new AsyncRelayCommand(ScanAsync, () => !IsScanning && !isRestoring && SelectedSourcePath is not null);
         CancelScanCommand = new RelayCommand(CancelScan, () => IsScanning);
         PauseScanCommand = new RelayCommand(CancelScan, () => IsScanning);
         BrowseSourceCommand = new RelayCommand(BrowseSource);
@@ -165,11 +165,11 @@ public sealed class ShellViewModel : ObservableObject
         CopyPathCommand = new RelayCommand(CopyPath, () => SelectedNode is not null && SourceRoot is not null);
         ShowMoreCommand = new RelayCommand(ShowMore, () => TreeTruncated);
         RevealInTreeCommand = new RelayCommand(RevealInTree, () => SelectedNode is not null);
-        ExecuteRestoreCommand = new AsyncRelayCommand(ExecuteRestoreAsync, () => lastPlan is not null && lastPreflight is { CanProceed: true } && !IsScanning);
+        ExecuteRestoreCommand = new AsyncRelayCommand(ExecuteRestoreAsync, () => lastPlan is not null && lastPreflight is { CanProceed: true } && !IsScanning && !isRestoring);
         ExecuteVerifyCommand = new AsyncRelayCommand(ExecuteVerifyAsync, () => restoreCompleted);
         PreparePreviewCommand = new AsyncRelayCommand(PreparePreviewAsync, () => scanCompleted && SourceRoot is not null);
         ApproveOverwritesCommand = new AsyncRelayCommand(ApproveOverwritesAsync, CanApproveOverwrites);
-        ExecutePurgeCommand = new AsyncRelayCommand(ExecutePurgeAsync, () => verifyCompleted && !IsScanning);
+        ExecutePurgeCommand = new AsyncRelayCommand(ExecutePurgeAsync, () => verifyCompleted && !IsScanning && !isRestoring);
         CreateSupportBundleCommand = new RelayCommand(CreateSupportBundle, () => verifyCompleted);
         this.firstRun = firstRunState ?? FirstRunState.FromWorkspace(safeFs, workspace);
         this.localHelp = localHelp ?? LocalHelp.FromAppDirectory();
@@ -608,10 +608,7 @@ public sealed class ShellViewModel : ObservableObject
             string sourceFull = SourceRoot is null ? node.RelPath : Path.Combine(SourceRoot, node.RelPath);
             string destination = SourceRoot is null
                 ? node.RelPath
-                : Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                    "Recovered",
-                    node.RelPath);
+                : Path.Combine(DestinationRoot, node.RelPath);
             string sensitive = node.RelPath.Contains("AppData", StringComparison.OrdinalIgnoreCase)
                 ? "This path may contain secrets. Contents are never displayed or logged."
                 : string.Empty;
@@ -744,8 +741,7 @@ public sealed class ShellViewModel : ObservableObject
 
     public void ShowMore()
     {
-        if (!TreeTruncated ||
-            FilesViewMode is FilesViewMode.Largest or FilesViewMode.Unknown or FilesViewMode.Problems)
+        if (!TreeTruncated || FilesViewMode == FilesViewMode.Largest)
         {
             return;
         }
@@ -756,6 +752,8 @@ public sealed class ShellViewModel : ObservableObject
             FilesViewMode.Search => string.IsNullOrWhiteSpace(SearchText)
                 ? new NodePage([], 0, false)
                 : nodeBrowser.Search(SearchText, null, pagedLoaded),
+            FilesViewMode.Unknown => nodeBrowser.GetUnknown(null, pagedLoaded),
+            FilesViewMode.Problems => nodeBrowser.GetProblems(pagedLoaded),
             _ => nodeBrowser.GetChildren(pagedParentId, pagedLoaded),
         };
 
@@ -796,7 +794,9 @@ public sealed class ShellViewModel : ObservableObject
         ReloadView();
         for (int i = 0; i < chain.Count - 1; i++)
         {
-            TreeNodeRow? parent = TreeRows.FirstOrDefault(row => row.Id == chain[i]);
+            TreeNodeRow? parent = i == 0
+                ? PageUntilRootVisible(chain[i])
+                : TreeRows.FirstOrDefault(row => row.Id == chain[i]);
             if (parent is null)
             {
                 continue;
@@ -1037,8 +1037,7 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         await decisionEngine.SetUserDecisionAsync(SelectedNode.Id, decision).ConfigureAwait(true);
-        ReloadView();
-        RebuildCards(lastProfiles);
+        RefreshAfterDecision();
     }
 
     private async Task ClearDecisionAsync()
@@ -1049,8 +1048,7 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         await decisionEngine.ClearUserDecisionAsync(SelectedNode.Id).ConfigureAwait(true);
-        ReloadView();
-        RebuildCards(lastProfiles);
+        RefreshAfterDecision();
     }
 
     private async Task OpenFolderAsync()
@@ -1274,9 +1272,64 @@ public sealed class ShellViewModel : ObservableObject
         }
     }
 
-    internal void SetRestoringForTests(bool restoring)
+    private TreeNodeRow? PageUntilRootVisible(long id)
+    {
+        TreeNodeRow? row = TreeRows.FirstOrDefault(item => item.Id == id);
+        while (row is null && TreeTruncated && pagedParentId is null)
+        {
+            ShowMore();
+            row = TreeRows.FirstOrDefault(item => item.Id == id);
+        }
+
+        return row;
+    }
+
+    private void RefreshAfterDecision()
+    {
+        if (FilesViewMode == FilesViewMode.Tree)
+        {
+            for (int i = 0; i < TreeRows.Count; i++)
+            {
+                TreeNodeRow? fresh = nodeBrowser.GetNode(TreeRows[i].Id);
+                if (fresh is not null)
+                {
+                    TreeRows[i] = fresh;
+                }
+            }
+
+            OnPropertyChanged(nameof(TreeRows));
+        }
+        else
+        {
+            ReloadView();
+        }
+
+        if (SelectedNode is not null)
+        {
+            SelectedNode = nodeBrowser.GetNode(SelectedNode.Id) ?? SelectedNode;
+        }
+
+        RebuildCards(lastProfiles);
+        OnPropertyChanged(nameof(DetailText));
+    }
+
+    private void OnConflictApprovedChanged()
+    {
+        OnPropertyChanged(nameof(OverwriteButtonLabel));
+        ApproveOverwritesCommand.NotifyCanExecuteChanged();
+    }
+
+    private void SetRestoring(bool restoring)
     {
         isRestoring = restoring;
+        ScanCommand.NotifyCanExecuteChanged();
+        ExecuteRestoreCommand.NotifyCanExecuteChanged();
+        ExecutePurgeCommand.NotifyCanExecuteChanged();
+    }
+
+    internal void SetRestoringForTests(bool restoring)
+    {
+        SetRestoring(restoring);
     }
 
     public async Task PreparePreviewAsync()
@@ -1299,7 +1352,12 @@ public sealed class ShellViewModel : ObservableObject
         {
             foreach (PlanConflict conflict in lastPreflight.Conflicts)
             {
-                Conflicts.Add(new ConflictRow(conflict.DestinationPath, conflict.ExistingSize, conflict.ExistingWriteUtc));
+                Conflicts.Add(
+                    new ConflictRow(
+                        conflict.DestinationPath,
+                        conflict.ExistingSize,
+                        conflict.ExistingWriteUtc,
+                        OnConflictApprovedChanged));
             }
         }
 
@@ -1390,7 +1448,7 @@ public sealed class ShellViewModel : ObservableObject
 
         try
         {
-        isRestoring = true;
+        SetRestoring(true);
         RestoreRunner runner = new(new CopyEngine(sessionDb, safeFs));
         RestoreResult result = await runner.RunAsync(lastPlan).ConfigureAwait(true);
         if (result.Completed && recipeHost is not null)
@@ -1422,7 +1480,7 @@ public sealed class ShellViewModel : ObservableObject
                 ? "Restore finished. Verify the copies before considering a purge."
                 : "Restore did not finish. A redacted log is at " + workspace.LogPath + ".";
         ExecuteVerifyCommand.NotifyCanExecuteChanged();
-        isRestoring = false;
+        SetRestoring(false);
         CurrentStep = WorkflowStep.Restore;
         }
         catch (Exception exception)
@@ -1431,7 +1489,7 @@ public sealed class ShellViewModel : ObservableObject
         }
         finally
         {
-            isRestoring = false;
+            SetRestoring(false);
         }
     }
 

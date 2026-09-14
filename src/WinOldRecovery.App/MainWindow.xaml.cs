@@ -1,5 +1,6 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using WinOldRecovery.App.ViewModels;
 
@@ -67,6 +68,11 @@ public partial class MainWindow : Window
         }
 
         if (Keyboard.Modifiers != ModifierKeys.None)
+        {
+            return;
+        }
+
+        if (e.OriginalSource is TextBoxBase or PasswordBox)
         {
             return;
         }

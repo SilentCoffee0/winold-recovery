@@ -52,7 +52,7 @@ public sealed class NodeBrowser
 
     public NodePage GetRecent(int days, long? underNodeId, int offset = 0)
     {
-        DateTimeOffset cutoff = DateTimeOffset.UtcNow.AddDays(-days);
+        DateTime cutoff = DateTime.UtcNow.AddDays(-days);
         string under = RelPathFilter(underNodeId, out string? prefix);
         return Query(
             parentFilter: "1 = 1",
@@ -62,7 +62,7 @@ public sealed class NodeBrowser
             limit: ChildPageSize,
             parentId: null,
             relPrefix: prefix,
-            cutoffUtc: cutoff);
+            cutoffUtc: new DateTimeOffset(cutoff, TimeSpan.Zero));
     }
 
     public NodePage Search(string query, long? underNodeId, int offset = 0)
@@ -71,19 +71,18 @@ public sealed class NodeBrowser
         string under = RelPathFilter(underNodeId, out string? prefix);
         bool glob = query.Contains('*', StringComparison.Ordinal) ||
             query.Contains('?', StringComparison.Ordinal);
-        string nameFilter = glob ? "name GLOB $query" : "name LIKE $query ESCAPE '\\'";
         return Query(
             parentFilter: "1 = 1",
-            extraFilter: Combine(nameFilter, under),
+            extraFilter: Combine("name LIKE $query ESCAPE '\\'", under),
             orderBy: "rel_path COLLATE NOCASE",
             offset,
             limit: ChildPageSize,
             parentId: null,
             relPrefix: prefix,
-            search: glob ? query : "%" + EscapeLike(query) + "%");
+            search: glob ? GlobToLike(query) : "%" + EscapeLike(query) + "%");
     }
 
-    public NodePage GetUnknown(long? underNodeId)
+    public NodePage GetUnknown(long? underNodeId, int offset = 0)
     {
         string under = RelPathFilter(underNodeId, out string? prefix);
         string names = string.Join(
@@ -100,19 +99,19 @@ public sealed class NodeBrowser
                 """,
                 under),
             orderBy: "agg_size DESC, name COLLATE NOCASE",
-            offset: 0,
+            offset,
             limit: ChildPageSize,
             parentId: null,
             relPrefix: prefix);
     }
 
-    public NodePage GetProblems()
+    public NodePage GetProblems(int offset = 0)
     {
         return Query(
             parentFilter: "1 = 1",
             extraFilter: "problem <> 'None'",
             orderBy: "problem, rel_path COLLATE NOCASE",
-            offset: 0,
+            offset,
             limit: ChildPageSize,
             parentId: null);
     }
@@ -275,7 +274,7 @@ public sealed class NodeBrowser
         {
             command.Parameters.AddWithValue(
                 "$cutoff",
-                cutoffUtc.Value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+                cutoffUtc.Value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
         }
 
         if (search is not null)
@@ -332,6 +331,33 @@ public sealed class NodeBrowser
         }
 
         return left + " AND " + right;
+    }
+
+    private static string GlobToLike(string glob)
+    {
+        System.Text.StringBuilder builder = new(glob.Length);
+        foreach (char character in glob)
+        {
+            switch (character)
+            {
+                case '*':
+                    builder.Append('%');
+                    break;
+                case '?':
+                    builder.Append('_');
+                    break;
+                case '%':
+                case '_':
+                case '\\':
+                    builder.Append('\\').Append(character);
+                    break;
+                default:
+                    builder.Append(character);
+                    break;
+            }
+        }
+
+        return builder.ToString();
     }
 
     private static string EscapeLike(string value)

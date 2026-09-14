@@ -202,7 +202,7 @@
                                 </Style>
                             </ListView.Style>
                         <ListView.ContextMenu>
-                            <ContextMenu>
+                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                 <MenuItem Header="Inspect" Command="{Binding InspectCommand}" />
                                 <MenuItem Header="Reveal in tree" Command="{Binding RevealInTreeCommand}" />
                                 <MenuItem Header="Open Folder" Command="{Binding OpenFolderCommand}" />

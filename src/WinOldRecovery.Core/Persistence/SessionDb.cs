@@ -237,7 +237,8 @@ public sealed class SessionDb : IAsyncDisposable
                     aggSize.Value = node.AggSize;
                     aggFiles.Value = node.AggFiles;
                     mtime.Value = node.LastWriteTimeUtc is { } lastWrite
-                        ? lastWrite.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)
+                        ? DateTime.SpecifyKind(lastWrite, DateTimeKind.Utc)
+                            .ToString("O", CultureInfo.InvariantCulture)
                         : DBNull.Value;
                     attributes.Value = node.Attributes;
                     problem.Value = node.Problem.ToString();

@@ -153,6 +153,43 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task RestoreDecision_KeepsExpandedTreeAndUpdatesTheLabel()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "Desktop", "notes.txt"),
+            "keep");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        context.ViewModel.FilesViewMode = FilesViewMode.Tree;
+        ExpandDirectories(context);
+        ExpandDirectories(context);
+        context.ViewModel.Expand(FindRow(context, "Alice"));
+        context.ViewModel.Expand(FindRow(context, "Desktop"));
+
+        context.ViewModel.SelectedNode = FindRow(context, "notes.txt");
+        await context.ViewModel.RestoreCommand.ExecuteAsync(null);
+
+        Assert.Contains(context.ViewModel.TreeRows, row => row.Name == "notes.txt");
+        Assert.Equal(Decision.Restore, context.ViewModel.SelectedNode?.EffectiveDecision);
+        Assert.Contains("Restore", context.ViewModel.SelectedNode?.DecisionLabel, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TickingAConflict_UpdatesTheOverwriteButton()
+    {
+        bool notified = false;
+        ConflictRow row = new(@"C:\Recovered\a.txt", 1, DateTimeOffset.UtcNow, () => notified = true);
+        row.Approved = true;
+        Assert.True(notified);
+    }
+
+    [Fact]
     public async Task HashDuringScan_StoresSha256ForSmallFiles()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();
