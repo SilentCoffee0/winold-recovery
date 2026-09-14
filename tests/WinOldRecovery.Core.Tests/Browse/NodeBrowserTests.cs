@@ -32,12 +32,12 @@ public sealed class NodeBrowserTests
 
         Assert.Equal("root", Assert.Single(roots.Rows).Name);
         Assert.Equal(2, children.TotalCount);
-        Assert.All(children.Rows, row => Assert.Equal("Restore (inherited)", row.DecisionLabel));
+        Assert.All(children.Rows, row => Assert.Equal("● Restore (inherited)", row.DecisionLabel));
         Assert.False(children.Truncated);
 
         await engine.SetUserDecisionAsync(3, Decision.LeaveBehind);
         TreeNodeRow folder = Assert.Single(browser.GetChildren(1).Rows);
-        Assert.StartsWith("mixed", folder.DecisionLabel, StringComparison.Ordinal);
+        Assert.StartsWith("○ mixed", folder.DecisionLabel, StringComparison.Ordinal);
         Assert.True(folder.MixedSubtree);
         Assert.True(folder.RestoreBytes > 0);
         Assert.True(folder.LeaveBehindBytes > 0);

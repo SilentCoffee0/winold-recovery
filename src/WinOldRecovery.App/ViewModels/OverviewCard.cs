@@ -12,4 +12,5 @@ public sealed record OverviewCard(
     string Facts,
     string DecisionLabel,
     long? NodeId,
-    string Kind);
+    string Kind,
+    string DecisionTooltip = "");

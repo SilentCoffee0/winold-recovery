@@ -130,6 +130,16 @@ public sealed record TreeNodeRow(
         }
     }
 
+    public bool IsInheritedDecision =>
+        !IsReparse &&
+        !MixedSubtree &&
+        !HasOwnUserDecision &&
+        !HasSuggestedDefault &&
+        EffectiveDecision != Decision.Undecided;
+
+    public string DecisionTooltip =>
+        DecisionDisplay.Tooltip(HasOwnUserDecision, HasSuggestedDefault, IsInheritedDecision) ?? RelPath;
+
     public string DecisionLabel
     {
         get
@@ -142,25 +152,13 @@ public sealed record TreeNodeRow(
             if (MixedSubtree)
             {
                 string bar = MixedBar;
-                return bar.Length == 0 ? "mixed" : "mixed " + bar;
+                return bar.Length == 0 ? "○ mixed" : "○ mixed " + bar;
             }
 
-            if (HasOwnUserDecision)
-            {
-                return EffectiveDecision.ToString();
-            }
-
-            if (EffectiveDecision == Decision.Undecided)
-            {
-                return "Undecided";
-            }
-
-            if (HasSuggestedDefault)
-            {
-                return $"{EffectiveDecision} (suggested)";
-            }
-
-            return $"{EffectiveDecision} (inherited)";
+            return DecisionDisplay.Label(
+                EffectiveDecision,
+                HasOwnUserDecision,
+                HasSuggestedDefault);
         }
     }
 }

@@ -79,3 +79,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Scan options on the Scan step: compute folder sizes (default on) and optional hashing of files smaller than 64 MB.
 - Recipe cards expose Inspect, Open Folder, Restore, and Leave Behind in that order (UX 6).
 - Files tree greys junctions/symlinks with ⊘, a target tooltip, and dash columns; Problems rows explain what can be done.
+- Decision chips use ● / ◌ / ○; suggested defaults stay hollow with a confirm tooltip; inherited decisions are dimmed.

@@ -20,6 +20,8 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("TextSearch.TextPath=\"Name\"", xaml, StringComparison.Ordinal);
         Assert.Contains("DisplayName", xaml, StringComparison.Ordinal);
         Assert.Contains("RowTooltip", xaml, StringComparison.Ordinal);
+        Assert.Contains("DecisionTooltip", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsInheritedDecision", xaml, StringComparison.Ordinal);
         Assert.Contains("GrayTextBrushKey", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"BrowseSourceButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Pause scan", xaml, StringComparison.Ordinal);

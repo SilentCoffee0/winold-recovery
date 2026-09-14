@@ -1868,7 +1868,7 @@ public sealed class ShellViewModel : ObservableObject
                     profile.LastUsedUtc is { } used
                         ? "Last used " + used.ToString("d MMM yyyy")
                         : "Last used unknown",
-                    "Undecided",
+                    DecisionDisplay.Label(Decision.Undecided, ownUser: false, suggested: false),
                     NodeId: null,
                     "Profile"));
 
@@ -1884,9 +1884,10 @@ public sealed class ShellViewModel : ObservableObject
                         node is null
                             ? "Present in the old profile"
                             : $"{node.AggFiles} files, {node.AggSize} bytes",
-                        node?.DecisionLabel ?? "Undecided",
+                        node?.DecisionLabel ?? DecisionDisplay.Label(Decision.Undecided, ownUser: false, suggested: false),
                         node?.Id,
-                        "PersonalFolder"));
+                        "PersonalFolder",
+                        node?.DecisionTooltip ?? string.Empty));
             }
         }
 
@@ -1897,7 +1898,7 @@ public sealed class ShellViewModel : ObservableObject
                     "High-value items",
                     "Password vaults, libraries, VM disks, and similar files.",
                     $"{lastClassification.HighValueCount} items, {lastClassification.HighValueBytes} bytes",
-                    "Undecided",
+                    DecisionDisplay.Label(Decision.Undecided, ownUser: false, suggested: false),
                     NodeId: null,
                     "HighValue"));
             Cards.Add(
@@ -1905,23 +1906,26 @@ public sealed class ShellViewModel : ObservableObject
                     "Regeneratable",
                     "Caches and installers. Badged only — never left behind automatically.",
                     $"{lastClassification.RegeneratableCount} folders or files, {lastClassification.RegeneratableBytes} bytes",
-                    "Undecided",
+                    DecisionDisplay.Label(Decision.Undecided, ownUser: false, suggested: false),
                     NodeId: null,
                     "Regeneratable"));
         }
 
         foreach (RecipeCard recipe in lastRecipeCards)
         {
+            bool restoreSuggested = recipe.Components.Any(
+                static component => component.SuggestedDefault == Decision.Restore);
             Cards.Add(
                 new OverviewCard(
                     recipe.Title,
                     recipe.What,
                     recipe.WhyItMatters,
-                    recipe.Components.Any(static component => component.SuggestedDefault == Decision.Restore)
-                        ? "Restore (suggested)"
-                        : "Undecided",
+                    restoreSuggested
+                        ? DecisionDisplay.Label(Decision.Restore, ownUser: false, suggested: true)
+                        : DecisionDisplay.Label(Decision.Undecided, ownUser: false, suggested: false),
                     NodeId: null,
-                    recipe.RecipeId));
+                    recipe.RecipeId,
+                    restoreSuggested ? DecisionDisplay.SuggestedTooltip : string.Empty));
         }
 
         if (recipeHost is not null)

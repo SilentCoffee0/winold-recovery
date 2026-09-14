@@ -196,7 +196,8 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBlock Text="{Binding DecisionLabel}">
+                                        <TextBlock Text="{Binding DecisionLabel}"
+                                                   ToolTip="{Binding DecisionTooltip}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Style.Triggers>
@@ -274,7 +275,25 @@
                                 <GridViewColumn Header="Size" DisplayMemberBinding="{Binding SizeLabel}" Width="90" />
                                 <GridViewColumn Header="Files" DisplayMemberBinding="{Binding FilesLabel}" Width="70" />
                                 <GridViewColumn Header="Modified" DisplayMemberBinding="{Binding ModifiedLabel}" Width="110" />
-                                <GridViewColumn Header="Decision" DisplayMemberBinding="{Binding DecisionLabel}" Width="140" />
+                                <GridViewColumn Header="Decision" Width="160">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding DecisionLabel}"
+                                                       ToolTip="{Binding DecisionTooltip}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsInheritedDecision}" Value="True">
+                                                                <Setter Property="Foreground"
+                                                                        Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                                 <GridViewColumn Header="Problem" DisplayMemberBinding="{Binding Problem}" Width="120" />
                                 <GridViewColumn Header="Badges" DisplayMemberBinding="{Binding BadgeText}" Width="160" />
                             </GridView>

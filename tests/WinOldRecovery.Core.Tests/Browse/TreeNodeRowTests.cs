@@ -33,6 +33,53 @@ public sealed class TreeNodeRowTests
         Assert.Equal(row.ProblemExplanation, row.RowTooltip);
     }
 
+    [Fact]
+    public void SuggestedRestore_IsHollowWithConfirmTooltip()
+    {
+        TreeNodeRow row = new(
+            1,
+            null,
+            "Documents",
+            "Documents",
+            NodeKind.Directory,
+            0,
+            0,
+            0,
+            null,
+            NodeProblem.None,
+            Decision.Restore,
+            false,
+            true,
+            0,
+            []);
+        Assert.Equal("◌ Restore (suggested)", row.DecisionLabel);
+        Assert.Equal(DecisionDisplay.SuggestedTooltip, row.DecisionTooltip);
+        Assert.False(row.IsInheritedDecision);
+    }
+
+    [Fact]
+    public void ConfirmedRestore_IsFilledWithoutSuggestedTooltip()
+    {
+        TreeNodeRow row = new(
+            1,
+            null,
+            "Documents",
+            "Documents",
+            NodeKind.Directory,
+            0,
+            0,
+            0,
+            null,
+            NodeProblem.None,
+            Decision.Restore,
+            true,
+            true,
+            0,
+            []);
+        Assert.Equal("● Restore", row.DecisionLabel);
+        Assert.NotEqual(DecisionDisplay.SuggestedTooltip, row.DecisionTooltip);
+    }
+
     private static TreeNodeRow Row(
         NodeKind kind,
         string name,
