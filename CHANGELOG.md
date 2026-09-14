@@ -88,3 +88,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Scan progress lists profiles found, file/folder counts, size so far, and skip counters (UX 2.2).
 - The shell uses the system message font and size so text follows Windows DPI and accessibility text size (UX 9).
 - Files-tree expansion no longer walks mixed subtrees or counts children for every file leaf. The parent-name index is `COLLATE NOCASE` (schema v3) so a 100k-child folder's first page stays under 300 ms.
+- CI walks 1,000,000 on-disk empty files in under 60 s and keeps the test-process working set under 1.5 GB. The published-EXE 1M scan remains a manual check.
