@@ -160,6 +160,19 @@ public sealed class SourceGuardTests : IDisposable
     }
 
     [Fact]
+    public void I12_OpenReadRefusesOfflinePlaceholders()
+    {
+        string cloud = Path.Combine(sourceRoot, "offline-placeholder.txt");
+        File.WriteAllText(cloud, string.Empty);
+        File.SetAttributes(cloud, FileAttributes.Offline);
+        guard.RegisterSourceRoot(sourceRoot);
+
+        IOException exception = Assert.Throws<IOException>(() => safeFs.OpenRead(cloud));
+        Assert.Contains("offline", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.GetAttributes(cloud).HasFlag(FileAttributes.Offline));
+    }
+
+    [Fact]
     public void OpenReadReadsOrdinarySourceFileWithoutWritingIt()
     {
         string sourceFile = Path.Combine(sourceRoot, "read-me.txt");

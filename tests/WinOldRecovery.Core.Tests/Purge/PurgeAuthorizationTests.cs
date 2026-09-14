@@ -11,6 +11,19 @@ namespace WinOldRecovery.Core.Tests.Purge;
 public sealed class PurgeAuthorizationTests
 {
     [Fact]
+    public async Task I10_TokenIsNullWhenAnyGateFails()
+    {
+        await using SettledSession settled = await SettledSession.CreateAsync();
+        PurgeGateRequest ok = Valid(settled.CanonicalSource);
+        Assert.NotNull(Eval(ok, settled).Token);
+        Assert.Null(Eval(ok with { VerifyAllOk = false }, settled).Token);
+        Assert.Null(Eval(ok with { FilesChecked = false }, settled).Token);
+        Assert.Null(Eval(ok with { UndecidedAcknowledged = false }, settled).Token);
+        Assert.Null(Eval(ok with { RestoreJobActive = true }, settled).Token);
+        Assert.Null(Eval(ok with { TypedFolderName = "wrong" }, settled).Token);
+    }
+
+    [Fact]
     public async Task EachGateIndividuallyBlocks()
     {
         await using SettledSession settled = await SettledSession.CreateAsync();

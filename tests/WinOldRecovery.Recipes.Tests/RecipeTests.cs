@@ -35,6 +35,49 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task I9_ExecuteWritesOnlyPlannedDestinations()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        Directory.CreateDirectory(Path.Combine(alice, ".ssh"));
+        await File.WriteAllTextAsync(Path.Combine(alice, ".ssh", "id_ed25519"), "key");
+        await File.WriteAllTextAsync(Path.Combine(alice, ".ssh", "id_ed25519.pub"), "pub");
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, RecipeCatalog.All);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+
+        RecipeCard ssh = cards.Single(card => card.RecipeId == "ssh");
+        PlanResult plan = host.PlanCard(new SshRecipe(), ssh, Dest(context));
+        Assert.NotEmpty(plan.Writes);
+        HashSet<string> planned = plan.Writes
+            .Select(write => Path.GetFullPath(write.DestinationPath))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> before = SnapshotFiles(context.Destination, context.Exports);
+        await host.ExecuteAsync("session-1", new SshRecipe(), plan);
+        HashSet<string> created = SnapshotFiles(context.Destination, context.Exports);
+        created.ExceptWith(before);
+
+        Assert.True(new SshRecipe().Verify(plan).Ok);
+        Assert.Equal(planned, created);
+    }
+
+    [Fact]
     public async Task SshAndChromeAndFirefoxAndGit_DetectWithoutLeakingCanaries()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
@@ -600,6 +643,25 @@ public sealed class RecipeTests
     private static DestinationContext Dest(RecipeContext context)
     {
         return new DestinationContext(context.Destination, context.Exports, context.SafeFs, context.Runner);
+    }
+
+    private static HashSet<string> SnapshotFiles(params string[] roots)
+    {
+        HashSet<string> files = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string root in roots)
+        {
+            if (!Directory.Exists(root))
+            {
+                continue;
+            }
+
+            foreach (string path in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+            {
+                files.Add(Path.GetFullPath(path));
+            }
+        }
+
+        return files;
     }
 
     private static void WriteSqlite(string path, string sql)

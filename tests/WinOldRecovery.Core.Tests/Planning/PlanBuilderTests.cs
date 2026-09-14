@@ -12,6 +12,40 @@ namespace WinOldRecovery.Core.Tests.Planning;
 public sealed class PlanBuilderTests
 {
     [Fact]
+    public async Task I4_BuildNeverPlansWholeAppData()
+    {
+        await using PlanContext context = await PlanContext.CreateAsync();
+        await context.Database.InsertNodesAsync(
+        [
+            Node(1, null, "", "root", NodeKind.Directory),
+            Node(2, 1, @"Users\Alice", "Alice", NodeKind.Directory),
+            Node(3, 2, @"Users\Alice\AppData", "AppData", NodeKind.Directory),
+            Node(4, 3, @"Users\Alice\AppData\Local", "Local", NodeKind.Directory),
+            Node(5, 3, @"Users\Alice\AppData\Roaming", "Roaming", NodeKind.Directory),
+            Node(6, 4, @"Users\Alice\AppData\Local\MyApp", "MyApp", NodeKind.Directory, aggSize: 5),
+            Node(7, 6, @"Users\Alice\AppData\Local\MyApp\settings.json", "settings.json", NodeKind.File, size: 5),
+        ]);
+        DecisionEngine engine = new(context.Database, context.SessionId);
+        await engine.SetUserDecisionAsync(3, Decision.Restore);
+
+        RestorePlan plan = await new PlanBuilder(context.Database).BuildAsync(
+            new PlanRequest(context.SessionId, context.Source, context.Destination));
+
+        Assert.DoesNotContain(
+            plan.Items,
+            item => item.SourcePath.EndsWith(@"Users\Alice\AppData", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(
+            plan.Items,
+            item => item.SourcePath.EndsWith(@"Users\Alice\AppData\Local", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(
+            plan.Items,
+            item => item.SourcePath.EndsWith(@"Users\Alice\AppData\Roaming", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            plan.Items,
+            item => item.SourcePath.EndsWith(@"Users\Alice\AppData\Local\MyApp", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task Build_EmitsCopyTreeForUniformRestoreAndSkipsWholeAppData()
     {
         await using PlanContext context = await PlanContext.CreateAsync();
@@ -86,7 +120,7 @@ public sealed class PlanBuilderTests
     }
 
     [Fact]
-    public async Task Build_RejectsDestinationInsideSource()
+    public async Task I13_BuildRejectsDestinationInsideSource()
     {
         await using PlanContext context = await PlanContext.CreateAsync();
         await context.Database.InsertNodesAsync(
@@ -100,6 +134,23 @@ public sealed class PlanBuilderTests
                     context.SessionId,
                     context.Source,
                     Path.Combine(context.Source, "inside"))));
+    }
+
+    [Fact]
+    public async Task I13_BuildRejectsSourceInsideDestination()
+    {
+        await using PlanContext context = await PlanContext.CreateAsync();
+        await context.Database.InsertNodesAsync(
+        [
+            Node(1, null, "", "root", NodeKind.Directory),
+        ]);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new PlanBuilder(context.Database).BuildAsync(
+                new PlanRequest(
+                    context.SessionId,
+                    context.Source,
+                    context.Root)));
     }
 
     [Fact]

@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Linq;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Microsoft.Data.Sqlite;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Persistence;
@@ -84,6 +86,33 @@ public sealed class CopyEngineTests
 
         Assert.Equal("from-old", await File.ReadAllTextAsync(destFile));
         Assert.False(File.Exists(Path.Combine(context.Destination, "note (from Windows.old).txt")));
+    }
+
+    [Fact]
+    public async Task I14_RestoredFileDoesNotCopySourceAcls()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string sourceFile = Path.Combine(context.Source, "note.txt");
+        await File.WriteAllTextAsync(sourceFile, "from-old");
+        SecurityIdentifier marker = new("S-1-5-21-3623811015-3361044348-30300820-1013");
+        FileInfo sourceInfo = new(sourceFile);
+        FileSecurity sourceSecurity = sourceInfo.GetAccessControl();
+        sourceSecurity.AddAccessRule(
+            new FileSystemAccessRule(marker, FileSystemRights.Read, AccessControlType.Allow));
+        sourceInfo.SetAccessControl(sourceSecurity);
+        Assert.True(HasExplicitRule(sourceFile, marker));
+
+        string destFile = Path.Combine(context.Destination, "note.txt");
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyFile,
+            sourceFile,
+            destFile,
+            ConflictPolicy.KeepBoth);
+        await new CopyEngine(context.Database, context.SafeFs).CopyAsync(item);
+
+        Assert.Equal("from-old", await File.ReadAllTextAsync(destFile));
+        Assert.False(HasExplicitRule(destFile, marker));
+        Assert.False(HasExplicitRule(context.Destination, marker));
     }
 
     [Fact]
@@ -675,5 +704,23 @@ public sealed class CopyEngineTests
         }
 
         Directory.Delete(root);
+    }
+
+    private static bool HasExplicitRule(string path, SecurityIdentifier identity)
+    {
+        FileSystemSecurity security = Directory.Exists(path)
+            ? new DirectoryInfo(path).GetAccessControl()
+            : new FileInfo(path).GetAccessControl();
+        foreach (FileSystemAccessRule rule in security
+            .GetAccessRules(true, false, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>())
+        {
+            if (rule.IdentityReference.Equals(identity))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

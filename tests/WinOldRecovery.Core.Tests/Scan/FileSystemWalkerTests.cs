@@ -10,7 +10,7 @@ namespace WinOldRecovery.Core.Tests.Scan;
 public sealed class FileSystemWalkerTests
 {
     [Fact]
-    public async Task Walk_DoesNotFollowJunctionsAndClassifiesHazards()
+    public async Task I11_WalkDoesNotFollowJunctionsAndClassifiesHazards()
     {
         await using WalkerTestContext context = await WalkerTestContext.CreateAsync();
         string live = Path.Combine(context.Root, "live");

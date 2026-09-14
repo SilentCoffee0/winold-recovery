@@ -49,6 +49,32 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task WindowTitle_IncludesSourcePathAndStep()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        Assert.Contains("Scan", context.ViewModel.WindowTitle, StringComparison.Ordinal);
+        Assert.Contains(
+            "administrator rights",
+            context.ViewModel.ElevationNote,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            context.ViewModel.ElevationNote,
+            context.ViewModel.FirstRunBody,
+            StringComparison.Ordinal);
+
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        Assert.Contains("Windows.old", context.ViewModel.WindowTitle, StringComparison.Ordinal);
+        Assert.Contains("Decide", context.ViewModel.WindowTitle, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Scan_AddsCollapsedCardsForAppsThatWereLookedForAndMissing()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync(RecipeCatalog.All);
