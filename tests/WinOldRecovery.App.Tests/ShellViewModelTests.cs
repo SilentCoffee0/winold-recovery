@@ -164,6 +164,35 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task Inspect_ShowsDestinationConflictPreview()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "Desktop", "notes.txt"),
+            "from-old");
+        string recovered = Path.Combine(context.Root, "Recovered");
+        string destFile = Path.Combine(recovered, "Users", "Alice", "Desktop", "notes.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(destFile)!);
+        await File.WriteAllTextAsync(destFile, "already-here");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        context.ViewModel.DestinationRoot = recovered;
+        ExpandDirectories(context);
+        ExpandDirectories(context);
+        context.ViewModel.Expand(FindRow(context, "Alice"));
+        context.ViewModel.Expand(FindRow(context, "Desktop"));
+        context.ViewModel.SelectedNode = FindRow(context, "notes.txt");
+
+        Assert.Contains("already has 1 files", context.ViewModel.DetailText, StringComparison.Ordinal);
+        Assert.Contains("1 differ", context.ViewModel.DetailText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task PreparePreview_ListsCannotRestoreAndUndecidedItems()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();

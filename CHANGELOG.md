@@ -67,3 +67,4 @@ All notable changes to WinOld Recovery will be documented here.
 - After purge the session is read-only; Verify can be re-run or failed jobs acknowledged with a typed reason (I10); Restore lists each plan item as a job.
 - Smart-card Open Folder reveals the recipe source path in Explorer.
 - Restore Pause keeps already-copied files and journals `Paused`; resuming a paused CopyTree does not Keep Both files that already match. Verify offers Go to Purge.
+- Inspect shows how many destination files already exist and how many differ; Preview can Re-check the plan.

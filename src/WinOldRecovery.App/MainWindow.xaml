@@ -362,6 +362,9 @@
                                    Text="{Binding PreviewSummaryText}"
                                    AutomationProperties.Name="Restore plan summary" />
                         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                            <Button Content="Re-check" Command="{Binding PreparePreviewCommand}" Margin="0,0,8,0"
+                                    AutomationProperties.Name="Re-check restore plan"
+                                    AutomationProperties.AutomationId="RecheckPreviewButton" />
                             <Button Content="Review undecided" Command="{Binding ReviewUndecidedCommand}"
                                     AutomationProperties.Name="Review undecided items" />
                         </StackPanel>

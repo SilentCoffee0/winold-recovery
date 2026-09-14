@@ -122,6 +122,7 @@ public sealed class ShellViewModel : ObservableObject
     private bool sessionReadOnly;
     private string verifyAckReason = string.Empty;
     private string verifyFailureText = string.Empty;
+    private string inspectConflictText = string.Empty;
 
     private static string LiveProfileRoot =>
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -634,7 +635,7 @@ public sealed class ShellViewModel : ObservableObject
             if (SetProperty(ref destinationRoot, value))
             {
                 OnPropertyChanged(nameof(PlannedDestinationPath));
-                OnPropertyChanged(nameof(DetailText));
+                RefreshInspectConflict();
             }
         }
     }
@@ -663,7 +664,7 @@ public sealed class ShellViewModel : ObservableObject
 
             destinationByRelPath[SelectedNode.RelPath] = value.Trim();
             OnPropertyChanged();
-            OnPropertyChanged(nameof(DetailText));
+            RefreshInspectConflict();
             _ = PersistDestinationMapAsync();
         }
     }
@@ -709,6 +710,7 @@ public sealed class ShellViewModel : ObservableObject
                 OnPropertyChanged(nameof(DetailText));
                 OnPropertyChanged(nameof(PlannedDestinationPath));
                 OnPropertyChanged(nameof(CanEditDestination));
+                RefreshInspectConflict();
             }
         }
     }
@@ -822,11 +824,13 @@ public sealed class ShellViewModel : ObservableObject
 
             TreeNodeRow node = SelectedNode;
             string sourceFull = SourceRoot is null ? node.RelPath : Path.Combine(SourceRoot, node.RelPath);
-            string destination = SourceRoot is null
-                ? node.RelPath
-                : Path.Combine(DestinationRoot, node.RelPath);
-            string sensitive = node.RelPath.Contains("AppData", StringComparison.OrdinalIgnoreCase)
-                ? "This path may contain secrets. Contents are never displayed or logged."
+            string destination = string.IsNullOrEmpty(PlannedDestinationPath)
+                ? (SourceRoot is null ? node.RelPath : Path.Combine(DestinationRoot, node.RelPath))
+                : PlannedDestinationPath;
+            string sensitive = node.Badges.Any(static badge =>
+                    badge.Contains("Sensitive", StringComparison.OrdinalIgnoreCase)) ||
+                node.RelPath.Contains("AppData", StringComparison.OrdinalIgnoreCase)
+                ? "This file contains secrets. Contents are never displayed or logged."
                 : string.Empty;
             return string.Join(
                 Environment.NewLine,
@@ -841,9 +845,25 @@ public sealed class ShellViewModel : ObservableObject
                     "Decision: " + node.DecisionLabel,
                     "Problem: " + node.Problem,
                     node.IsReparse ? "This reparse point cannot be restored." : string.Empty,
+                    inspectConflictText,
                     sensitive,
                 ]).Where(static line => line.Length > 0));
         }
+    }
+
+    private void RefreshInspectConflict()
+    {
+        if (SelectedNode is null || SourceRoot is null || SelectedNode.IsReparse)
+        {
+            inspectConflictText = string.Empty;
+            OnPropertyChanged(nameof(DetailText));
+            return;
+        }
+
+        string source = Path.Combine(SourceRoot, SelectedNode.RelPath);
+        inspectConflictText = DestinationConflictPreview.Format(
+            DestinationConflictPreview.Scan(source, PlannedDestinationPath));
+        OnPropertyChanged(nameof(DetailText));
     }
 
     public async Task LoadSourcesAsync(CancellationToken cancellationToken = default)
