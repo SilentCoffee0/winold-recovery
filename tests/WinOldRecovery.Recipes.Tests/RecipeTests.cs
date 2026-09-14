@@ -15,6 +15,26 @@ public sealed class RecipeTests
     private const string Canary = "WINOLD_RECOVERY_CANARY_DO_NOT_LOG_7F3A91";
 
     [Fact]
+    public void RecipeSourcePaths_OpenPath_ReadsTheSourceFact()
+    {
+        RecipeCard card = new(
+            "ssh",
+            "SSH",
+            "what",
+            "why",
+            "restore",
+            "cloud",
+            "regen",
+            "leave",
+            [],
+            "alice",
+            new Dictionary<string, string> { ["source"] = @"D:\Windows.old\Users\Alice\.ssh" });
+
+        Assert.Equal(@"D:\Windows.old\Users\Alice\.ssh", RecipeSourcePaths.OpenPath(card));
+        Assert.Null(RecipeSourcePaths.OpenPath(card with { Facts = new Dictionary<string, string>() }));
+    }
+
+    [Fact]
     public async Task SshAndChromeAndFirefoxAndGit_DetectWithoutLeakingCanaries()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();

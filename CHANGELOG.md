@@ -65,3 +65,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Scan reports Setup Cleanup task presence and next run from a read-only `schtasks /Query` (never `/Change`).
 - Decide Undo (Ctrl+Z), per-component recipe decisions, and a session record export before purge.
 - After purge the session is read-only; Verify can be re-run or failed jobs acknowledged with a typed reason (I10); Restore lists each plan item as a job.
+- Smart-card Open Folder reveals the recipe source path in Explorer.

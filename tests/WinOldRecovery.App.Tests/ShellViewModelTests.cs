@@ -505,6 +505,31 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task OpenFolder_OnARecipeCard_SelectsTheSourceFactPath()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync(RecipeCatalog.All);
+        string source = Path.Combine(context.Root, "Windows.old");
+        string ssh = Path.Combine(source, "Users", "Alice", ".ssh");
+        Directory.CreateDirectory(ssh);
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(Path.Combine(ssh, "id_ed25519.pub"), "ssh-ed25519 FIXTURE");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        context.ViewModel.SelectedCard = context.ViewModel.Cards.First(
+            card => card.Kind == "ssh");
+        context.Runner.Requests.Clear();
+
+        Assert.True(context.ViewModel.OpenFolderCommand.CanExecute(null));
+        await context.ViewModel.OpenFolderCommand.ExecuteAsync(null);
+
+        ProcessRequest request = Assert.Single(context.Runner.Requests);
+        Assert.Equal("explorer.exe", request.FileName);
+        Assert.Contains(".ssh", Assert.Single(request.Arguments), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Scan_MissingFolder_SurfacesRedactedExplanationAndLogPath()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();

@@ -509,8 +509,11 @@
                                     IsEnabled="{Binding CanMutateSession}">
                             <Button Content="Restore" Command="{Binding RestoreCommand}" Margin="0,0,8,0"
                                     AutomationProperties.Name="Restore this app card" />
-                            <Button Content="Leave Behind" Command="{Binding LeaveBehindCommand}"
+                            <Button Content="Leave Behind" Command="{Binding LeaveBehindCommand}" Margin="0,0,8,0"
                                     AutomationProperties.Name="Leave this app card behind" />
+                            <Button Content="Open Folder" Command="{Binding OpenFolderCommand}"
+                                    AutomationProperties.Name="Open this app folder"
+                                    AutomationProperties.AutomationId="RecipeOpenFolderButton" />
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>

@@ -161,7 +161,7 @@ public sealed class ShellViewModel : ObservableObject
         UndoDecisionCommand = new AsyncRelayCommand(UndoDecisionAsync, () => CanWriteSession && scanCompleted && decisionEngine.CanUndo);
         RestoreExceptRegeneratableCommand = new AsyncRelayCommand(RestoreExceptRegeneratableAsync, CanMutateSelection);
         RestoreNewerCommand = new AsyncRelayCommand(RestoreNewerAsync, CanMutateSelection);
-        OpenFolderCommand = new AsyncRelayCommand(OpenFolderAsync, () => SelectedNode is not null && SourceRoot is not null);
+        OpenFolderCommand = new AsyncRelayCommand(OpenFolderAsync, CanOpenFolder);
         ExpandCommand = new RelayCommand<TreeNodeRow>(Expand);
         ShowCardsCommand = new RelayCommand(() =>
         {
@@ -765,6 +765,7 @@ public sealed class ShellViewModel : ObservableObject
                 RestoreCommand.NotifyCanExecuteChanged();
                 LeaveBehindCommand.NotifyCanExecuteChanged();
                 UndecidedCommand.NotifyCanExecuteChanged();
+                OpenFolderCommand.NotifyCanExecuteChanged();
             }
         }
     }
@@ -1593,14 +1594,31 @@ public sealed class ShellViewModel : ObservableObject
         RefreshAfterDecision();
     }
 
-    private async Task OpenFolderAsync()
+    private bool CanOpenFolder()
     {
-        if (SelectedNode is null || SourceRoot is null)
+        if (SelectedRecipeCard is RecipeCard card && RecipeSourcePaths.OpenPath(card) is not null)
         {
-            return;
+            return true;
         }
 
-        string path = Path.Combine(SourceRoot, SelectedNode.RelPath);
+        return SelectedNode is not null && SourceRoot is not null;
+    }
+
+    private async Task OpenFolderAsync()
+    {
+        string? path = SelectedRecipeCard is RecipeCard card
+            ? RecipeSourcePaths.OpenPath(card)
+            : null;
+        if (path is null)
+        {
+            if (SelectedNode is null || SourceRoot is null)
+            {
+                return;
+            }
+
+            path = Path.Combine(SourceRoot, SelectedNode.RelPath);
+        }
+
         await processRunner.RunAsync(
                 new ProcessRequest("explorer.exe", [ExplorerSelect.BuildSelectArgument(path)]))
             .ConfigureAwait(true);
