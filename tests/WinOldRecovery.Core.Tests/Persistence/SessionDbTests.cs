@@ -60,6 +60,13 @@ public sealed class SessionDbTests
         Assert.Equal(ExpectedTables, tables);
         Assert.Equal("wal", journalMode, ignoreCase: true);
         Assert.Equal(SessionDb.CurrentSchemaVersion, version);
+        Assert.Equal(3, SessionDb.CurrentSchemaVersion);
+
+        await using SqliteCommand indexCommand = reader.CreateCommand();
+        indexCommand.CommandText =
+            "SELECT sql FROM sqlite_schema WHERE type = 'index' AND name = 'ix_nodes_parent';";
+        string? parentIndex = Convert.ToString(await indexCommand.ExecuteScalarAsync());
+        Assert.Contains("NOCASE", parentIndex, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -184,7 +191,9 @@ public sealed class SessionDbTests
             versions.Add(rows.GetInt64(0));
         }
 
-        Assert.Equal([1L, 2L], versions);
+        Assert.Equal(
+            Enumerable.Range(1, SessionDb.CurrentSchemaVersion).Select(static version => (long)version),
+            versions);
     }
 
     [Fact]

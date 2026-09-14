@@ -10,6 +10,7 @@ public sealed class NodeBrowser
 {
     public const int ChildPageSize = 2000;
     public const int LargestListSize = 500;
+    private const int IdChunkSize = 400;
 
     private readonly SessionDb sessionDb;
     private readonly string sessionId;
@@ -253,7 +254,7 @@ public sealed class NodeBrowser
             total = Convert.ToInt32(count.ExecuteScalar(), CultureInfo.InvariantCulture);
         }
 
-        List<TreeNodeRow> rows = [];
+        List<PendingRow> pending = [];
         using (SqliteCommand command = connection.CreateCommand())
         {
             command.CommandText =
@@ -277,24 +278,7 @@ public sealed class NodeBrowser
                     EXISTS(
                         SELECT 1 FROM decisions
                         WHERE decisions.node_id = nodes.id AND decisions.source = 'SuggestedDefault')
-                        AS has_suggested,
-                    (SELECT COUNT(*) FROM nodes AS children WHERE children.parent_id = nodes.id)
-                        AS child_count,
-                    EXISTS (
-                        SELECT 1
-                        FROM nodes AS descendant
-                        WHERE descendant.eff_decision <> nodes.eff_decision
-                          AND descendant.id IN (
-                            WITH RECURSIVE subtree(id) AS (
-                                SELECT child.id FROM nodes AS child WHERE child.parent_id = nodes.id
-                                UNION ALL
-                                SELECT next.id
-                                FROM nodes AS next
-                                INNER JOIN subtree ON next.parent_id = subtree.id
-                            )
-                            SELECT id FROM subtree
-                          )
-                    ) AS is_mixed
+                        AS has_suggested
                 FROM nodes
                 WHERE {where}
                 ORDER BY {orderBy}
@@ -306,19 +290,9 @@ public sealed class NodeBrowser
             using SqliteDataReader reader = command.ExecuteReader();
             while (reader.Read())
             {
-                long id = reader.GetInt64(0);
-                bool mixed = reader.GetInt64(14) != 0;
-                long restoreBytes = 0;
-                long leaveBytes = 0;
-                long undecidedBytes = 0;
-                if (mixed)
-                {
-                    (restoreBytes, leaveBytes, undecidedBytes) = LoadMixedBytes(connection, id);
-                }
-
-                rows.Add(
-                    new TreeNodeRow(
-                        id,
+                pending.Add(
+                    new PendingRow(
+                        reader.GetInt64(0),
                         reader.IsDBNull(1) ? null : reader.GetInt64(1),
                         reader.GetString(2),
                         reader.GetString(3),
@@ -332,14 +306,47 @@ public sealed class NodeBrowser
                         Enum.Parse<NodeProblem>(reader.GetString(9)),
                         Enum.Parse<Decision>(reader.GetString(10)),
                         reader.GetInt64(11) != 0,
-                        reader.GetInt64(12) != 0,
-                        Convert.ToInt32(reader.GetInt64(13), CultureInfo.InvariantCulture),
-                        LoadBadges(connection, id),
-                        mixed,
-                        restoreBytes,
-                        leaveBytes,
-                        undecidedBytes));
+                        reader.GetInt64(12) != 0));
             }
+        }
+
+        Dictionary<long, IReadOnlyList<string>> badges = LoadBadges(connection, pending);
+        Dictionary<long, int> childCounts = LoadChildCounts(connection, pending);
+        HashSet<long> mixedIds = LoadMixedDirectoryIds(connection, pending, childCounts);
+
+        List<TreeNodeRow> rows = new(pending.Count);
+        foreach (PendingRow item in pending)
+        {
+            bool mixed = mixedIds.Contains(item.Id);
+            long restoreBytes = 0;
+            long leaveBytes = 0;
+            long undecidedBytes = 0;
+            if (mixed)
+            {
+                (restoreBytes, leaveBytes, undecidedBytes) = LoadMixedBytes(connection, item.Id);
+            }
+
+            rows.Add(
+                new TreeNodeRow(
+                    item.Id,
+                    item.ParentId,
+                    item.Name,
+                    item.RelPath,
+                    item.Kind,
+                    item.Size,
+                    item.AggSize,
+                    item.AggFiles,
+                    item.ModifiedUtc,
+                    item.Problem,
+                    item.EffectiveDecision,
+                    item.HasOwnUserDecision,
+                    item.HasSuggestedDefault,
+                    childCounts.GetValueOrDefault(item.Id),
+                    badges.GetValueOrDefault(item.Id, []),
+                    mixed,
+                    restoreBytes,
+                    leaveBytes,
+                    undecidedBytes));
         }
 
         return new NodePage(rows, total, total > offset + rows.Count);
@@ -377,22 +384,201 @@ public sealed class NodeBrowser
         }
     }
 
-    private static IReadOnlyList<string> LoadBadges(SqliteConnection connection, long nodeId)
+    private Dictionary<long, IReadOnlyList<string>> LoadBadges(
+        SqliteConnection connection,
+        IReadOnlyList<PendingRow> rows)
     {
-        using SqliteCommand command = connection.CreateCommand();
-        command.CommandText = "SELECT kind, detail FROM badges WHERE node_id = $id ORDER BY kind, detail;";
-        command.Parameters.AddWithValue("$id", nodeId);
-        List<string> badges = [];
-        using SqliteDataReader reader = command.ExecuteReader();
-        while (reader.Read())
+        Dictionary<long, IReadOnlyList<string>> badges = [];
+        if (rows.Count == 0)
         {
-            string kind = reader.GetString(0);
-            string detail = reader.GetString(1);
-            badges.Add(string.IsNullOrEmpty(detail) ? kind : kind + ": " + detail);
+            return badges;
+        }
+
+        Dictionary<long, List<string>> collected = [];
+        foreach (List<long> chunk in ChunkIds(rows.Select(static row => row.Id)))
+        {
+            using SqliteCommand command = connection.CreateCommand();
+            command.CommandText =
+                "SELECT node_id, kind, detail FROM badges WHERE node_id IN (" +
+                InClause(chunk.Count) +
+                ") ORDER BY node_id, kind, detail;";
+            BindIds(command, chunk);
+            using SqliteDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                long nodeId = reader.GetInt64(0);
+                string kind = reader.GetString(1);
+                string detail = reader.GetString(2);
+                if (!collected.TryGetValue(nodeId, out List<string>? list))
+                {
+                    list = [];
+                    collected[nodeId] = list;
+                }
+
+                list.Add(string.IsNullOrEmpty(detail) ? kind : kind + ": " + detail);
+            }
+        }
+
+        foreach ((long nodeId, List<string> list) in collected)
+        {
+            badges[nodeId] = list;
         }
 
         return badges;
     }
+
+    private Dictionary<long, int> LoadChildCounts(
+        SqliteConnection connection,
+        IReadOnlyList<PendingRow> rows)
+    {
+        Dictionary<long, int> counts = [];
+        List<long> directoryIds = DirectoryIds(rows);
+        if (directoryIds.Count == 0)
+        {
+            return counts;
+        }
+
+        foreach (List<long> chunk in ChunkIds(directoryIds))
+        {
+            using SqliteCommand command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT parent_id, COUNT(*)
+                FROM nodes
+                WHERE session_id = $sessionId
+                  AND parent_id IN (
+                """ + InClause(chunk.Count) + """
+                  )
+                GROUP BY parent_id;
+                """;
+            command.Parameters.AddWithValue("$sessionId", sessionId);
+            BindIds(command, chunk);
+            using SqliteDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                counts[reader.GetInt64(0)] = Convert.ToInt32(reader.GetInt64(1), CultureInfo.InvariantCulture);
+            }
+        }
+
+        return counts;
+    }
+
+    private HashSet<long> LoadMixedDirectoryIds(
+        SqliteConnection connection,
+        IReadOnlyList<PendingRow> rows,
+        IReadOnlyDictionary<long, int> childCounts)
+    {
+        HashSet<long> mixed = [];
+        foreach (PendingRow row in rows)
+        {
+            if (row.Kind != NodeKind.Directory ||
+                childCounts.GetValueOrDefault(row.Id) == 0)
+            {
+                continue;
+            }
+
+            using SqliteCommand command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM nodes AS descendant
+                    WHERE descendant.eff_decision <> $decision
+                      AND descendant.session_id = $sessionId
+                      AND descendant.id IN (
+                        WITH RECURSIVE subtree(id) AS (
+                            SELECT child.id
+                            FROM nodes AS child
+                            WHERE child.parent_id = $id
+                              AND child.session_id = $sessionId
+                            UNION ALL
+                            SELECT next.id
+                            FROM nodes AS next
+                            INNER JOIN subtree ON next.parent_id = subtree.id
+                            WHERE next.session_id = $sessionId
+                        )
+                        SELECT id FROM subtree
+                      )
+                );
+                """;
+            command.Parameters.AddWithValue("$id", row.Id);
+            command.Parameters.AddWithValue("$sessionId", sessionId);
+            command.Parameters.AddWithValue("$decision", row.EffectiveDecision.ToString());
+            if (Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture) != 0)
+            {
+                mixed.Add(row.Id);
+            }
+        }
+
+        return mixed;
+    }
+
+    private static List<long> DirectoryIds(IReadOnlyList<PendingRow> rows)
+    {
+        List<long> ids = [];
+        foreach (PendingRow row in rows)
+        {
+            if (row.Kind == NodeKind.Directory)
+            {
+                ids.Add(row.Id);
+            }
+        }
+
+        return ids;
+    }
+
+    private static IEnumerable<List<long>> ChunkIds(IEnumerable<long> ids)
+    {
+        List<long> chunk = new(IdChunkSize);
+        foreach (long id in ids)
+        {
+            chunk.Add(id);
+            if (chunk.Count == IdChunkSize)
+            {
+                yield return chunk;
+                chunk = new List<long>(IdChunkSize);
+            }
+        }
+
+        if (chunk.Count > 0)
+        {
+            yield return chunk;
+        }
+    }
+
+    private static string InClause(int count)
+    {
+        string[] names = new string[count];
+        for (int i = 0; i < count; i++)
+        {
+            names[i] = "$id" + i.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return string.Join(',', names);
+    }
+
+    private static void BindIds(SqliteCommand command, IReadOnlyList<long> ids)
+    {
+        for (int i = 0; i < ids.Count; i++)
+        {
+            command.Parameters.AddWithValue("$id" + i.ToString(CultureInfo.InvariantCulture), ids[i]);
+        }
+    }
+
+    private sealed record PendingRow(
+        long Id,
+        long? ParentId,
+        string Name,
+        string RelPath,
+        NodeKind Kind,
+        long Size,
+        long AggSize,
+        long AggFiles,
+        DateTimeOffset? ModifiedUtc,
+        NodeProblem Problem,
+        Decision EffectiveDecision,
+        bool HasOwnUserDecision,
+        bool HasSuggestedDefault);
 
     private static (long Restore, long Leave, long Undecided) LoadMixedBytes(
         SqliteConnection connection,

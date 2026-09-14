@@ -74,7 +74,7 @@ Pending on a machine with a large scratch volume:
 3. Confirm working set stays under 1.5 GB and the Files tree stays responsive (SQLite paging, 2,000 children per page).
 4. Record peak working set and duration.
 
-CI proves child paging truncates at 2,000 rows; it does not allocate a million files.
+CI expands a 100k-child node in under 300 ms and pages 1M synthetic SQLite children under 1.5 GB. It does not generate a million on-disk files or scan them with the published EXE.
 
 ## Attempt log — 14 Sep 2026
 

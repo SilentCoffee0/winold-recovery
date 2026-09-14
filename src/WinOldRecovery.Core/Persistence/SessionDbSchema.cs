@@ -2,7 +2,7 @@ namespace WinOldRecovery.Core.Persistence;
 
 internal static class SessionDbSchema
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     public static IReadOnlyList<SchemaMigration> Migrations { get; } =
     [
@@ -150,6 +150,12 @@ internal static class SessionDbSchema
 
             DROP TABLE decisions;
             ALTER TABLE decisions_v2 RENAME TO decisions;
+            """),
+        new(
+            3,
+            """
+            DROP INDEX ix_nodes_parent;
+            CREATE INDEX ix_nodes_parent ON nodes(session_id, parent_id, name COLLATE NOCASE);
             """),
     ];
 }
