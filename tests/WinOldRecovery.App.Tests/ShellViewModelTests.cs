@@ -138,6 +138,32 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task PreparePreview_ListsCannotRestoreAndUndecidedItems()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "Desktop", "notes.txt"),
+            "keep");
+        context.ViewModel.SelectedSourcePath = source;
+        context.ViewModel.DestinationRoot = Path.Combine(context.Root, "Recovered");
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        await context.ViewModel.PreparePreviewAsync();
+
+        Assert.Contains("Cannot be restored", context.ViewModel.PreviewSummaryText, StringComparison.Ordinal);
+        Assert.Contains("Undecided items remaining", context.ViewModel.PreviewSummaryText, StringComparison.Ordinal);
+        Assert.Contains("read-only dry run", context.ViewModel.PreviewSummaryText, StringComparison.Ordinal);
+        Assert.True(context.ViewModel.ReviewUndecidedCommand.CanExecute(null));
+        context.ViewModel.ReviewUndecidedCommand.Execute(null);
+        Assert.Equal(WorkflowStep.Decide, context.ViewModel.CurrentStep);
+        Assert.Equal(FilesViewMode.Unknown, context.ViewModel.FilesViewMode);
+    }
+
+    [Fact]
     public async Task SecondScan_ReplacesTheTreeAndRelocksPurge()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();
@@ -533,7 +559,8 @@ public sealed class ShellViewModelTests
                 recipes: recipes,
                 firstRunState: null,
                 localHelp: new LocalHelp(helpRoot),
-                folderPicker: picker);
+                folderPicker: picker,
+                processPresence: new NeverRunningProcessPresence());
             return new ShellTestContext(root, database, runner, viewModel, picker, workspace);
         }
 

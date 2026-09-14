@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using System.Linq;
 using Microsoft.Data.Sqlite;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Persistence;
 using WinOldRecovery.Core.Planning;
+using WinOldRecovery.Core.Purge;
 using WinOldRecovery.Core.Restore;
 using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Core.Verify;
@@ -221,6 +223,159 @@ public sealed class CopyEngineTests
         RestoreItemResult second = await engine.CopyAsync(item);
         Assert.Equal("Completed", second.State);
         Assert.Equal("once", await File.ReadAllTextAsync(destFile));
+    }
+
+    [Fact]
+    public async Task Resume_CopyTree_DoesNotDuplicateAlreadyCopiedFiles()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string tree = Path.Combine(context.Source, "Desktop");
+        Directory.CreateDirectory(tree);
+        await File.WriteAllTextAsync(Path.Combine(tree, "a.txt"), "aaa");
+        File.SetLastWriteTimeUtc(Path.Combine(tree, "a.txt"), new DateTime(2024, 2, 3, 4, 5, 6, DateTimeKind.Utc));
+        string dest = Path.Combine(context.Destination, "Desktop");
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyTree,
+            tree,
+            dest,
+            ConflictPolicy.KeepBoth);
+        CopyEngine engine = new(context.Database, context.SafeFs);
+        await engine.CopyAsync(item);
+        await context.Database.AppendJournalAsync(item.Id!.Value, "Started");
+
+        RestoreItemResult second = await engine.CopyAsync(item);
+
+        Assert.Equal("Completed", second.State);
+        Assert.Equal("aaa", await File.ReadAllTextAsync(Path.Combine(dest, "a.txt")));
+        Assert.False(File.Exists(Path.Combine(dest, "a (from Windows.old).txt")));
+    }
+
+    [Fact]
+    public async Task DeletePartial_DoesNotFollowDestinationJunctions()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string tree = Path.Combine(context.Source, "Desktop");
+        Directory.CreateDirectory(tree);
+        await File.WriteAllTextAsync(Path.Combine(tree, "a.txt"), "aaa");
+        string dest = Path.Combine(context.Destination, "Desktop");
+        Directory.CreateDirectory(dest);
+        string live = Path.Combine(context.Root, "live");
+        Directory.CreateDirectory(live);
+        string trap = Path.Combine(live, "trap" + CopyEngine.PartialSuffix);
+        await File.WriteAllTextAsync(trap, "do-not-delete");
+        CreateJunction(Path.Combine(dest, "link"), live);
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyTree,
+            tree,
+            dest,
+            ConflictPolicy.KeepBoth);
+        await context.Database.AppendJournalAsync(item.Id!.Value, "Started");
+
+        await new CopyEngine(context.Database, context.SafeFs).CopyAsync(item);
+
+        Assert.Equal("do-not-delete", await File.ReadAllTextAsync(trap));
+        Assert.Equal("aaa", await File.ReadAllTextAsync(Path.Combine(dest, "a.txt")));
+    }
+
+    [Fact]
+    public async Task Verifier_KeepBoth_ChecksTheRestoredCopyNotThePreexistingFile()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string sourceFile = Path.Combine(context.Source, "note.txt");
+        await File.WriteAllTextAsync(sourceFile, "from-old");
+        File.SetLastWriteTimeUtc(sourceFile, new DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc));
+        string destFile = Path.Combine(context.Destination, "note.txt");
+        await File.WriteAllTextAsync(destFile, "already-here-different");
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyFile,
+            sourceFile,
+            destFile,
+            ConflictPolicy.KeepBoth);
+        await new CopyEngine(context.Database, context.SafeFs).CopyAsync(item);
+        RestorePlan plan = new(context.SessionId, context.Source, context.Destination, [item], 8);
+
+        VerifyReport report = await new Verifier(context.Database, context.SafeFs).VerifyAsync(plan);
+
+        Assert.True(report.AllOk, string.Join(';', report.Rows.Select(row => row.Level + ":" + row.Ok + ":" + row.Detail)));
+        Assert.Equal("already-here-different", await File.ReadAllTextAsync(destFile));
+        Assert.True(context.Database.LastVerifyReportAllOk(context.SessionId));
+    }
+
+    [Fact]
+    public async Task RestoreRunner_FailedItem_IsNotReportedCompleted()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string sourceFile = Path.Combine(context.Source, "note.txt");
+        await File.WriteAllTextAsync(sourceFile, "from-old");
+        string destFile = Path.Combine(context.Destination, "note.txt");
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyFile,
+            sourceFile,
+            destFile,
+            ConflictPolicy.KeepBoth);
+        File.Delete(sourceFile);
+
+        RestoreResult result = await new RestoreRunner(new CopyEngine(context.Database, context.SafeFs))
+            .RunAsync(new RestorePlan(context.SessionId, context.Source, context.Destination, [item], 1));
+
+        Assert.False(result.Completed);
+        Assert.Equal("Failed", Assert.Single(result.Items).State);
+        Assert.False(context.Database.RestoreJournalSettled(context.SessionId));
+    }
+
+    [Fact]
+    public async Task KeepBoth_DoesNotTreatMatchingSizeTimeExistingDestAsAlreadyCopied()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        DateTime stamp = new(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        string sourceFile = Path.Combine(context.Source, "note.txt");
+        await File.WriteAllTextAsync(sourceFile, "from-old!");
+        File.SetLastWriteTimeUtc(sourceFile, stamp);
+        string destFile = Path.Combine(context.Destination, "note.txt");
+        await File.WriteAllTextAsync(destFile, "live-copy!");
+        File.SetLastWriteTimeUtc(destFile, stamp);
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyFile,
+            sourceFile,
+            destFile,
+            ConflictPolicy.KeepBoth);
+
+        RestoreItemResult result = await new CopyEngine(context.Database, context.SafeFs).CopyAsync(item);
+
+        Assert.Equal("Completed", result.State);
+        Assert.Equal("live-copy!", await File.ReadAllTextAsync(destFile));
+        Assert.Equal(
+            "from-old!",
+            await File.ReadAllTextAsync(Path.Combine(context.Destination, "note (from Windows.old).txt")));
+    }
+
+    [Fact]
+    public async Task Verifier_DoesNotPassWhenOnlyThePreexistingDestinationExists()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string sourceFile = Path.Combine(context.Source, "note.txt");
+        await File.WriteAllTextAsync(sourceFile, "from-old");
+        File.SetLastWriteTimeUtc(sourceFile, new DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc));
+        string destFile = Path.Combine(context.Destination, "note.txt");
+        await File.WriteAllTextAsync(destFile, "already-here-different");
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyFile,
+            sourceFile,
+            destFile,
+            ConflictPolicy.KeepBoth);
+        RestorePlan plan = new(context.SessionId, context.Source, context.Destination, [item], 8);
+
+        VerifyReport report = await new Verifier(context.Database, context.SafeFs).VerifyAsync(plan);
+
+        Assert.False(report.AllOk);
+        Assert.Contains(report.Rows, row => row.Level == 0 && !row.Ok);
+        Assert.False(context.Database.LastVerifyReportAllOk(context.SessionId));
+    }
+
+    [Fact]
+    public void SageFlagName_PadsToFourDigits()
+    {
+        Assert.Equal("StateFlags0777", RegistryCleanupSage.StateFlagsName(777));
     }
 
     [Fact]

@@ -63,13 +63,14 @@ public sealed class CopyEngine
 
         try
         {
+            bool resume = latest == "Started";
             if (item.Operation == PlanOperation.CopyTree)
             {
-                CopyTree(item, cancellationToken);
+                CopyTree(item, resume, cancellationToken);
             }
             else
             {
-                CopyOneFile(item.SourcePath, item.DestinationPath, item, cancellationToken);
+                CopyOneFile(item.SourcePath, item.DestinationPath, item, resume, cancellationToken);
             }
 
             await sessionDb.AppendJournalAsync(planItemId, "Completed", cancellationToken: cancellationToken)
@@ -103,30 +104,87 @@ public sealed class CopyEngine
 
     internal static string KeepBothPath(string destinationPath)
     {
+        foreach (string candidate in KeepBothCandidates(destinationPath))
+        {
+            if (!File.Exists(candidate) && !Directory.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return destinationPath + " (from Windows.old)";
+    }
+
+    internal static IEnumerable<string> KeepBothCandidates(string destinationPath)
+    {
         string directory = Path.GetDirectoryName(destinationPath) ?? destinationPath;
         string name = Path.GetFileNameWithoutExtension(destinationPath);
         string extension = Path.GetExtension(destinationPath);
-        string candidate = Path.Combine(directory, name + " (from Windows.old)" + extension);
-        int suffix = 2;
-        while (File.Exists(candidate))
+        yield return Path.Combine(directory, name + " (from Windows.old)" + extension);
+        for (int suffix = 2; suffix <= 1000; suffix++)
         {
-            candidate = Path.Combine(
+            yield return Path.Combine(
                 directory,
                 name + " (from Windows.old " + suffix.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")" + extension);
-            suffix++;
         }
-
-        return candidate;
     }
 
-    private void CopyTree(PlanItem item, CancellationToken cancellationToken)
+    public static bool LooksLikeSuccessfulCopy(string sourcePath, string destinationPath)
+    {
+        if (!File.Exists(sourcePath) || !File.Exists(destinationPath))
+        {
+            return false;
+        }
+
+        FileInfo source = new(sourcePath);
+        FileInfo destination = new(destinationPath);
+        if (source.Length != destination.Length)
+        {
+            return false;
+        }
+
+        return Math.Abs((destination.LastWriteTimeUtc - source.LastWriteTimeUtc).TotalSeconds) <= 2;
+    }
+
+    public static string? FindRestoredPath(string sourcePath, string plannedDestination)
+    {
+        foreach (string candidate in KeepBothCandidates(plannedDestination))
+        {
+            if (LooksLikeSuccessfulCopy(sourcePath, candidate))
+            {
+                return candidate;
+            }
+        }
+
+        if (LooksLikeSuccessfulCopy(sourcePath, plannedDestination))
+        {
+            return plannedDestination;
+        }
+
+        foreach (string candidate in KeepBothCandidates(plannedDestination))
+        {
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        if (File.Exists(plannedDestination))
+        {
+            return plannedDestination;
+        }
+
+        return null;
+    }
+
+    private void CopyTree(PlanItem item, bool resume, CancellationToken cancellationToken)
     {
         foreach (string sourceFile in EnumerateSourceFiles(item.SourcePath))
         {
             cancellationToken.ThrowIfCancellationRequested();
             string relative = Path.GetRelativePath(item.SourcePath, sourceFile);
             string destinationFile = Path.Combine(item.DestinationPath, relative);
-            CopyOneFile(sourceFile, destinationFile, item, cancellationToken);
+            CopyOneFile(sourceFile, destinationFile, item, resume, cancellationToken);
         }
     }
 
@@ -134,6 +192,7 @@ public sealed class CopyEngine
         string sourcePath,
         string destinationPath,
         PlanItem item,
+        bool resume,
         CancellationToken cancellationToken)
     {
         FileAttributes attributes = File.GetAttributes(sourcePath);
@@ -145,8 +204,18 @@ public sealed class CopyEngine
         string finalPath = destinationPath;
         IReadOnlySet<string> approved = OverwriteApprovals.Parse(
             sessionDb.GetKv(item.SessionId, OverwriteApprovals.KvKey));
-        bool overwriteThis = item.OverwriteApproved || approved.Contains(finalPath);
-        if (File.Exists(finalPath))
+        bool overwriteThis = item.OverwriteApproved || approved.Contains(destinationPath);
+        string? already = FindRestoredPath(sourcePath, destinationPath);
+        if (already is not null && LooksLikeSuccessfulCopy(sourcePath, already) && !overwriteThis)
+        {
+            bool alreadyIsPlanned = already.Equals(destinationPath, StringComparison.OrdinalIgnoreCase);
+            if (!alreadyIsPlanned || resume)
+            {
+                return;
+            }
+        }
+
+        if (File.Exists(finalPath) || Directory.Exists(finalPath))
         {
             if (item.ConflictPolicy == ConflictPolicy.Skip && !overwriteThis)
             {
@@ -216,10 +285,54 @@ public sealed class CopyEngine
         EnumerationOptions options = new()
         {
             RecurseSubdirectories = false,
-            IgnoreInaccessible = true,
+            IgnoreInaccessible = false,
             AttributesToSkip = 0,
         };
 
+        while (directories.Count > 0)
+        {
+            string directory = directories.Pop();
+            foreach (string entry in Directory.EnumerateFileSystemEntries(directory, "*", options))
+            {
+                FileAttributes attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    continue;
+                }
+
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    directories.Push(entry);
+                }
+                else
+                {
+                    yield return entry;
+                }
+            }
+        }
+    }
+
+    private void DeletePartial(string destinationPath)
+    {
+        string partial = destinationPath + PartialSuffix;
+        if (File.Exists(partial))
+        {
+            safeFs.DeleteFile(partial);
+        }
+
+        if (!Directory.Exists(destinationPath))
+        {
+            return;
+        }
+
+        Stack<string> directories = new();
+        directories.Push(destinationPath);
+        EnumerationOptions options = new()
+        {
+            RecurseSubdirectories = false,
+            IgnoreInaccessible = true,
+            AttributesToSkip = 0,
+        };
         while (directories.Count > 0)
         {
             string directory = directories.Pop();
@@ -253,31 +366,13 @@ public sealed class CopyEngine
                 if ((attributes & FileAttributes.Directory) != 0)
                 {
                     directories.Push(entry);
+                    continue;
                 }
-                else
+
+                if (entry.EndsWith(PartialSuffix, StringComparison.OrdinalIgnoreCase))
                 {
-                    yield return entry;
+                    safeFs.DeleteFile(entry);
                 }
-            }
-        }
-    }
-
-    private void DeletePartial(string destinationPath)
-    {
-        string partial = destinationPath + PartialSuffix;
-        if (File.Exists(partial))
-        {
-            safeFs.DeleteFile(partial);
-        }
-
-        if (Directory.Exists(destinationPath))
-        {
-            foreach (string leftover in Directory.EnumerateFiles(
-                         destinationPath,
-                         "*" + PartialSuffix,
-                         SearchOption.AllDirectories))
-            {
-                safeFs.DeleteFile(leftover);
             }
         }
     }

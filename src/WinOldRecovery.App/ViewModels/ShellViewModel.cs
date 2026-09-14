@@ -35,6 +35,12 @@ public enum WorkflowStep
     Purge = 6,
 }
 
+public enum SubfolderPolicy
+{
+    RecoveredFolder,
+    MergeIntoProfile,
+}
+
 public sealed class ShellViewModel : ObservableObject
 {
     private readonly SessionDb sessionDb;
@@ -87,6 +93,11 @@ public sealed class ShellViewModel : ObservableObject
     private bool diskFullVisible;
     private string diskFullText = string.Empty;
     private Dictionary<string, string> destinationByRelPath = new(StringComparer.OrdinalIgnoreCase);
+    private string previewSummary = string.Empty;
+    private string restoreProgress = string.Empty;
+    private SubfolderPolicy subfolderPolicy = SubfolderPolicy.RecoveredFolder;
+    private CancellationTokenSource? restoreCancellation;
+    private IReadOnlyList<string> runningApps = [];
     private HelpTopic? selectedHelpTopic;
     private string helpText = string.Empty;
     private bool logVisible;
@@ -96,6 +107,7 @@ public sealed class ShellViewModel : ObservableObject
     private string? pausedSourcePath;
     private string sourceHint = string.Empty;
     private readonly IFolderPicker folderPicker;
+    private readonly IProcessPresence processPresence;
     private bool compactLayout;
     private bool compactInspect;
     private string currentPathFull = string.Empty;
@@ -121,7 +133,8 @@ public sealed class ShellViewModel : ObservableObject
         IReadOnlyList<IRecipe>? recipes = null,
         FirstRunState? firstRunState = null,
         LocalHelp? localHelp = null,
-        IFolderPicker? folderPicker = null)
+        IFolderPicker? folderPicker = null,
+        IProcessPresence? processPresence = null)
     {
         this.sessionDb = sessionDb;
         this.workspace = workspace;
@@ -174,7 +187,9 @@ public sealed class ShellViewModel : ObservableObject
         CopyPathCommand = new RelayCommand(CopyPath, () => SelectedNode is not null && SourceRoot is not null);
         ShowMoreCommand = new RelayCommand(ShowMore, () => TreeTruncated);
         RevealInTreeCommand = new RelayCommand(RevealInTree, () => SelectedNode is not null);
-        ExecuteRestoreCommand = new AsyncRelayCommand(ExecuteRestoreAsync, () => lastPlan is not null && lastPreflight is { CanProceed: true } && !IsScanning && !isRestoring);
+        ExecuteRestoreCommand = new AsyncRelayCommand(
+            ExecuteRestoreAsync,
+            () => lastPlan is not null && lastPreflight is { CanProceed: true } && runningApps.Count == 0 && !IsScanning && !isRestoring);
         ExecuteVerifyCommand = new AsyncRelayCommand(ExecuteVerifyAsync, () => restoreCompleted);
         PreparePreviewCommand = new AsyncRelayCommand(PreparePreviewAsync, () => scanCompleted && SourceRoot is not null);
         ApproveOverwritesCommand = new AsyncRelayCommand(ApproveOverwritesAsync, CanApproveOverwrites);
@@ -183,6 +198,7 @@ public sealed class ShellViewModel : ObservableObject
         this.firstRun = firstRunState ?? FirstRunState.FromWorkspace(safeFs, workspace);
         this.localHelp = localHelp ?? LocalHelp.FromAppDirectory();
         this.folderPicker = folderPicker ?? new NullFolderPicker();
+        this.processPresence = processPresence ?? new Win32ProcessPresence();
         firstRunVisible = !this.firstRun.IsDismissed();
         OpenHelpCommand = new RelayCommand(OpenHelp);
         CloseHelpCommand = new RelayCommand(() => HelpVisible = false);
@@ -194,6 +210,8 @@ public sealed class ShellViewModel : ObservableObject
         BrowseDestinationCommand = new RelayCommand(BrowseDestination);
         ResumeDiskFullCommand = new AsyncRelayCommand(ResumeDiskFullAsync, () => lastPlan is not null && diskFullVisible && !isRestoring);
         CancelDiskFullCommand = new RelayCommand(CancelDiskFull);
+        CancelRestoreCommand = new RelayCommand(CancelRestore, () => isRestoring);
+        ReviewUndecidedCommand = new RelayCommand(ReviewUndecided, () => scanCompleted);
         destinationByRelPath = DestinationMap.Parse(sessionDb.GetKv(workspace.SessionId, DestinationMap.KvKey));
     }
 
@@ -232,6 +250,8 @@ public sealed class ShellViewModel : ObservableObject
     public IRelayCommand BrowseDestinationCommand { get; }
     public IAsyncRelayCommand ResumeDiskFullCommand { get; }
     public IRelayCommand CancelDiskFullCommand { get; }
+    public IRelayCommand CancelRestoreCommand { get; }
+    public IRelayCommand ReviewUndecidedCommand { get; }
 
     public IReadOnlyList<HelpTopic> HelpTopics => LocalHelp.Catalog;
 
@@ -431,6 +451,36 @@ public sealed class ShellViewModel : ObservableObject
     {
         get => diskFullText;
         private set => SetProperty(ref diskFullText, value);
+    }
+
+    public string PreviewSummaryText
+    {
+        get => previewSummary;
+        private set => SetProperty(ref previewSummary, value);
+    }
+
+    public string RestoreProgress
+    {
+        get => restoreProgress;
+        private set => SetProperty(ref restoreProgress, value);
+    }
+
+    public SubfolderPolicy SubfolderPolicy
+    {
+        get => subfolderPolicy;
+        set
+        {
+            if (SetProperty(ref subfolderPolicy, value))
+            {
+                ApplySubfolderPolicy();
+            }
+        }
+    }
+
+    public bool MergeIntoProfile
+    {
+        get => subfolderPolicy == SubfolderPolicy.MergeIntoProfile;
+        set => SubfolderPolicy = value ? SubfolderPolicy.MergeIntoProfile : SubfolderPolicy.RecoveredFolder;
     }
 
     public HelpTopic? SelectedHelpTopic
@@ -1063,7 +1113,44 @@ public sealed class ShellViewModel : ObservableObject
     private void CancelDiskFull()
     {
         DiskFullVisible = false;
-        ScanStatus = "Restore stayed paused. Nothing was deleted to make room.";
+        restoreCompleted = false;
+        ExecuteVerifyCommand.NotifyCanExecuteChanged();
+        ScanStatus = "Restore paused for disk space was cancelled. Already copied files were kept. Windows.old was not changed.";
+    }
+
+    private void CancelRestore()
+    {
+        restoreCancellation?.Cancel();
+    }
+
+    private void ReviewUndecided()
+    {
+        CurrentStep = WorkflowStep.Decide;
+        DecidePane = DecidePane.Files;
+        FilesViewMode = FilesViewMode.Unknown;
+    }
+
+    private void ApplySubfolderPolicy()
+    {
+        if (subfolderPolicy == SubfolderPolicy.MergeIntoProfile)
+        {
+            DestinationRoot = LiveProfileRoot;
+            string user = Environment.UserName;
+            foreach (DetectedProfile profile in lastProfiles)
+            {
+                if (profile.Name.Equals(user, StringComparison.OrdinalIgnoreCase))
+                {
+                    destinationByRelPath["Users\\" + profile.Name] = LiveProfileRoot;
+                }
+            }
+        }
+        else
+        {
+            DestinationRoot = Path.Combine(LiveProfileRoot, "Recovered");
+        }
+
+        OnPropertyChanged(nameof(MergeIntoProfile));
+        _ = PersistDestinationMapAsync();
     }
 
     private async Task ScanAsync()
@@ -1159,6 +1246,7 @@ public sealed class ShellViewModel : ObservableObject
             OnPropertyChanged(nameof(ScanCompleted));
             PreparePreviewCommand.NotifyCanExecuteChanged();
             ExecuteRestoreCommand.NotifyCanExecuteChanged();
+            ReviewUndecidedCommand.NotifyCanExecuteChanged();
             ExecuteVerifyCommand.NotifyCanExecuteChanged();
             ExecutePurgeCommand.NotifyCanExecuteChanged();
             CreateSupportBundleCommand.NotifyCanExecuteChanged();
@@ -1265,6 +1353,9 @@ public sealed class ShellViewModel : ObservableObject
         Conflicts.Clear();
         destinationByRelPath.Clear();
         DiskFullVisible = false;
+        PreviewSummaryText = string.Empty;
+        RestoreProgress = string.Empty;
+        runningApps = [];
         SourceIntegrityText = "Windows.old untouched";
         ExecuteRestoreCommand.NotifyCanExecuteChanged();
         ExecuteVerifyCommand.NotifyCanExecuteChanged();
@@ -1657,6 +1748,7 @@ public sealed class ShellViewModel : ObservableObject
         ScanCommand.NotifyCanExecuteChanged();
         ExecuteRestoreCommand.NotifyCanExecuteChanged();
         ExecutePurgeCommand.NotifyCanExecuteChanged();
+        CancelRestoreCommand.NotifyCanExecuteChanged();
     }
 
     internal void SetRestoringForTests(bool restoring)
@@ -1712,6 +1804,8 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         int recipeWrites = 0;
+        List<string> recipeLines = [];
+        List<string> running = [];
         if (recipeHost is not null)
         {
             DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner);
@@ -1723,14 +1817,28 @@ public sealed class ShellViewModel : ObservableObject
                     continue;
                 }
 
-                recipeWrites += recipeHost.PlanCard(recipe, card, destination).Writes.Count;
+                PlanResult recipePlan = recipeHost.PlanCard(recipe, card, destination);
+                recipeWrites += recipePlan.Writes.Count;
+                recipeLines.Add(card.Title + ": " + card.WhatIsRestored);
+                foreach (Prerequisite prerequisite in recipe.Prerequisites(recipePlan))
+                {
+                    if (processPresence.IsRunning(prerequisite.ProcessName))
+                    {
+                        running.Add(prerequisite.Message);
+                    }
+                }
             }
         }
 
+        runningApps = running;
+        PreviewInventory inventory = sessionDb.GetPreviewInventory(workspace.SessionId);
+        PreviewSummaryText = PreviewSummary.Format(lastPlan, lastPreflight!, inventory, recipeLines, running);
         SpaceBudgetText = FormatSpaceBudget(lastPlan.TotalBytes, lastPreflight!.RequiredBytes, lastPreflight.FreeBytes);
-        ScanStatus = lastPreflight.CanProceed
+        ScanStatus = lastPreflight.CanProceed && running.Count == 0
             ? $"Preview: {lastPlan.Items.Count} copy operations, {Conflicts.Count} conflicts, and {recipeWrites} app writes. Windows.old has not been changed."
-            : string.Join(" ", lastPreflight.BlockingIssues);
+            : running.Count > 0
+                ? string.Join(" ", running)
+                : string.Join(" ", lastPreflight.BlockingIssues);
         ExecuteRestoreCommand.NotifyCanExecuteChanged();
         ApproveOverwritesCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(OverwriteButtonLabel));
@@ -1800,8 +1908,23 @@ public sealed class ShellViewModel : ObservableObject
         try
         {
         SetRestoring(true);
+        restoreCancellation = new CancellationTokenSource();
+        Progress<RestoreProgress> progress = new(report =>
+        {
+            RestoreProgress =
+                "Restoring… " +
+                report.CompletedItems +
+                " of " +
+                report.TotalItems +
+                "  " +
+                QuantityFormat.Bytes(report.CompletedBytes) +
+                " of " +
+                QuantityFormat.Bytes(report.TotalBytes) +
+                (string.IsNullOrEmpty(report.CurrentName) ? string.Empty : "  " + report.CurrentName);
+        });
         RestoreRunner runner = new(new CopyEngine(sessionDb, safeFs), sessionDb);
-        RestoreResult result = await runner.RunAsync(lastPlan).ConfigureAwait(true);
+        RestoreResult result = await runner.RunAsync(lastPlan, restoreCancellation.Token, progress)
+            .ConfigureAwait(true);
         if (result.Completed && recipeHost is not null)
         {
             DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner);
@@ -1848,12 +1971,20 @@ public sealed class ShellViewModel : ObservableObject
         SetRestoring(false);
         CurrentStep = WorkflowStep.Restore;
         }
+        catch (OperationCanceledException)
+        {
+            restoreCompleted = false;
+            ScanStatus = "Restore cancelled. Already copied files were kept. Windows.old was not changed.";
+            CurrentStep = WorkflowStep.Restore;
+        }
         catch (Exception exception)
         {
             ShowHandledFailure(exception);
         }
         finally
         {
+            restoreCancellation?.Dispose();
+            restoreCancellation = null;
             SetRestoring(false);
         }
     }
@@ -1869,8 +2000,30 @@ public sealed class ShellViewModel : ObservableObject
         {
         VerifyReport report = await new Verifier(sessionDb, safeFs).VerifyAsync(lastPlan).ConfigureAwait(true);
         verifyCompleted = report.AllOk;
-        ScanStatus = report.AllOk
-            ? "Verify report: every checked item passed existence, size/time, and hash samples."
+        List<string> recipeLines = [];
+        if (recipeHost is not null)
+        {
+            DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner);
+            foreach (RecipeCard card in lastRecipeCards)
+            {
+                IRecipe? recipe = recipeHost.Find(card.RecipeId);
+                if (recipe is null)
+                {
+                    continue;
+                }
+
+                RecipeVerifyResult recipeVerify = recipe.Verify(recipeHost.PlanCard(recipe, card, destination));
+                recipeLines.Add(card.Title + ": " + recipeVerify.Detail + (recipeVerify.Ok ? "  ✔" : "  failed"));
+                if (!recipeVerify.Ok)
+                {
+                    verifyCompleted = false;
+                }
+            }
+        }
+
+        ScanStatus = verifyCompleted
+            ? "Verify report: every checked item passed existence, size/time, and hash samples." +
+              (recipeLines.Count == 0 ? string.Empty : Environment.NewLine + string.Join(Environment.NewLine, recipeLines))
             : "Verify report: at least one item failed. Purge stays locked. A redacted log is at " +
               workspace.LogPath + ".";
         ExecutePurgeCommand.NotifyCanExecuteChanged();
@@ -1897,9 +2050,13 @@ public sealed class ShellViewModel : ObservableObject
             root => root.Equals(
                 PathCanonicalizer.Canonicalize(SourceRoot),
                 StringComparison.OrdinalIgnoreCase)) ?? PathCanonicalizer.Canonicalize(SourceRoot);
+        IReadOnlyList<PlanItem> planItems = lastPlan?.Items ?? sessionDb.ListPlanItems(workspace.SessionId);
+        bool journalSettled = sessionDb.RestoreJournalSettled(workspace.SessionId);
+        bool storedVerify = sessionDb.LastVerifyReportAllOk(workspace.SessionId) ||
+            (planItems.Count == 0 && verifyCompleted);
         PurgeGateResult gate = PurgeAuthorization.Evaluate(
             new PurgeGateRequest(
-                verifyCompleted,
+                verifyCompleted && storedVerify,
                 filesChecked,
                 undecidedAcknowledged,
                 RestoreJobActive: IsScanning || isRestoring,
@@ -1908,8 +2065,10 @@ public sealed class ShellViewModel : ObservableObject
                 canonical,
                 Environment.ProcessPath,
                 workspace.RootPath,
-                [destinationRoot],
-                customRootConfirmed));
+                lastPlan is null ? [destinationRoot] : lastPlan.Items.Select(static item => item.DestinationPath).ToArray(),
+                customRootConfirmed,
+                journalSettled,
+                storedVerify));
         if (!gate.Authorized || gate.Token is null)
         {
             ScanStatus = "Purge blocked: " + string.Join(", ", gate.BlockedGates);

@@ -598,6 +598,61 @@ public sealed class SessionDb : IAsyncDisposable
         return command.ExecuteScalar() as string;
     }
 
+    public bool RestoreJournalSettled(string sessionId)
+    {
+        foreach (PlanItem item in ListPlanItems(sessionId))
+        {
+            if (item.Id is not long id)
+            {
+                return false;
+            }
+
+            string? state = GetLatestJournalState(id);
+            if (state is not ("Completed" or "Skipped"))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public bool LastVerifyReportAllOk(string sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand latest = connection.CreateCommand();
+        latest.CommandText =
+            """
+            SELECT vr.report_id
+            FROM verify_results AS vr
+            INNER JOIN plan_items AS pi ON pi.id = vr.plan_item_id
+            WHERE pi.session_id = $sessionId
+            ORDER BY vr.recorded_at_utc DESC, vr.id DESC
+            LIMIT 1;
+            """;
+        latest.Parameters.AddWithValue("$sessionId", sessionId);
+        if (latest.ExecuteScalar() is not string reportId)
+        {
+            return false;
+        }
+
+        using SqliteCommand failed = connection.CreateCommand();
+        failed.CommandText =
+            """
+            SELECT COUNT(*)
+            FROM verify_results
+            WHERE report_id = $reportId AND ok = 0;
+            """;
+        failed.Parameters.AddWithValue("$reportId", reportId);
+        long failures = Convert.ToInt64(failed.ExecuteScalar(), CultureInfo.InvariantCulture);
+        using SqliteCommand counted = connection.CreateCommand();
+        counted.CommandText = "SELECT COUNT(*) FROM verify_results WHERE report_id = $reportId;";
+        counted.Parameters.AddWithValue("$reportId", reportId);
+        long count = Convert.ToInt64(counted.ExecuteScalar(), CultureInfo.InvariantCulture);
+        return failures == 0 && count > 0;
+    }
+
     public Task InsertVerifyResultsAsync(
         IReadOnlyList<VerifyResultRow> rows,
         CancellationToken cancellationToken = default)
@@ -790,6 +845,38 @@ public sealed class SessionDb : IAsyncDisposable
         command.Parameters.AddWithValue("$sessionId", sessionId);
         command.Parameters.AddWithValue("$key", key);
         return command.ExecuteScalar() as string;
+    }
+
+    public PreviewInventory GetPreviewInventory(string sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                COALESCE(SUM(CASE WHEN problem = 'CloudOnly' THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN problem = 'EfsEncrypted' THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN problem = 'AccessDenied' THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN eff_decision = 'Undecided' AND kind NOT IN ('Directory', 'Junction', 'Symlink', 'MountPoint') THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN eff_decision = 'Undecided' AND kind NOT IN ('Directory', 'Junction', 'Symlink', 'MountPoint') THEN size ELSE 0 END), 0)
+            FROM nodes
+            WHERE session_id = $sessionId;
+            """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        using SqliteDataReader reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return new PreviewInventory(0, 0, 0, 0, 0);
+        }
+
+        return new PreviewInventory(
+            Convert.ToInt32(reader.GetInt64(0), CultureInfo.InvariantCulture),
+            Convert.ToInt32(reader.GetInt64(1), CultureInfo.InvariantCulture),
+            Convert.ToInt32(reader.GetInt64(2), CultureInfo.InvariantCulture),
+            Convert.ToInt32(reader.GetInt64(3), CultureInfo.InvariantCulture),
+            reader.GetInt64(4));
     }
 
     public long GetMaxNodeId(string sessionId)

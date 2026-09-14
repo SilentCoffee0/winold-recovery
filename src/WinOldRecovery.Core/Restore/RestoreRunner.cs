@@ -21,7 +21,8 @@ public sealed class RestoreRunner
 
     public async Task<RestoreResult> RunAsync(
         RestorePlan plan,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<RestoreProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         RestorePlan toCheck = sessionDb is null ? plan : PlanProgress.Pending(sessionDb, plan);
@@ -33,19 +34,53 @@ public sealed class RestoreRunner
         }
 
         List<RestoreItemResult> results = [];
+        long completedBytes = 0;
+        int index = 0;
         foreach (PlanItem item in plan.Items)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            progress?.Report(
+                new RestoreProgress(
+                    index,
+                    plan.Items.Count,
+                    completedBytes,
+                    plan.TotalBytes,
+                    Path.GetFileName(item.SourcePath)));
             try
             {
-                results.Add(await copyEngine.CopyAsync(item, cancellationToken).ConfigureAwait(false));
+                RestoreItemResult result = await copyEngine.CopyAsync(item, cancellationToken).ConfigureAwait(false);
+                results.Add(result);
+                if (result.State is "Completed" or "Skipped")
+                {
+                    completedBytes += item.Bytes;
+                }
             }
             catch (RestorePausedException)
             {
                 return new RestoreResult(false, true, results);
             }
+
+            index++;
+            progress?.Report(
+                new RestoreProgress(
+                    index,
+                    plan.Items.Count,
+                    completedBytes,
+                    plan.TotalBytes,
+                    Path.GetFileName(item.SourcePath)));
         }
 
-        return new RestoreResult(true, false, results);
+        return new RestoreResult(
+            results.Count == plan.Items.Count &&
+            results.All(static result => result.State is "Completed" or "Skipped"),
+            false,
+            results);
     }
 }
+
+public sealed record RestoreProgress(
+    int CompletedItems,
+    int TotalItems,
+    long CompletedBytes,
+    long TotalBytes,
+    string CurrentName);

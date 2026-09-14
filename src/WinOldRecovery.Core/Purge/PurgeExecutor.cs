@@ -12,7 +12,8 @@ public sealed record PurgeExecuteRequest(
     IProcessRunner ProcessRunner,
     string SessionRoot,
     bool PreferCleanupHandler,
-    IReadOnlyList<string>? ProtectedPaths = null);
+    IReadOnlyList<string>? ProtectedPaths = null,
+    ICleanupSage? CleanupSage = null);
 
 public sealed record PurgeExecuteResult(
     bool Completed,
@@ -38,13 +39,28 @@ public sealed class PurgeExecutor
         request.SourceGuard.DemandWriteAllowed(request.CanonicalSourceRoot, request.Token);
         WriteManifest(request);
 
+        const int sageId = 777;
+        ICleanupSage sage = request.CleanupSage ?? new RegistryCleanupSage();
+        bool armed = false;
         if (request.PreferCleanupHandler)
         {
-            await request.ProcessRunner.RunAsync(CreateCleanupRequest(), cancellationToken)
-                .ConfigureAwait(false);
-            if (!Directory.Exists(Strip(request.CanonicalSourceRoot)))
+            armed = sage.TryArmPreviousInstallations(sageId);
+            if (armed)
             {
-                return new PurgeExecuteResult(true, "cleanup-handler", "Windows Disk Cleanup removed the folder.", []);
+                try
+                {
+                    await request.ProcessRunner.RunAsync(CreateCleanupRequest(), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    sage.Disarm(sageId);
+                }
+
+                if (!Directory.Exists(Strip(request.CanonicalSourceRoot)))
+                {
+                    return new PurgeExecuteResult(true, "cleanup-handler", "Windows Disk Cleanup removed the folder.", []);
+                }
             }
         }
 
@@ -60,7 +76,7 @@ public sealed class PurgeExecutor
         bool gone = !Directory.Exists(Strip(request.CanonicalSourceRoot));
         return new PurgeExecuteResult(
             gone && remaining.Count == 0,
-            request.PreferCleanupHandler ? "cleanup-then-manual" : "manual",
+            armed ? "cleanup-then-manual" : "manual",
             gone ? "Source folder deleted." : "Some items could not be deleted.",
             remaining);
     }

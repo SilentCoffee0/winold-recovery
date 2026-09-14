@@ -18,9 +18,12 @@ public sealed class PurgeAuthorizationTests
         Assert.Contains("undecided", PurgeAuthorization.Evaluate(ok with { UndecidedAcknowledged = false }).BlockedGates);
         Assert.Contains("restore-active", PurgeAuthorization.Evaluate(ok with { RestoreJobActive = true }).BlockedGates);
         Assert.Contains("folder-name", PurgeAuthorization.Evaluate(ok with { TypedFolderName = "wrong" }).BlockedGates);
-        Assert.Contains(
-            "custom-root",
+        Assert.Contains("custom-root",
             PurgeAuthorization.Evaluate(ok with { SourceFolderName = "OldInstall", TypedFolderName = "OldInstall", CustomRootConfirmed = false }).BlockedGates);
+        Assert.Contains("journal", PurgeAuthorization.Evaluate(ok with { RestoreJournalSettled = false }).BlockedGates);
+        Assert.Contains("verify-store", PurgeAuthorization.Evaluate(ok with { StoredVerifyAllOk = false }).BlockedGates);
+        Assert.Contains("journal", PurgeAuthorization.Evaluate(OmitJournalAndVerifyStore(ok)).BlockedGates);
+        Assert.Contains("verify-store", PurgeAuthorization.Evaluate(OmitJournalAndVerifyStore(ok)).BlockedGates);
         Assert.Null(PurgeAuthorization.Evaluate(ok with { VerifyAllOk = false }).Token);
     }
 
@@ -53,6 +56,24 @@ public sealed class PurgeAuthorizationTests
             Environment.ProcessPath,
             Path.GetTempPath(),
             [Path.Combine(Path.GetTempPath(), "Recovered")],
-            false);
+            false,
+            RestoreJournalSettled: true,
+            StoredVerifyAllOk: true);
+    }
+
+    private static PurgeGateRequest OmitJournalAndVerifyStore(PurgeGateRequest template)
+    {
+        return new PurgeGateRequest(
+            template.VerifyAllOk,
+            template.FilesChecked,
+            template.UndecidedAcknowledged,
+            template.RestoreJobActive,
+            template.TypedFolderName,
+            template.SourceFolderName,
+            template.CanonicalSourceRoot,
+            template.RunningExecutablePath,
+            template.SessionRoot,
+            template.DestinationPaths,
+            template.CustomRootConfirmed);
     }
 }

@@ -4,6 +4,10 @@ All notable changes to WinOld Recovery will be documented here.
 
 ## Unreleased
 
+### Fixed
+
+- Keep-both verification hashed the restored copy instead of the preexisting destination; CopyTree resume no longer Keep-Boths files that already match; leftover `.winold-partial` cleanup no longer follows destination junctions; `RestoreRunner.Completed` is false when any item Failed; purge consults stored verify rows and the copy journal and fails closed if those fields are omitted; `cleanmgr /sagerun:777` runs only after Previous Installations `StateFlags0777` is armed. See `BUG_AUDIT.md`.
+
 ### Added
 
 - Milestone 0 .NET 10 solution and project dependency structure.
@@ -55,3 +59,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Decide Files shows mixed subtrees, Restore/Leave Behind apply to the extended selection, and the context menu can restore except regeneratable or only files inside the Recent window.
 - Next launch reopens an interrupted restore session (journal Started/Paused/Failed) with a Resume overlay; Decide Cards collapse apps that were looked for and not found.
 - Inspect can edit a planned destination per folder (children follow); Preview exposes the restore destination folder; mixed decision cells include a restore/leave/undecided byte bar; a disk-full pause names the volume and offers Resume or Cancel without deleting anything.
+- Preview lists recipes, unrestorable counts, and remaining Undecided items; Start restore stays off while a required app is running; restore shows progress and can be cancelled without touching Windows.old; Verify includes recipe checks.

@@ -38,15 +38,22 @@ public sealed class Verifier
             }
 
             IReadOnlyList<(string Source, string Destination)> files = ListCopiedFiles(item);
-            bool l0 = files.Count > 0 && files.All(pair => File.Exists(pair.Destination) || Directory.Exists(item.DestinationPath));
+            bool l0;
             if (item.Operation == PlanOperation.CopyTree)
             {
-                l0 = Directory.Exists(item.DestinationPath);
+                l0 = files.Count == 0
+                    ? Directory.Exists(item.DestinationPath)
+                    : files.All(
+                        static pair =>
+                        {
+                            string? dest = CopyEngine.FindRestoredPath(pair.Source, pair.Destination);
+                            return dest is not null && CopyEngine.LooksLikeSuccessfulCopy(pair.Source, dest);
+                        });
             }
             else
             {
-                l0 = File.Exists(item.DestinationPath) ||
-                    File.Exists(CopyEngine.KeepBothPath(item.DestinationPath));
+                string? restored = CopyEngine.FindRestoredPath(item.SourcePath, item.DestinationPath);
+                l0 = restored is not null && CopyEngine.LooksLikeSuccessfulCopy(item.SourcePath, restored);
             }
 
             rows.Add(new VerifyResultRow(planItemId, reportId, 0, l0, l0 ? "exists" : "missing", now));
@@ -55,10 +62,8 @@ public sealed class Verifier
             bool l2 = l0;
             foreach ((string source, string destination) in files)
             {
-                string dest = File.Exists(destination)
-                    ? destination
-                    : CopyEngine.KeepBothPath(destination);
-                if (!File.Exists(dest))
+                string? dest = CopyEngine.FindRestoredPath(source, destination);
+                if (dest is null)
                 {
                     l1 = false;
                     l2 = false;

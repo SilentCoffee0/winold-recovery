@@ -49,7 +49,9 @@ public sealed class PurgeExecutorTests : IDisposable
                 Environment.ProcessPath,
                 sessionRoot,
                 [Path.Combine(testRoot, "dest")],
-                false));
+                false,
+                RestoreJournalSettled: true,
+                StoredVerifyAllOk: true));
         Assert.True(gate.Authorized);
         RecordingRunner runner = new();
         PurgeExecuteResult result = await new PurgeExecutor().ExecuteAsync(
@@ -60,7 +62,8 @@ public sealed class PurgeExecutorTests : IDisposable
                 guard,
                 runner,
                 sessionRoot,
-                PreferCleanupHandler: true));
+                PreferCleanupHandler: true,
+                CleanupSage: new RecordingSage(arm: true)));
 
         Assert.Contains(runner.Requests, request => request.FileName == "cleanmgr.exe" && request.Arguments.Contains("/sagerun:777"));
         Assert.True(result.Completed, result.Detail + string.Join(';', result.RemainingPaths));
@@ -74,6 +77,43 @@ public sealed class PurgeExecutorTests : IDisposable
             Path.Combine(sessionRoot, "log.txt"),
             Path.Combine(sessionRoot, "exports"),
             Path.Combine(sessionRoot, "tmp")))));
+    }
+
+    [Fact]
+    public async Task Cleanmgr_IsNotInvokedWhenPreviousInstallationsFlagCannotBeArmed()
+    {
+        string canonical = guard.RegisterSourceRoot(sourceRoot);
+        PurgeGateResult gate = PurgeAuthorization.Evaluate(
+            new PurgeGateRequest(
+                true,
+                true,
+                true,
+                false,
+                "Windows.old",
+                "Windows.old",
+                canonical,
+                Environment.ProcessPath,
+                sessionRoot,
+                [Path.Combine(testRoot, "dest")],
+                false,
+                RestoreJournalSettled: true,
+                StoredVerifyAllOk: true));
+        RecordingRunner runner = new();
+        PurgeExecuteResult result = await new PurgeExecutor().ExecuteAsync(
+            new PurgeExecuteRequest(
+                canonical,
+                gate.Token!,
+                safeFs,
+                guard,
+                runner,
+                sessionRoot,
+                PreferCleanupHandler: true,
+                CleanupSage: new RecordingSage(arm: false)));
+
+        Assert.DoesNotContain(runner.Requests, request => request.FileName == "cleanmgr.exe");
+        Assert.True(result.Completed, result.Detail);
+        Assert.False(Directory.Exists(sourceRoot));
+        Assert.True(File.Exists(Path.Combine(liveTarget, "keep.txt")));
     }
 
     [Fact]
@@ -137,6 +177,15 @@ public sealed class PurgeExecutorTests : IDisposable
             ?? throw new InvalidOperationException("Could not start mklink.");
         process.WaitForExit();
         Assert.True(process.ExitCode == 0, process.StandardError.ReadToEnd());
+    }
+
+    private sealed class RecordingSage(bool arm) : ICleanupSage
+    {
+        public bool TryArmPreviousInstallations(int sageId) => arm;
+
+        public void Disarm(int sageId)
+        {
+        }
     }
 
     private sealed class RecordingRunner : IProcessRunner

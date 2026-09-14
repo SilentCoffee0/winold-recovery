@@ -11,7 +11,9 @@ public sealed record PurgeGateRequest(
     string? RunningExecutablePath,
     string? SessionRoot,
     IReadOnlyList<string> DestinationPaths,
-    bool CustomRootConfirmed);
+    bool CustomRootConfirmed,
+    bool RestoreJournalSettled = false,
+    bool StoredVerifyAllOk = false);
 
 public sealed record PurgeGateResult(
     bool Authorized,
@@ -27,6 +29,16 @@ public sealed class PurgeAuthorization
         if (!request.VerifyAllOk)
         {
             blocked.Add("verify");
+        }
+
+        if (!request.StoredVerifyAllOk)
+        {
+            blocked.Add("verify-store");
+        }
+
+        if (!request.RestoreJournalSettled)
+        {
+            blocked.Add("journal");
         }
 
         if (!request.FilesChecked)
@@ -57,19 +69,22 @@ public sealed class PurgeAuthorization
             blocked.Add("custom-root");
         }
 
-        if (IsInsideSource(request.CanonicalSourceRoot, request.RunningExecutablePath))
+        if (IsInsideSource(request.CanonicalSourceRoot, request.RunningExecutablePath) ||
+            PathLooksInsideSource(request.CanonicalSourceRoot, request.RunningExecutablePath))
         {
             blocked.Add("executable-inside-source");
         }
 
-        if (IsInsideSource(request.CanonicalSourceRoot, request.SessionRoot))
+        if (IsInsideSource(request.CanonicalSourceRoot, request.SessionRoot) ||
+            PathLooksInsideSource(request.CanonicalSourceRoot, request.SessionRoot))
         {
             blocked.Add("session-inside-source");
         }
 
         foreach (string destination in request.DestinationPaths)
         {
-            if (IsInsideSource(request.CanonicalSourceRoot, destination))
+            if (IsInsideSource(request.CanonicalSourceRoot, destination) ||
+                PathLooksInsideSource(request.CanonicalSourceRoot, destination))
             {
                 blocked.Add("destination-inside-source");
                 break;
@@ -108,7 +123,27 @@ public sealed class PurgeAuthorization
         }
         catch (Exception exception) when (exception is IOException or ArgumentException or NotSupportedException)
         {
+            return PathLooksInsideSource(canonicalSourceRoot, path);
+        }
+    }
+
+    private static bool PathLooksInsideSource(string canonicalSourceRoot, string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
             return false;
+        }
+
+        try
+        {
+            string lexical = WinOldRecovery.Core.IO.PathCanonicalizer.NormalizeLexically(path);
+            string root = canonicalSourceRoot.TrimEnd('\\');
+            return lexical.Equals(root, StringComparison.OrdinalIgnoreCase) ||
+                lexical.StartsWith(root + "\\", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
+        {
+            return true;
         }
     }
 }

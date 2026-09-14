@@ -32,6 +32,9 @@ public sealed class FlaUiSmokeTests
         AutomationElement closeHelp = window.FindFirstDescendant(cf => cf.ByAutomationId("CloseHelpButton"))
             ?? throw new InvalidOperationException("Close help button was not found.");
         closeHelp.AsButton().Invoke();
+        AutomationElement preview = window.FindFirstDescendant(cf => cf.ByAutomationId("PreviewPlanButton"))
+            ?? throw new InvalidOperationException("Preview plan button was not found.");
+        Assert.NotNull(preview);
         AutomationElement scan = window.FindFirstDescendant(cf => cf.ByAutomationId("StepScan"))
             ?? throw new InvalidOperationException("Scan step button was not found.");
         scan.AsButton().Invoke();

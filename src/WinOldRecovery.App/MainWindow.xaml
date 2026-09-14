@@ -85,6 +85,8 @@
                     <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Text="{Binding SourceHint}" />
                     <TextBlock Margin="0,4,0,0" Text="{Binding CurrentPath}"
                                ToolTip="{Binding CurrentPathFull}" />
+                    <TextBlock Margin="0,4,0,0" Text="{Binding RestoreProgress}" TextWrapping="Wrap"
+                               AutomationProperties.Name="Restore progress" />
                 </StackPanel>
 
                 <Grid Grid.Row="1">
@@ -299,13 +301,17 @@
                         <Button Content="Open Folder (O)" Command="{Binding OpenFolderCommand}" Margin="0,0,8,0"
                                 AutomationProperties.Name="Open folder" />
                         <Button Content="Preview plan" Command="{Binding PreparePreviewCommand}" Margin="0,0,8,0"
-                                AutomationProperties.Name="Preview plan" />
+                                AutomationProperties.Name="Preview plan"
+                                AutomationProperties.AutomationId="PreviewPlanButton" />
                         <ComboBox Width="160" Margin="0,0,8,0"
                                   ItemsSource="{Binding ConflictPolicies}"
                                   SelectedItem="{Binding SelectedConflictPolicy}"
                                   AutomationProperties.Name="Conflict policy" />
                         <Button Content="Run restore" Command="{Binding ExecuteRestoreCommand}" Margin="0,0,8,0"
                                 AutomationProperties.Name="Run restore" />
+                        <Button Content="Cancel restore" Command="{Binding CancelRestoreCommand}" Margin="0,0,8,0"
+                                AutomationProperties.Name="Cancel restore"
+                                AutomationProperties.AutomationId="CancelRestoreButton" />
                         <Button Content="Verify" Command="{Binding ExecuteVerifyCommand}" Margin="0,0,8,0"
                                 AutomationProperties.Name="Run verify" />
                         <Button Content="Expand" Command="{Binding ExpandCommand}" CommandParameter="{Binding SelectedNode}"
@@ -338,6 +344,17 @@
                             <Button Margin="8,0,0,0" Content="Change…"
                                     Command="{Binding BrowseDestinationCommand}"
                                     AutomationProperties.Name="Change destination folder" />
+                            <CheckBox Margin="16,0,0,0" VerticalAlignment="Center"
+                                      Content="Merge into the current user profile folders"
+                                      IsChecked="{Binding MergeIntoProfile}"
+                                      AutomationProperties.Name="Merge into existing folders" />
+                        </StackPanel>
+                        <TextBlock DockPanel.Dock="Top" Margin="0,0,0,8" TextWrapping="Wrap"
+                                   Text="{Binding PreviewSummaryText}"
+                                   AutomationProperties.Name="Restore plan summary" />
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                            <Button Content="Review undecided" Command="{Binding ReviewUndecidedCommand}"
+                                    AutomationProperties.Name="Review undecided items" />
                         </StackPanel>
                         <Button DockPanel.Dock="Bottom" Margin="0,8,0,0"
                                 Content="{Binding OverwriteButtonLabel}"
