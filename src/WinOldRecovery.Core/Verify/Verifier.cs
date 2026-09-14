@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using WinOldRecovery.Core.Hashing;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Persistence;
 using WinOldRecovery.Core.Planning;
@@ -32,6 +31,37 @@ public sealed class Verifier
         int sizeTimeOk = 0;
         int hashFiles = 0;
         int hashOk = 0;
+        bool strongVerify = string.Equals(
+            sessionDb.GetKv(plan.SessionId, "scan.hashDuringScan"),
+            "1",
+            StringComparison.Ordinal);
+        IReadOnlySet<string> sensitiveRelPaths = sessionDb.ListSensitiveRelPaths(plan.SessionId);
+        List<CopiedFile> copied = [];
+        foreach (PlanItem item in plan.Items)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (item.Id is not long)
+            {
+                continue;
+            }
+
+            foreach ((string source, string destination) in ListCopiedFiles(item))
+            {
+                copied.Add(Describe(plan.SourceRoot, source, destination, sensitiveRelPaths));
+            }
+        }
+
+        HashSet<string> sample = VerifyHashPolicy.SelectSample(
+                copied
+                    .Where(file => !VerifyHashPolicy.IsMandatory(
+                        file.Source,
+                        file.Size,
+                        file.Sensitive,
+                        strongVerify))
+                    .Select(static file => file.Source)
+                    .ToArray(),
+                plan.SessionId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         foreach (PlanItem item in plan.Items)
         {
@@ -88,19 +118,28 @@ public sealed class Verifier
                     sizeTimeOk++;
                 }
 
-                if (FileHashingPass.RequiresContentHash(source, sourceInfo.Length))
+                CopiedFile described = Describe(plan.SourceRoot, source, dest, sensitiveRelPaths);
+                bool hashThis = VerifyHashPolicy.IsMandatory(
+                        described.Source,
+                        described.Size,
+                        described.Sensitive,
+                        strongVerify) ||
+                    sample.Contains(described.Source);
+                if (!hashThis)
                 {
-                    hashFiles++;
-                    byte[] sourceHash = await HashAsync(source, cancellationToken).ConfigureAwait(false);
-                    byte[] destHash = await HashAsync(dest, cancellationToken).ConfigureAwait(false);
-                    if (!sourceHash.AsSpan().SequenceEqual(destHash))
-                    {
-                        l2 = false;
-                    }
-                    else
-                    {
-                        hashOk++;
-                    }
+                    continue;
+                }
+
+                hashFiles++;
+                byte[] sourceHash = await HashAsync(source, cancellationToken).ConfigureAwait(false);
+                byte[] destHash = await HashAsync(dest, cancellationToken).ConfigureAwait(false);
+                if (!sourceHash.AsSpan().SequenceEqual(destHash))
+                {
+                    l2 = false;
+                }
+                else
+                {
+                    hashOk++;
                 }
             }
 
@@ -146,4 +185,38 @@ public sealed class Verifier
 
         return files;
     }
+
+    private static CopiedFile Describe(
+        string sourceRoot,
+        string source,
+        string destination,
+        IReadOnlySet<string> sensitiveRelPaths)
+    {
+        long size = 0;
+        try
+        {
+            FileInfo info = new(source);
+            if (info.Exists)
+            {
+                size = info.Length;
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        string relative = Path.GetRelativePath(sourceRoot, source).Replace('/', '\\');
+        bool sensitive = !relative.StartsWith("..", StringComparison.Ordinal) &&
+            sensitiveRelPaths.Contains(relative);
+        return new CopiedFile(source, destination, size, sensitive);
+    }
+
+    private readonly record struct CopiedFile(
+        string Source,
+        string Destination,
+        long Size,
+        bool Sensitive);
 }

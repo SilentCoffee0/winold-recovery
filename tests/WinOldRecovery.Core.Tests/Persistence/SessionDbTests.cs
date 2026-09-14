@@ -143,6 +143,50 @@ public sealed class SessionDbTests
     }
 
     [Fact]
+    public async Task ListSensitiveRelPaths_ReturnsMarkedNodes()
+    {
+        await using SessionDbTestContext context = await SessionDbTestContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Created", "0.1.0"));
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "id_ed25519",
+                @".ssh\id_ed25519",
+                NodeKind.File,
+                32,
+                32,
+                1,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                2,
+                "session-1",
+                null,
+                null,
+                "readme.txt",
+                "readme.txt",
+                NodeKind.File,
+                4,
+                4,
+                1,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+        await context.Database.MarkNodesSensitiveAsync([1]);
+
+        IReadOnlySet<string> sensitive = context.Database.ListSensitiveRelPaths("session-1");
+        Assert.Contains(@".ssh\id_ed25519", sensitive, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("readme.txt", sensitive, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task WriterChannel_RoundTripsSessionState()
     {
         await using SessionDbTestContext context = await SessionDbTestContext.CreateAsync();

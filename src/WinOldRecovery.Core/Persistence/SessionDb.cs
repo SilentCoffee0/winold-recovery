@@ -977,6 +977,29 @@ public sealed class SessionDb : IAsyncDisposable
         return command.ExecuteScalar() as string;
     }
 
+    public IReadOnlySet<string> ListSensitiveRelPaths(string sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT rel_path
+            FROM nodes
+            WHERE session_id = $sessionId AND sensitive = 1;
+            """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        HashSet<string> paths = new(StringComparer.OrdinalIgnoreCase);
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            paths.Add(reader.GetString(0).Replace('/', '\\'));
+        }
+
+        return paths;
+    }
+
     public PreviewInventory GetPreviewInventory(string sessionId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
