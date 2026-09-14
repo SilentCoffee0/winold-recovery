@@ -317,6 +317,26 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task PurgeStep_RadiosAndCancelMatchUx()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        Assert.True(context.ViewModel.PreferCleanupHandler);
+        Assert.False(context.ViewModel.PreferManualDelete);
+        Assert.False(context.ViewModel.CancelPurgeCommand.CanExecute(null));
+
+        context.ViewModel.PreferManualDelete = true;
+        Assert.False(context.ViewModel.PreferCleanupHandler);
+        Assert.True(context.ViewModel.PreferManualDelete);
+
+        context.ViewModel.UnlockPurgeForTests();
+        context.ViewModel.ArmPurgeForTests();
+        Assert.True(context.ViewModel.IsPurging);
+        Assert.True(context.ViewModel.CancelPurgeCommand.CanExecute(null));
+        Assert.False(context.ViewModel.ExecutePurgeCommand.CanExecute(null));
+        Assert.False(context.ViewModel.CanGoTo(WorkflowStep.Scan));
+    }
+
+    [Fact]
     public async Task PurgedSession_BecomesReadOnlyAndBlocksScan()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();

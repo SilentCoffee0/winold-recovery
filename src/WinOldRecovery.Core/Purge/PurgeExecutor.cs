@@ -13,7 +13,8 @@ public sealed record PurgeExecuteRequest(
     string SessionRoot,
     bool PreferCleanupHandler,
     IReadOnlyList<string>? ProtectedPaths = null,
-    ICleanupSage? CleanupSage = null);
+    ICleanupSage? CleanupSage = null,
+    IProgress<PurgeProgress>? Progress = null);
 
 public sealed record PurgeExecuteResult(
     bool Completed,
@@ -42,43 +43,67 @@ public sealed class PurgeExecutor
         const int sageId = 777;
         ICleanupSage sage = request.CleanupSage ?? new RegistryCleanupSage();
         bool armed = false;
-        if (request.PreferCleanupHandler)
-        {
-            armed = sage.TryArmPreviousInstallations(sageId);
-            if (armed)
-            {
-                try
-                {
-                    await request.ProcessRunner.RunAsync(CreateCleanupRequest(), cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                finally
-                {
-                    sage.Disarm(sageId);
-                }
+        string method = "manual";
+        List<string> remaining = [];
+        ProgressClock clock = new(request.Progress);
+        int deleted = 0;
 
-                if (!Directory.Exists(Strip(request.CanonicalSourceRoot)))
+        try
+        {
+            if (request.PreferCleanupHandler)
+            {
+                armed = sage.TryArmPreviousInstallations(sageId);
+                if (armed)
                 {
-                    return new PurgeExecuteResult(true, "cleanup-handler", "Windows Disk Cleanup removed the folder.", []);
+                    method = "cleanup-handler";
+                    try
+                    {
+                        await request.ProcessRunner.RunAsync(CreateCleanupRequest(), cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        sage.Disarm(sageId);
+                    }
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (!Directory.Exists(Strip(request.CanonicalSourceRoot)))
+                    {
+                        clock.Report(deleted, request.CanonicalSourceRoot, force: true);
+                        return new PurgeExecuteResult(
+                            true,
+                            "cleanup-handler",
+                            "Windows Disk Cleanup removed the folder.",
+                            []);
+                    }
+
+                    method = "cleanup-then-manual";
                 }
             }
+
+            DeleteTree(
+                request.SafeFs,
+                request.CanonicalSourceRoot,
+                request.Token,
+                request.ProtectedPaths ?? [],
+                remaining,
+                clock,
+                ref deleted,
+                cancellationToken);
+
+            bool gone = !Directory.Exists(Strip(request.CanonicalSourceRoot));
+            clock.Report(deleted, request.CanonicalSourceRoot, force: true);
+            return new PurgeExecuteResult(
+                gone && remaining.Count == 0,
+                armed ? "cleanup-then-manual" : "manual",
+                gone ? "Source folder deleted." : "Some items could not be deleted.",
+                remaining);
         }
-
-        List<string> remaining = [];
-        DeleteTree(
-            request.SafeFs,
-            request.CanonicalSourceRoot,
-            request.Token,
-            request.ProtectedPaths ?? [],
-            remaining,
-            cancellationToken);
-
-        bool gone = !Directory.Exists(Strip(request.CanonicalSourceRoot));
-        return new PurgeExecuteResult(
-            gone && remaining.Count == 0,
-            armed ? "cleanup-then-manual" : "manual",
-            gone ? "Source folder deleted." : "Some items could not be deleted.",
-            remaining);
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            clock.Report(deleted, request.CanonicalSourceRoot, force: true);
+            return new PurgeExecuteResult(false, method, PurgeProgressFormat.CancelledDetail, remaining);
+        }
     }
 
     private static void WriteManifest(PurgeExecuteRequest request)
@@ -96,6 +121,8 @@ public sealed class PurgeExecutor
         PurgeToken token,
         IReadOnlyList<string> protectedPaths,
         List<string> remaining,
+        ProgressClock clock,
+        ref int deleted,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -118,7 +145,7 @@ public sealed class PurgeExecutor
 
         if ((attributes & FileAttributes.ReparsePoint) != 0)
         {
-            TryDeleteLeaf(safeFs, path, attributes, token, remaining);
+            NoteDeleted(TryDeleteLeaf(safeFs, path, attributes, token, remaining), clock, ref deleted, path);
             return;
         }
 
@@ -137,17 +164,36 @@ public sealed class PurgeExecutor
 
             foreach (string child in children)
             {
-                DeleteTree(safeFs, child, token, protectedPaths, remaining, cancellationToken);
+                DeleteTree(
+                    safeFs,
+                    child,
+                    token,
+                    protectedPaths,
+                    remaining,
+                    clock,
+                    ref deleted,
+                    cancellationToken);
             }
 
-            TryDeleteLeaf(safeFs, path, attributes, token, remaining);
+            NoteDeleted(TryDeleteLeaf(safeFs, path, attributes, token, remaining), clock, ref deleted, path);
             return;
         }
 
-        TryDeleteLeaf(safeFs, path, attributes, token, remaining);
+        NoteDeleted(TryDeleteLeaf(safeFs, path, attributes, token, remaining), clock, ref deleted, path);
     }
 
-    private static void TryDeleteLeaf(
+    private static void NoteDeleted(bool deletedLeaf, ProgressClock clock, ref int deleted, string path)
+    {
+        if (!deletedLeaf)
+        {
+            return;
+        }
+
+        deleted++;
+        clock.Report(deleted, path, force: false);
+    }
+
+    private static bool TryDeleteLeaf(
         SafeFs safeFs,
         string path,
         FileAttributes attributes,
@@ -170,10 +216,36 @@ public sealed class PurgeExecutor
             {
                 safeFs.DeleteFile(path, token);
             }
+
+            return true;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SourceWriteDeniedException)
         {
             remaining.Add(path);
+            return false;
+        }
+    }
+
+    private sealed class ProgressClock(IProgress<PurgeProgress>? progress)
+    {
+        private static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(250);
+        private DateTimeOffset last = DateTimeOffset.MinValue;
+
+        public void Report(int deletedLeaves, string currentPath, bool force)
+        {
+            if (progress is null)
+            {
+                return;
+            }
+
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            if (!force && last != DateTimeOffset.MinValue && now - last < Interval)
+            {
+                return;
+            }
+
+            last = now;
+            progress.Report(new PurgeProgress(deletedLeaves, currentPath));
         }
     }
 

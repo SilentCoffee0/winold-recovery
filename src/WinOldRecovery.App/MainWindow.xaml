@@ -474,11 +474,29 @@
                                 HorizontalAlignment="Left"
                                 AutomationProperties.Name="Review undecided items before purge" />
                         <CheckBox Content="This is a custom source root (not named Windows.old)" IsChecked="{Binding CustomRootConfirmed}" />
-                        <CheckBox Content="Prefer Windows Disk Cleanup (Previous Installations)" IsChecked="{Binding PreferCleanupHandler}" />
+                        <TextBlock Margin="0,8,0,0" FontWeight="SemiBold" Text="How to delete" />
+                        <RadioButton GroupName="PurgeMethod"
+                                     Content="Use Windows &quot;Previous Windows installation(s)&quot; cleanup (recommended)"
+                                     IsChecked="{Binding PreferCleanupHandler}"
+                                     IsEnabled="{Binding CanWriteSession}"
+                                     AutomationProperties.Name="Use Windows Previous Installations cleanup" />
+                        <RadioButton GroupName="PurgeMethod"
+                                     Content="Delete the folder directly (slower; use if Windows cleanup is unavailable)"
+                                     IsChecked="{Binding PreferManualDelete}"
+                                     IsEnabled="{Binding CanWriteSession}"
+                                     AutomationProperties.Name="Delete Windows.old directly" />
                         <TextBox Margin="0,8,0,0" Text="{Binding PurgeTypedFolderName, UpdateSourceTrigger=PropertyChanged}"
                                  AutomationProperties.Name="Type the Windows.old folder name to confirm purge" />
+                        <TextBlock Margin="0,8,0,0" TextWrapping="Wrap"
+                                   Text="{Binding PurgeProgressText}"
+                                   AutomationProperties.Name="Purge progress" />
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <Button Content="Purge source" Command="{Binding ExecutePurgeCommand}" Margin="0,0,8,0" />
+                            <Button Content="Delete Windows.old" Command="{Binding ExecutePurgeCommand}" Margin="0,0,8,0"
+                                    AutomationProperties.Name="Delete Windows.old"
+                                    AutomationProperties.AutomationId="DeleteWindowsOldButton" />
+                            <Button Content="Cancel" Command="{Binding CancelPurgeCommand}" Margin="0,0,8,0"
+                                    AutomationProperties.Name="Cancel purge"
+                                    AutomationProperties.AutomationId="CancelPurgeButton" />
                             <Button Content="Create support bundle" Command="{Binding CreateSupportBundleCommand}" />
                         </StackPanel>
                     </StackPanel>

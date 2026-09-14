@@ -88,6 +88,82 @@ public sealed class PurgeExecutorTests : IDisposable
     }
 
     [Fact]
+    public async Task Cancel_StopsManualDeleteAndLeavesRemainingFiles()
+    {
+        for (int i = 0; i < 24; i++)
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(sourceRoot, "Users", "Alice", $"extra-{i}.txt"),
+                "x");
+        }
+
+        string canonical = guard.RegisterSourceRoot(sourceRoot);
+        PurgeToken token = new(canonical);
+        using CancellationTokenSource cts = new();
+        int reports = 0;
+        SynchronousProgress progress = new(reported =>
+        {
+            reports++;
+            if (reported.DeletedLeaves >= 1)
+            {
+                cts.Cancel();
+            }
+        });
+
+        PurgeExecuteResult result = await new PurgeExecutor().ExecuteAsync(
+            new PurgeExecuteRequest(
+                canonical,
+                token,
+                safeFs,
+                guard,
+                new RecordingRunner(),
+                sessionRoot,
+                PreferCleanupHandler: false,
+                Progress: progress),
+            cts.Token);
+
+        Assert.False(result.Completed);
+        Assert.Equal("manual", result.Method);
+        Assert.Equal(PurgeProgressFormat.CancelledDetail, result.Detail);
+        Assert.True(Directory.Exists(sourceRoot));
+        Assert.True(
+            Directory.EnumerateFileSystemEntries(Path.Combine(sourceRoot, "Users", "Alice")).Any(),
+            "Cancel must leave a partial Windows.old tree.");
+        Assert.True(reports >= 1);
+        Assert.True(File.Exists(Path.Combine(liveTarget, "keep.txt")));
+    }
+
+    [Fact]
+    public async Task Cancel_DuringCleanupHandler_DoesNotStartManualDelete()
+    {
+        string canonical = guard.RegisterSourceRoot(sourceRoot);
+        PurgeToken token = new(canonical);
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+        RecordingRunner runner = new();
+
+        PurgeExecuteResult result = await new PurgeExecutor().ExecuteAsync(
+            new PurgeExecuteRequest(
+                canonical,
+                token,
+                safeFs,
+                guard,
+                runner,
+                sessionRoot,
+                PreferCleanupHandler: true,
+                CleanupSage: new RecordingSage(arm: true)),
+            cts.Token);
+
+        Assert.False(result.Completed);
+        Assert.Equal("cleanup-handler", result.Method);
+        Assert.Equal(PurgeProgressFormat.CancelledDetail, result.Detail);
+        Assert.Contains(
+            runner.Requests,
+            request => request.FileName == "cleanmgr.exe" && request.Arguments.Contains("/sagerun:777"));
+        Assert.True(File.Exists(Path.Combine(sourceRoot, "Users", "Alice", "notes.txt")));
+    }
+
+    [Fact]
     public void DemandWrite_StillRefusesWithoutToken()
     {
         guard.RegisterSourceRoot(sourceRoot);
@@ -166,7 +242,13 @@ public sealed class PurgeExecutorTests : IDisposable
         public Task<ProcessResult> RunAsync(ProcessRequest request, CancellationToken cancellationToken = default)
         {
             Requests.Add(request);
+            cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(new ProcessResult(0, string.Empty, string.Empty));
         }
+    }
+
+    private sealed class SynchronousProgress(Action<PurgeProgress> action) : IProgress<PurgeProgress>
+    {
+        public void Report(PurgeProgress value) => action(value);
     }
 }

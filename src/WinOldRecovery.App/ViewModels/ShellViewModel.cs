@@ -82,6 +82,9 @@ public sealed class ShellViewModel : ObservableObject
     private bool customRootConfirmed;
     private bool preferCleanupHandler = true;
     private string purgeTypedFolderName = string.Empty;
+    private string purgeProgressText = string.Empty;
+    private CancellationTokenSource? purgeCancellation;
+    private bool isPurging;
     private ConflictPolicy selectedConflictPolicy = ConflictPolicy.KeepBoth;
     private string spaceBudgetText = "Selected: — of destination free space";
     private string destinationRoot = Path.Combine(
@@ -212,7 +215,8 @@ public sealed class ShellViewModel : ObservableObject
         ApproveOverwritesCommand = new AsyncRelayCommand(ApproveOverwritesAsync, CanApproveOverwrites);
         ExecutePurgeCommand = new AsyncRelayCommand(
             ExecutePurgeAsync,
-            () => CanWriteSession && verifyCompleted && !IsScanning && !isRestoring);
+            () => CanWriteSession && verifyCompleted && !IsScanning && !isRestoring && !isPurging);
+        CancelPurgeCommand = new RelayCommand(CancelPurge, () => isPurging);
         AcknowledgeVerifyCommand = new AsyncRelayCommand(AcknowledgeVerifyAsync, CanAcknowledgeVerify);
         CreateSupportBundleCommand = new RelayCommand(CreateSupportBundle, () => verifyCompleted);
         this.firstRun = firstRunState ?? FirstRunState.FromWorkspace(safeFs, workspace);
@@ -274,6 +278,7 @@ public sealed class ShellViewModel : ObservableObject
     public IAsyncRelayCommand PreparePreviewCommand { get; }
     public IAsyncRelayCommand ApproveOverwritesCommand { get; }
     public IAsyncRelayCommand ExecutePurgeCommand { get; }
+    public IRelayCommand CancelPurgeCommand { get; }
     public IRelayCommand CreateSupportBundleCommand { get; }
     public IRelayCommand OpenHelpCommand { get; }
     public IRelayCommand CloseHelpCommand { get; }
@@ -385,8 +390,36 @@ public sealed class ShellViewModel : ObservableObject
     public bool PreferCleanupHandler
     {
         get => preferCleanupHandler;
-        set => SetProperty(ref preferCleanupHandler, value);
+        set
+        {
+            if (SetProperty(ref preferCleanupHandler, value))
+            {
+                OnPropertyChanged(nameof(PreferManualDelete));
+            }
+        }
     }
+
+    public bool PreferManualDelete
+    {
+        get => !preferCleanupHandler;
+        set
+        {
+            if (value == PreferManualDelete)
+            {
+                return;
+            }
+
+            PreferCleanupHandler = !value;
+        }
+    }
+
+    public string PurgeProgressText
+    {
+        get => purgeProgressText;
+        private set => SetProperty(ref purgeProgressText, value);
+    }
+
+    public bool IsPurging => isPurging;
 
     public string PurgeTypedFolderName
     {
@@ -553,7 +586,7 @@ public sealed class ShellViewModel : ObservableObject
 
     public bool CanMutateSession => !sessionReadOnly;
 
-    public bool CanWriteSession => !sessionReadOnly && !isRestoring;
+    public bool CanWriteSession => !sessionReadOnly && !isRestoring && !isPurging;
 
     public string VerifyAckReason
     {
@@ -957,7 +990,7 @@ public sealed class ShellViewModel : ObservableObject
 
     public bool CanGoTo(WorkflowStep step)
     {
-        if (isRestoring)
+        if (isRestoring || isPurging)
         {
             return false;
         }
@@ -1306,6 +1339,11 @@ public sealed class ShellViewModel : ObservableObject
     private void CancelRestore()
     {
         restoreCancellation?.Cancel();
+    }
+
+    private void CancelPurge()
+    {
+        purgeCancellation?.Cancel();
     }
 
     private void PauseRestore()
@@ -2044,6 +2082,17 @@ public sealed class ShellViewModel : ObservableObject
         GoToPurgeCommand.NotifyCanExecuteChanged();
     }
 
+    private void SetPurging(bool purging)
+    {
+        isPurging = purging;
+        OnPropertyChanged(nameof(IsPurging));
+        OnPropertyChanged(nameof(CanWriteSession));
+        NotifyWriteCommands();
+        CancelPurgeCommand.NotifyCanExecuteChanged();
+        ExecutePurgeCommand.NotifyCanExecuteChanged();
+        GoToPurgeCommand.NotifyCanExecuteChanged();
+    }
+
     internal void SetRestoringForTests(bool restoring)
     {
         SetRestoring(restoring);
@@ -2061,8 +2110,15 @@ public sealed class ShellViewModel : ObservableObject
         verifyCompleted = true;
         ExecuteVerifyCommand.NotifyCanExecuteChanged();
         ExecutePurgeCommand.NotifyCanExecuteChanged();
+        CancelPurgeCommand.NotifyCanExecuteChanged();
         CreateSupportBundleCommand.NotifyCanExecuteChanged();
         AcknowledgeVerifyCommand.NotifyCanExecuteChanged();
+    }
+
+    internal void ArmPurgeForTests()
+    {
+        purgeCancellation = new CancellationTokenSource();
+        SetPurging(true);
     }
 
     internal void MarkRestoreCompletedForTests()
@@ -2371,7 +2427,7 @@ public sealed class ShellViewModel : ObservableObject
 
     private async Task ExecutePurgeAsync()
     {
-        if (SourceRoot is null)
+        if (SourceRoot is null || isPurging)
         {
             return;
         }
@@ -2404,7 +2460,17 @@ public sealed class ShellViewModel : ObservableObject
             return;
         }
 
+        purgeCancellation = new CancellationTokenSource();
+        CancellationToken token = purgeCancellation.Token;
+        Progress<PurgeProgress> progress = new(reported =>
+        {
+            PurgeProgressText = PurgeProgressFormat.Line(reported);
+            ScanStatus = PurgeProgressText;
+        });
+        SetPurging(true);
         SourceIntegrityText = "Deleting…";
+        PurgeProgressText = "Deleting…";
+        ScanStatus = "Deleting…";
         SessionRecordExport.Write(safeFs, workspace, sessionDb);
         PurgeExecuteResult result = await new PurgeExecutor()
             .ExecuteAsync(
@@ -2415,12 +2481,15 @@ public sealed class ShellViewModel : ObservableObject
                     sourceGuard,
                     processRunner,
                     workspace.RootPath,
-                    preferCleanupHandler))
+                    preferCleanupHandler,
+                    Progress: progress),
+                token)
             .ConfigureAwait(true);
         ScanStatus = result.Completed
             ? "Purge finished (" + result.Method + "). Session records remain in this app's data folder."
             : "Purge did not finish: " + result.Detail + " A redacted log is at " + workspace.LogPath + ".";
-        SourceIntegrityText = result.Completed ? "Windows.old removed" : SourceIntegrityText;
+        PurgeProgressText = result.Completed ? string.Empty : result.Detail;
+        SourceIntegrityText = result.Completed ? "Windows.old removed" : "Windows.old partly deleted";
         CurrentStep = WorkflowStep.Purge;
         if (result.Completed)
         {
@@ -2432,6 +2501,16 @@ public sealed class ShellViewModel : ObservableObject
         catch (Exception exception)
         {
             ShowHandledFailure(exception);
+            if (string.Equals(SourceIntegrityText, "Deleting…", StringComparison.Ordinal))
+            {
+                SourceIntegrityText = "Windows.old partly deleted";
+            }
+        }
+        finally
+        {
+            purgeCancellation?.Dispose();
+            purgeCancellation = null;
+            SetPurging(false);
         }
     }
 
@@ -2472,8 +2551,8 @@ public sealed class ShellViewModel : ObservableObject
         ExecuteRestoreCommand.NotifyCanExecuteChanged();
         ExecuteVerifyCommand.NotifyCanExecuteChanged();
         ExecutePurgeCommand.NotifyCanExecuteChanged();
+        CancelPurgeCommand.NotifyCanExecuteChanged();
         AcknowledgeVerifyCommand.NotifyCanExecuteChanged();
-        ApproveOverwritesCommand.NotifyCanExecuteChanged();
         ResumeInterruptedCommand.NotifyCanExecuteChanged();
         ResumeDiskFullCommand.NotifyCanExecuteChanged();
         BrowseDestinationCommand.NotifyCanExecuteChanged();
