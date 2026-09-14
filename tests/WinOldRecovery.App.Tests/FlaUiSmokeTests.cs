@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using FlaUI.Core.AutomationElements;
 using FlaUI.UIA3;
@@ -17,9 +18,10 @@ public sealed class FlaUiSmokeTests
         Assert.False(string.IsNullOrWhiteSpace(exe), "Set WINOLD_RECOVERY_EXE to the published WinOldRecovery.exe.");
         Assert.True(File.Exists(exe!), exe);
 
-        using FlaUI.Core.Application application = FlaUI.Core.Application.Launch(exe);
+        using Process process = StartElevated(exe);
+        using FlaUI.Core.Application application = FlaUI.Core.Application.Attach(process.Id);
         using UIA3Automation automation = new();
-        FlaUI.Core.AutomationElements.Window? window = application.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+        FlaUI.Core.AutomationElements.Window? window = application.GetMainWindow(automation, TimeSpan.FromSeconds(45));
         Assert.NotNull(window);
         Assert.Contains("WinOld Recovery", window.Title, StringComparison.OrdinalIgnoreCase);
         AutomationElement? dismiss = window.FindFirstDescendant(cf => cf.ByAutomationId("DismissFirstRunButton"));
@@ -37,5 +39,17 @@ public sealed class FlaUiSmokeTests
             ?? throw new InvalidOperationException("Purge step button was not found.");
         Assert.NotNull(purge);
         application.Close();
+    }
+
+    private static Process StartElevated(string exe)
+    {
+        ProcessStartInfo start = new(exe)
+        {
+            UseShellExecute = true,
+            Verb = "runas",
+        };
+        Process? process = Process.Start(start);
+        Skip.If(process is null, "UAC elevation was declined or no interactive desktop is attached.");
+        return process;
     }
 }

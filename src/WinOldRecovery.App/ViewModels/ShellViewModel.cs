@@ -934,7 +934,7 @@ public sealed class ShellViewModel : ObservableObject
 
         string path = Path.Combine(SourceRoot, SelectedNode.RelPath);
         await processRunner.RunAsync(
-                new ProcessRequest("explorer.exe", ["/select," + path]))
+                new ProcessRequest("explorer.exe", [ExplorerSelect.BuildSelectArgument(path)]))
             .ConfigureAwait(true);
     }
 
