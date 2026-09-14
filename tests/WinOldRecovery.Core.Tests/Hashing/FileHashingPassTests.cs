@@ -40,6 +40,16 @@ public sealed class FileHashingPassTests
         Assert.Null(context.Database.GetKv("session-1", "filehash.5"));
     }
 
+    [Fact]
+    public void RequiresContentHash_IncludesVhdxOverTheScanCap()
+    {
+        Assert.True(FileHashingPass.RequiresContentHash("note.txt", 12));
+        Assert.False(FileHashingPass.RequiresContentHash("note.txt", 0));
+        Assert.False(FileHashingPass.RequiresContentHash("huge.bin", FileHashingPass.MaxFileBytes + 1));
+        Assert.True(FileHashingPass.RequiresContentHash(@"disk.vhdx", FileHashingPass.MaxFileBytes + 1));
+        Assert.True(FileHashingPass.RequiresContentHash(@"disk.VHD", FileHashingPass.MaxFileBytes + 1));
+    }
+
     private static PersistedNode Node(
         long id,
         long? parentId,

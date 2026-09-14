@@ -88,7 +88,7 @@ public sealed class Verifier
                     sizeTimeOk++;
                 }
 
-                if (sourceInfo.Length > 0 && sourceInfo.Length <= FileHashingPass.MaxFileBytes)
+                if (FileHashingPass.RequiresContentHash(source, sourceInfo.Length))
                 {
                     hashFiles++;
                     byte[] sourceHash = await HashAsync(source, cancellationToken).ConfigureAwait(false);

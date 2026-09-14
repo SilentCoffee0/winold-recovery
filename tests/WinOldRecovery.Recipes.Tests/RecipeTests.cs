@@ -345,6 +345,50 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Git_ConfigPlanCopiesIgnoreAndGlobalIgnore()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        Directory.CreateDirectory(Path.Combine(alice, ".config", "git"));
+        await File.WriteAllTextAsync(Path.Combine(alice, ".gitconfig"), "[user]\n\tname = Alice\n");
+        await File.WriteAllTextAsync(Path.Combine(alice, ".config", "git", "ignore"), "*.log");
+        await File.WriteAllTextAsync(Path.Combine(alice, ".gitignore_global"), "*~");
+
+        GitRecipe recipe = new();
+        DetectResult detected = recipe.Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        RecipeCard config = detected.Cards.Single(card => card.Facts.GetValueOrDefault("kind") == "config");
+        PlanResult plan = recipe.Plan(
+            new CardDecisions(
+                config,
+                config.Components.ToDictionary(static component => component.Key, static component => component.SuggestedDefault)),
+            Dest(context));
+
+        Assert.Contains(
+            plan.Writes,
+            write => write.DestinationPath.EndsWith(@"\.config\git\ignore", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            plan.Writes,
+            write => write.DestinationPath.EndsWith(".gitignore_global", StringComparison.OrdinalIgnoreCase));
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, [recipe]);
+        await host.ExecuteAsync("session-1", recipe, plan with { Destination = Dest(context) });
+        Assert.Equal(
+            "*.log",
+            await File.ReadAllTextAsync(Path.Combine(context.Destination, ".config", "git", "ignore")));
+        Assert.Equal(
+            "*~",
+            await File.ReadAllTextAsync(Path.Combine(context.Destination, ".gitignore_global")));
+    }
+
+    [Fact]
     public void SnssReader_ExtractsNavigationUrls()
     {
         byte[] session = SnssReader.CreateSessionFile(

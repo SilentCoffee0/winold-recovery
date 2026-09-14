@@ -11,6 +11,23 @@ public sealed class FileHashingPass
 {
     public const long MaxFileBytes = 64L * 1024 * 1024;
 
+    public static bool RequiresContentHash(string path, long byteLength)
+    {
+        if (byteLength <= 0)
+        {
+            return false;
+        }
+
+        if (byteLength <= MaxFileBytes)
+        {
+            return true;
+        }
+
+        string extension = Path.GetExtension(path);
+        return extension.Equals(".vhdx", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".vhd", StringComparison.OrdinalIgnoreCase);
+    }
+
     private readonly SessionDb sessionDb;
     private readonly SafeFs safeFs;
 

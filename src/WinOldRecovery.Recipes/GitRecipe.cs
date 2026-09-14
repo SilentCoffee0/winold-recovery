@@ -28,10 +28,16 @@ public sealed class GitRecipe : IRecipe
         if (cards.Count > 0 && context.SafeFs.FileExists(cred))
         {
             RecipeCard config = cards[0];
-            cards[0] = config with
-            {
-                Facts = new Dictionary<string, string>(config.Facts) { ["credentials"] = cred },
-            };
+            Dictionary<string, string> facts = new(config.Facts) { ["credentials"] = cred };
+            AttachOptionalConfigFiles(context, facts);
+            cards[0] = config with { Facts = facts };
+        }
+        else if (cards.Count > 0)
+        {
+            RecipeCard config = cards[0];
+            Dictionary<string, string> facts = new(config.Facts);
+            AttachOptionalConfigFiles(context, facts);
+            cards[0] = config with { Facts = facts };
         }
 
         List<string> trees = DetectorWalk.EnumerateGitWorkingTrees(context.SafeFs, context.OldProfileRoot, 8)
@@ -128,6 +134,22 @@ public sealed class GitRecipe : IRecipe
             writes.Add(new RecipeWrite(RecipeWriteKind.CopyFile, credPath, destCred, null, 1, "git-credentials"));
         }
 
+        if (RecipeDecisions.ShouldRestore(decisions, "config"))
+        {
+            CopySidecar(
+                decisions.Card,
+                destination,
+                "ignore",
+                Path.Combine(destination.DestinationProfileRoot, ".config", "git", "ignore"),
+                writes);
+            CopySidecar(
+                decisions.Card,
+                destination,
+                "gitignore_global",
+                Path.Combine(destination.DestinationProfileRoot, ".gitignore_global"),
+                writes);
+        }
+
         return new PlanResult(decisions.Card, writes);
     }
 
@@ -167,6 +189,36 @@ public sealed class GitRecipe : IRecipe
         }
 
         return string.Join('\n', lines);
+    }
+
+    private static void AttachOptionalConfigFiles(ProfileContext context, Dictionary<string, string> facts)
+    {
+        string ignore = Path.Combine(context.OldProfileRoot, ".config", "git", "ignore");
+        if (context.SafeFs.FileExists(ignore))
+        {
+            facts["ignore"] = ignore;
+        }
+
+        string globalIgnore = Path.Combine(context.OldProfileRoot, ".gitignore_global");
+        if (context.SafeFs.FileExists(globalIgnore))
+        {
+            facts["gitignore_global"] = globalIgnore;
+        }
+    }
+
+    private static void CopySidecar(
+        RecipeCard card,
+        DestinationContext destination,
+        string factKey,
+        string destinationPath,
+        List<RecipeWrite> writes)
+    {
+        if (!card.Facts.TryGetValue(factKey, out string? source) || string.IsNullOrWhiteSpace(source))
+        {
+            return;
+        }
+
+        DetectorWalk.CopyFileKeepBoth(destination.SafeFs, source, destinationPath, "config", writes);
     }
 
     private static RecipeCard ConfigCard(ProfileContext context, string path, string scrubbed)
