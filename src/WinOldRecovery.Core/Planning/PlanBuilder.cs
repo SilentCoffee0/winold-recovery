@@ -30,6 +30,16 @@ public sealed class PlanBuilder
         string sourceRoot = PathCanonicalizer.Canonicalize(request.SourceRoot);
         string destinationRoot = PathCanonicalizer.Canonicalize(request.DestinationRoot);
         RejectContainment(sourceRoot, destinationRoot);
+        if (request.DestinationByRelPath is not null)
+        {
+            foreach (string mapped in request.DestinationByRelPath.Values)
+            {
+                if (!string.IsNullOrWhiteSpace(mapped))
+                {
+                    RejectContainment(sourceRoot, PathCanonicalizer.Canonicalize(mapped));
+                }
+            }
+        }
 
         IReadOnlyList<PlanNode> nodes = LoadNodes(request.SessionId);
         Dictionary<long, List<PlanNode>> children = nodes
@@ -158,9 +168,11 @@ public sealed class PlanBuilder
             string sourcePath = string.IsNullOrEmpty(node.RelPath)
                 ? sourceRoot
                 : Path.Combine(sourceRoot, node.RelPath);
-            string destinationPath = string.IsNullOrEmpty(node.RelPath)
-                ? destinationRoot
-                : Path.Combine(destinationRoot, node.RelPath);
+            string destinationPath = DestinationMap.Resolve(
+                destinationRoot,
+                request.DestinationByRelPath,
+                node.RelPath);
+            RejectContainment(sourceRoot, PathCanonicalizer.Canonicalize(destinationPath));
             items.Add(
                 new PlanItem(
                     request.SessionId,

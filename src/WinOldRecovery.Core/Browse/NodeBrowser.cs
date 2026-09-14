@@ -241,6 +241,15 @@ public sealed class NodeBrowser
             while (reader.Read())
             {
                 long id = reader.GetInt64(0);
+                bool mixed = reader.GetInt64(14) != 0;
+                long restoreBytes = 0;
+                long leaveBytes = 0;
+                long undecidedBytes = 0;
+                if (mixed)
+                {
+                    (restoreBytes, leaveBytes, undecidedBytes) = LoadMixedBytes(connection, id);
+                }
+
                 rows.Add(
                     new TreeNodeRow(
                         id,
@@ -260,7 +269,10 @@ public sealed class NodeBrowser
                         reader.GetInt64(12) != 0,
                         Convert.ToInt32(reader.GetInt64(13), CultureInfo.InvariantCulture),
                         LoadBadges(connection, id),
-                        reader.GetInt64(14) != 0));
+                        mixed,
+                        restoreBytes,
+                        leaveBytes,
+                        undecidedBytes));
             }
         }
 
@@ -314,6 +326,37 @@ public sealed class NodeBrowser
         }
 
         return badges;
+    }
+
+    private static (long Restore, long Leave, long Undecided) LoadMixedBytes(
+        SqliteConnection connection,
+        long nodeId)
+    {
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            WITH RECURSIVE subtree(id) AS (
+                SELECT $id
+                UNION ALL
+                SELECT child.id
+                FROM nodes AS child
+                INNER JOIN subtree ON child.parent_id = subtree.id
+            )
+            SELECT
+                COALESCE(SUM(CASE WHEN eff_decision = 'Restore' AND kind NOT IN ('Directory', 'Junction', 'Symlink', 'MountPoint') THEN size ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN eff_decision = 'LeaveBehind' AND kind NOT IN ('Directory', 'Junction', 'Symlink', 'MountPoint') THEN size ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN eff_decision = 'Undecided' AND kind NOT IN ('Directory', 'Junction', 'Symlink', 'MountPoint') THEN size ELSE 0 END), 0)
+            FROM nodes
+            WHERE id IN (SELECT id FROM subtree);
+            """;
+        command.Parameters.AddWithValue("$id", nodeId);
+        using SqliteDataReader reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return (0, 0, 0);
+        }
+
+        return (reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2));
     }
 
     private string RelPathFilter(long? underNodeId, out string? prefix)

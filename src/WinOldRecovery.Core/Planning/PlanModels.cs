@@ -37,4 +37,5 @@ public sealed record PlanRequest(
     string SourceRoot,
     string DestinationRoot,
     int JobId = 1,
-    ConflictPolicy ConflictPolicy = ConflictPolicy.KeepBoth);
+    ConflictPolicy ConflictPolicy = ConflictPolicy.KeepBoth,
+    IReadOnlyDictionary<string, string>? DestinationByRelPath = null);

@@ -330,6 +330,15 @@
                         </DockPanel.Style>
                         <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
                                    Text="Conflicts: existing destination files. Keep both is the default. Overwrite needs a per-file tick and the confirmation button." />
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,8,0,8">
+                            <TextBlock VerticalAlignment="Center" Text="Destination folder:" Margin="0,0,8,0" />
+                            <TextBox MinWidth="280"
+                                     Text="{Binding DestinationRoot, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Restore destination folder" />
+                            <Button Margin="8,0,0,0" Content="Change…"
+                                    Command="{Binding BrowseDestinationCommand}"
+                                    AutomationProperties.Name="Change destination folder" />
+                        </StackPanel>
                         <Button DockPanel.Dock="Bottom" Margin="0,8,0,0"
                                 Content="{Binding OverwriteButtonLabel}"
                                 Command="{Binding ApproveOverwritesCommand}" />
@@ -370,12 +379,9 @@
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" />
 
             <Grid Grid.Column="2">
-                <TextBox IsReadOnly="True"
-                         TextWrapping="Wrap"
-                         VerticalScrollBarVisibility="Auto"
-                         Text="{Binding DetailText, Mode=OneWay}">
-                    <TextBox.Style>
-                        <Style TargetType="TextBox">
+                <DockPanel>
+                    <DockPanel.Style>
+                        <Style TargetType="DockPanel">
                             <Setter Property="Visibility" Value="Visible" />
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding RecipeCardSelected}" Value="True">
@@ -383,8 +389,25 @@
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
-                    </TextBox.Style>
-                </TextBox>
+                    </DockPanel.Style>
+                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <TextBlock Text="Planned destination (top-level folders; children follow)" />
+                        <DockPanel Margin="0,4,0,0">
+                            <Button DockPanel.Dock="Right" Content="Change…"
+                                    Command="{Binding BrowseDestinationCommand}"
+                                    IsEnabled="{Binding CanEditDestination}"
+                                    AutomationProperties.Name="Change planned destination" />
+                            <TextBox Margin="0,0,8,0"
+                                     IsEnabled="{Binding CanEditDestination}"
+                                     Text="{Binding PlannedDestinationPath, UpdateSourceTrigger=LostFocus}"
+                                     AutomationProperties.Name="Planned destination path" />
+                        </DockPanel>
+                    </StackPanel>
+                    <TextBox IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto"
+                             Text="{Binding DetailText, Mode=OneWay}" />
+                </DockPanel>
                 <ScrollViewer>
                     <ScrollViewer.Style>
                         <Style TargetType="ScrollViewer">
@@ -470,6 +493,25 @@
                             Command="{Binding DismissInterruptedCommand}"
                             AutomationProperties.Name="Dismiss interrupted restore"
                             AutomationProperties.AutomationId="DismissInterruptedButton" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                Panel.ZIndex="4"
+                Visibility="{Binding DiskFullVisible, Converter={StaticResource VisibleWhenTrue}}">
+            <StackPanel Margin="48" MaxWidth="640" VerticalAlignment="Center">
+                <TextBlock FontWeight="SemiBold" Text="Destination volume is full" />
+                <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" Text="{Binding DiskFullText}"
+                           AutomationProperties.Name="Disk full explanation" />
+                <StackPanel Margin="0,24,0,0" Orientation="Horizontal">
+                    <Button Content="Resume"
+                            Command="{Binding ResumeDiskFullCommand}"
+                            AutomationProperties.Name="Resume restore after freeing space"
+                            AutomationProperties.AutomationId="ResumeDiskFullButton" />
+                    <Button Margin="12,0,0,0" Content="Cancel"
+                            Command="{Binding CancelDiskFullCommand}"
+                            AutomationProperties.Name="Cancel paused restore"
+                            AutomationProperties.AutomationId="CancelDiskFullButton" />
                 </StackPanel>
             </StackPanel>
         </Border>

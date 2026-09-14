@@ -1,3 +1,4 @@
+using WinOldRecovery.Core.Persistence;
 using WinOldRecovery.Core.Planning;
 
 namespace WinOldRecovery.Core.Restore;
@@ -5,11 +6,16 @@ namespace WinOldRecovery.Core.Restore;
 public sealed class RestoreRunner
 {
     private readonly CopyEngine copyEngine;
+    private readonly SessionDb? sessionDb;
     private readonly PreflightChecker preflightChecker;
 
-    public RestoreRunner(CopyEngine copyEngine, PreflightChecker? preflightChecker = null)
+    public RestoreRunner(
+        CopyEngine copyEngine,
+        SessionDb? sessionDb = null,
+        PreflightChecker? preflightChecker = null)
     {
         this.copyEngine = copyEngine ?? throw new ArgumentNullException(nameof(copyEngine));
+        this.sessionDb = sessionDb;
         this.preflightChecker = preflightChecker ?? new PreflightChecker();
     }
 
@@ -18,7 +24,8 @@ public sealed class RestoreRunner
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        PreflightResult preflight = preflightChecker.Check(plan);
+        RestorePlan toCheck = sessionDb is null ? plan : PlanProgress.Pending(sessionDb, plan);
+        PreflightResult preflight = preflightChecker.Check(toCheck);
         if (!preflight.CanProceed)
         {
             throw new InvalidOperationException(

@@ -54,3 +54,4 @@ All notable changes to WinOld Recovery will be documented here.
 - A new Scan clears the previous tree and relocks Purge (I10); Cancel discards the in-flight scan, Pause still resumes.
 - Decide Files shows mixed subtrees, Restore/Leave Behind apply to the extended selection, and the context menu can restore except regeneratable or only files inside the Recent window.
 - Next launch reopens an interrupted restore session (journal Started/Paused/Failed) with a Resume overlay; Decide Cards collapse apps that were looked for and not found.
+- Inspect can edit a planned destination per folder (children follow); Preview exposes the restore destination folder; mixed decision cells include a restore/leave/undecided byte bar; a disk-full pause names the volume and offers Resume or Cancel without deleting anything.

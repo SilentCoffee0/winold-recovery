@@ -31,7 +31,10 @@ public sealed record TreeNodeRow(
     bool HasSuggestedDefault,
     int ChildCount,
     IReadOnlyList<string> Badges,
-    bool MixedSubtree = false)
+    bool MixedSubtree = false,
+    long RestoreBytes = 0,
+    long LeaveBehindBytes = 0,
+    long UndecidedBytes = 0)
 {
     public bool IsReparse => Kind is NodeKind.Junction or NodeKind.Symlink or NodeKind.MountPoint;
 
@@ -45,13 +48,34 @@ public sealed record TreeNodeRow(
 
     public string BadgeText => string.Join(", ", Badges);
 
+    public string MixedBar
+    {
+        get
+        {
+            long total = RestoreBytes + LeaveBehindBytes + UndecidedBytes;
+            if (total <= 0)
+            {
+                return string.Empty;
+            }
+
+            const int slots = 8;
+            int restore = (int)Math.Round(RestoreBytes * slots / (double)total);
+            int leave = (int)Math.Round(LeaveBehindBytes * slots / (double)total);
+            restore = Math.Clamp(restore, 0, slots);
+            leave = Math.Clamp(leave, 0, slots - restore);
+            int undecided = Math.Max(0, slots - restore - leave);
+            return new string('█', restore) + new string('░', leave) + new string('▒', undecided);
+        }
+    }
+
     public string DecisionLabel
     {
         get
         {
             if (MixedSubtree)
             {
-                return "mixed";
+                string bar = MixedBar;
+                return bar.Length == 0 ? "mixed" : "mixed " + bar;
             }
 
             if (HasOwnUserDecision)

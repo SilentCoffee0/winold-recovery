@@ -84,6 +84,9 @@ public sealed class ShellViewModel : ObservableObject
     private bool firstRunVisible;
     private bool interruptedVisible;
     private string interruptedText = string.Empty;
+    private bool diskFullVisible;
+    private string diskFullText = string.Empty;
+    private Dictionary<string, string> destinationByRelPath = new(StringComparer.OrdinalIgnoreCase);
     private HelpTopic? selectedHelpTopic;
     private string helpText = string.Empty;
     private bool logVisible;
@@ -188,6 +191,10 @@ public sealed class ShellViewModel : ObservableObject
         DismissFirstRunCommand = new RelayCommand(DismissFirstRun);
         ResumeInterruptedCommand = new AsyncRelayCommand(ResumeInterruptedAsync, () => lastPlan is not null && !isRestoring);
         DismissInterruptedCommand = new RelayCommand(DismissInterrupted);
+        BrowseDestinationCommand = new RelayCommand(BrowseDestination);
+        ResumeDiskFullCommand = new AsyncRelayCommand(ResumeDiskFullAsync, () => lastPlan is not null && diskFullVisible && !isRestoring);
+        CancelDiskFullCommand = new RelayCommand(CancelDiskFull);
+        destinationByRelPath = DestinationMap.Parse(sessionDb.GetKv(workspace.SessionId, DestinationMap.KvKey));
     }
 
     public IAsyncRelayCommand ScanCommand { get; }
@@ -222,6 +229,9 @@ public sealed class ShellViewModel : ObservableObject
     public IRelayCommand DismissFirstRunCommand { get; }
     public IAsyncRelayCommand ResumeInterruptedCommand { get; }
     public IRelayCommand DismissInterruptedCommand { get; }
+    public IRelayCommand BrowseDestinationCommand { get; }
+    public IAsyncRelayCommand ResumeDiskFullCommand { get; }
+    public IRelayCommand CancelDiskFullCommand { get; }
 
     public IReadOnlyList<HelpTopic> HelpTopics => LocalHelp.Catalog;
 
@@ -411,6 +421,18 @@ public sealed class ShellViewModel : ObservableObject
         private set => SetProperty(ref interruptedText, value);
     }
 
+    public bool DiskFullVisible
+    {
+        get => diskFullVisible;
+        private set => SetProperty(ref diskFullVisible, value);
+    }
+
+    public string DiskFullText
+    {
+        get => diskFullText;
+        private set => SetProperty(ref diskFullText, value);
+    }
+
     public HelpTopic? SelectedHelpTopic
     {
         get => selectedHelpTopic;
@@ -504,7 +526,42 @@ public sealed class ShellViewModel : ObservableObject
     public string DestinationRoot
     {
         get => destinationRoot;
-        set => SetProperty(ref destinationRoot, value);
+        set
+        {
+            if (SetProperty(ref destinationRoot, value))
+            {
+                OnPropertyChanged(nameof(PlannedDestinationPath));
+                OnPropertyChanged(nameof(DetailText));
+            }
+        }
+    }
+
+    public bool CanEditDestination =>
+        SelectedNode is { Kind: NodeKind.Directory, IsReparse: false } && SourceRoot is not null;
+
+    public string PlannedDestinationPath
+    {
+        get
+        {
+            if (SelectedNode is null)
+            {
+                return string.Empty;
+            }
+
+            return DestinationMap.Resolve(DestinationRoot, destinationByRelPath, SelectedNode.RelPath);
+        }
+        set
+        {
+            if (!CanEditDestination || SelectedNode is null || string.IsNullOrWhiteSpace(value))
+            {
+                return;
+            }
+
+            destinationByRelPath[SelectedNode.RelPath] = value.Trim();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(DetailText));
+            _ = PersistDestinationMapAsync();
+        }
     }
 
     public string? SourceRoot { get; private set; }
@@ -546,6 +603,8 @@ public sealed class ShellViewModel : ObservableObject
                 CopyPathCommand.NotifyCanExecuteChanged();
                 RevealInTreeCommand.NotifyCanExecuteChanged();
                 OnPropertyChanged(nameof(DetailText));
+                OnPropertyChanged(nameof(PlannedDestinationPath));
+                OnPropertyChanged(nameof(CanEditDestination));
             }
         }
     }
@@ -913,6 +972,7 @@ public sealed class ShellViewModel : ObservableObject
     public void OfferInterruptedRestore(InterruptedRestoreReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
+        destinationByRelPath = DestinationMap.Parse(sessionDb.GetKv(workspace.SessionId, DestinationMap.KvKey));
         lastPlan = report.Plan;
         if (report.SourceRoot is not null)
         {
@@ -952,6 +1012,58 @@ public sealed class ShellViewModel : ObservableObject
     private void DismissInterrupted()
     {
         InterruptedRestoreVisible = false;
+    }
+
+    private void BrowseDestination()
+    {
+        string? path = folderPicker.PickFolder();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        if (CanEditDestination)
+        {
+            PlannedDestinationPath = path;
+            return;
+        }
+
+        DestinationRoot = path;
+    }
+
+    private Task PersistDestinationMapAsync()
+    {
+        return sessionDb.SetKvAsync(
+            workspace.SessionId,
+            DestinationMap.KvKey,
+            DestinationMap.Format(destinationByRelPath));
+    }
+
+    private async Task ResumeDiskFullAsync()
+    {
+        RefreshPreflight();
+        if (lastPreflight is not { CanProceed: true })
+        {
+            if (lastPlan is not null)
+            {
+                RestorePlan pending = PlanProgress.Pending(sessionDb, lastPlan);
+                DiskFullText = DiskFullPause.Format(
+                    DestinationRoot,
+                    pending.TotalBytes,
+                    lastPreflight?.FreeBytes ?? 0);
+            }
+
+            return;
+        }
+
+        DiskFullVisible = false;
+        await ExecuteRestoreAsync().ConfigureAwait(true);
+    }
+
+    private void CancelDiskFull()
+    {
+        DiskFullVisible = false;
+        ScanStatus = "Restore stayed paused. Nothing was deleted to make room.";
     }
 
     private async Task ScanAsync()
@@ -1151,6 +1263,8 @@ public sealed class ShellViewModel : ObservableObject
         restoreCompleted = false;
         verifyCompleted = false;
         Conflicts.Clear();
+        destinationByRelPath.Clear();
+        DiskFullVisible = false;
         SourceIntegrityText = "Windows.old untouched";
         ExecuteRestoreCommand.NotifyCanExecuteChanged();
         ExecuteVerifyCommand.NotifyCanExecuteChanged();
@@ -1571,7 +1685,12 @@ public sealed class ShellViewModel : ObservableObject
         safeFs.CreateDirectory(DestinationRoot);
         PlanBuilder builder = new(sessionDb);
         lastPlan = await builder.BuildAsync(
-                new PlanRequest(workspace.SessionId, SourceRoot, DestinationRoot, ConflictPolicy: selectedConflictPolicy))
+                new PlanRequest(
+                    workspace.SessionId,
+                    SourceRoot,
+                    DestinationRoot,
+                    ConflictPolicy: selectedConflictPolicy,
+                    DestinationByRelPath: destinationByRelPath.Count == 0 ? null : destinationByRelPath))
             .ConfigureAwait(true);
         await sessionDb.SetKvAsync(workspace.SessionId, InterruptedRestore.SourceRootKey, SourceRoot)
             .ConfigureAwait(true);
@@ -1665,9 +1784,10 @@ public sealed class ShellViewModel : ObservableObject
             return;
         }
 
+        RestorePlan pending = PlanProgress.Pending(sessionDb, lastPlan);
         IReadOnlySet<string> approved = OverwriteApprovals.Parse(
             sessionDb.GetKv(workspace.SessionId, OverwriteApprovals.KvKey));
-        lastPreflight = new PreflightChecker().Check(lastPlan, selectedConflictPolicy, approved);
+        lastPreflight = new PreflightChecker().Check(pending, selectedConflictPolicy, approved);
     }
 
     private async Task ExecuteRestoreAsync()
@@ -1680,7 +1800,7 @@ public sealed class ShellViewModel : ObservableObject
         try
         {
         SetRestoring(true);
-        RestoreRunner runner = new(new CopyEngine(sessionDb, safeFs));
+        RestoreRunner runner = new(new CopyEngine(sessionDb, safeFs), sessionDb);
         RestoreResult result = await runner.RunAsync(lastPlan).ConfigureAwait(true);
         if (result.Completed && recipeHost is not null)
         {
@@ -1704,12 +1824,26 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         restoreCompleted = result.Completed;
-        ScanStatus = result.PausedDiskFull
-            ? "Restore paused: the destination volume is full. Nothing was deleted to make room. A redacted log is at " +
-              workspace.LogPath + "."
-            : result.Completed
+        if (result.PausedDiskFull)
+        {
+            RestorePlan pending = PlanProgress.Pending(sessionDb, lastPlan);
+            ApplyPreflight();
+            DiskFullText = DiskFullPause.Format(
+                DestinationRoot,
+                pending.TotalBytes,
+                lastPreflight?.FreeBytes ?? 0);
+            DiskFullVisible = true;
+            ResumeDiskFullCommand.NotifyCanExecuteChanged();
+            ScanStatus = DiskFullText + " Nothing was deleted to make room. A redacted log is at " +
+                workspace.LogPath + ".";
+        }
+        else
+        {
+            DiskFullVisible = false;
+            ScanStatus = result.Completed
                 ? "Restore finished. Verify the copies before considering a purge."
                 : "Restore did not finish. A redacted log is at " + workspace.LogPath + ".";
+        }
         ExecuteVerifyCommand.NotifyCanExecuteChanged();
         SetRestoring(false);
         CurrentStep = WorkflowStep.Restore;

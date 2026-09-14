@@ -51,6 +51,41 @@ public sealed class PlanBuilderTests
     }
 
     [Fact]
+    public async Task Build_UsesLongestDestinationOverrideForSubtree()
+    {
+        await using PlanContext context = await PlanContext.CreateAsync();
+        await context.Database.InsertNodesAsync(
+        [
+            Node(1, null, "", "root", NodeKind.Directory),
+            Node(2, 1, @"Users\Alice", "Alice", NodeKind.Directory),
+            Node(3, 2, @"Users\Alice\Desktop", "Desktop", NodeKind.Directory, aggSize: 20),
+            Node(4, 3, @"Users\Alice\Desktop\a.txt", "a.txt", NodeKind.File, size: 20),
+        ]);
+        DecisionEngine engine = new(context.Database, context.SessionId);
+        await engine.SetUserDecisionAsync(3, Decision.Restore);
+        string overrideDest = Path.Combine(context.Root, "DeskOut");
+        Directory.CreateDirectory(overrideDest);
+
+        RestorePlan plan = await new PlanBuilder(context.Database).BuildAsync(
+            new PlanRequest(
+                context.SessionId,
+                context.Source,
+                context.Destination,
+                DestinationByRelPath: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [@"Users\Alice"] = Path.Combine(context.Root, "ProfileOut"),
+                    [@"Users\Alice\Desktop"] = overrideDest,
+                }));
+
+        PlanItem item = Assert.Single(plan.Items);
+        Assert.Equal(PlanOperation.CopyTree, item.Operation);
+        Assert.Equal(
+            PathCanonicalizer.Canonicalize(overrideDest),
+            item.DestinationPath,
+            ignoreCase: true);
+    }
+
+    [Fact]
     public async Task Build_RejectsDestinationInsideSource()
     {
         await using PlanContext context = await PlanContext.CreateAsync();

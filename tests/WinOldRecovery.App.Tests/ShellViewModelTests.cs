@@ -107,6 +107,37 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task PlannedDestination_FollowsAFolderOverrideOntoChildren()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "Desktop", "notes.txt"),
+            "keep");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        ExpandDirectories(context);
+        ExpandDirectories(context);
+        context.ViewModel.Expand(FindRow(context, "Alice"));
+        context.ViewModel.Expand(FindRow(context, "Desktop"));
+        context.ViewModel.SelectedNode = FindRow(context, "Desktop");
+        string dest = Path.Combine(context.Root, "DeskOut");
+        Directory.CreateDirectory(dest);
+
+        context.ViewModel.PlannedDestinationPath = dest;
+
+        Assert.True(context.ViewModel.CanEditDestination);
+        Assert.Contains("DeskOut", context.ViewModel.PlannedDestinationPath, StringComparison.OrdinalIgnoreCase);
+        context.ViewModel.SelectedNode = FindRow(context, "notes.txt");
+        Assert.Contains("notes.txt", context.ViewModel.PlannedDestinationPath, StringComparison.OrdinalIgnoreCase);
+        Assert.False(context.ViewModel.CanEditDestination);
+    }
+
+    [Fact]
     public async Task SecondScan_ReplacesTheTreeAndRelocksPurge()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();

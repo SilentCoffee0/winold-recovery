@@ -37,8 +37,12 @@ public sealed class NodeBrowserTests
 
         await engine.SetUserDecisionAsync(3, Decision.LeaveBehind);
         TreeNodeRow folder = Assert.Single(browser.GetChildren(1).Rows);
-        Assert.Equal("mixed", folder.DecisionLabel);
+        Assert.StartsWith("mixed", folder.DecisionLabel, StringComparison.Ordinal);
         Assert.True(folder.MixedSubtree);
+        Assert.True(folder.RestoreBytes > 0);
+        Assert.True(folder.LeaveBehindBytes > 0);
+        Assert.Contains('█', folder.MixedBar);
+        Assert.Contains('░', folder.MixedBar);
     }
 
     [Fact]
