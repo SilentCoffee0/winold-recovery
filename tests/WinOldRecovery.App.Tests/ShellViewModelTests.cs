@@ -656,6 +656,18 @@ public sealed class ShellViewModelTests
             0,
             []);
         Assert.False(junction.CanRestore);
+        Assert.Equal("⊘ Application Data", junction.DisplayName);
+        Assert.Equal("—", junction.DecisionLabel);
+    }
+
+    [Fact]
+    public async Task SkipHint_ExplainsEachSkipCategory()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        Assert.Contains("never followed", context.ViewModel.SkipHint, StringComparison.Ordinal);
+        Assert.Contains("OneDrive", context.ViewModel.SkipHint, StringComparison.Ordinal);
+        Assert.Contains("EFS", context.ViewModel.SkipHint, StringComparison.Ordinal);
+        Assert.Contains("Access denied", context.ViewModel.SkipHint, StringComparison.Ordinal);
     }
 
     [Fact]

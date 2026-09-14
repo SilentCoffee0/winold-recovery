@@ -229,6 +229,17 @@
                               TextSearch.TextPath="Name"
                               SelectionChanged="OnFilesSelectionChanged"
                               AutomationProperties.Name="Recoverable files">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="ToolTip" Value="{Binding RowTooltip}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsReparse}" Value="True">
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListView.ItemContainerStyle>
                             <ListView.Style>
                                 <Style TargetType="ListView">
                                     <Setter Property="Visibility" Value="Collapsed" />
@@ -259,7 +270,7 @@
                         </ListView.ContextMenu>
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Name" DisplayMemberBinding="{Binding Name}" Width="220" />
+                                <GridViewColumn Header="Name" DisplayMemberBinding="{Binding DisplayName}" Width="220" />
                                 <GridViewColumn Header="Size" DisplayMemberBinding="{Binding SizeLabel}" Width="90" />
                                 <GridViewColumn Header="Files" DisplayMemberBinding="{Binding FilesLabel}" Width="70" />
                                 <GridViewColumn Header="Modified" DisplayMemberBinding="{Binding ModifiedLabel}" Width="110" />

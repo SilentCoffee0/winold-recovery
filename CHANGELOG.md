@@ -78,3 +78,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Purge offers Windows cleanup vs direct delete, a Delete Windows.old button, live delete progress, and Cancel that leaves a partial tree.
 - Scan options on the Scan step: compute folder sizes (default on) and optional hashing of files smaller than 64 MB.
 - Recipe cards expose Inspect, Open Folder, Restore, and Leave Behind in that order (UX 6).
+- Files tree greys junctions/symlinks with ⊘, a target tooltip, and dash columns; Problems rows explain what can be done.

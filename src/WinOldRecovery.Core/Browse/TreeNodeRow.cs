@@ -40,13 +40,75 @@ public sealed record TreeNodeRow(
 
     public bool CanRestore => !IsReparse;
 
-    public string SizeLabel => QuantityFormat.Bytes(AggSize);
+    public string DisplayName => IsReparse ? "⊘ " + Name : Name;
 
-    public string FilesLabel => QuantityFormat.Count(AggFiles);
+    public string SizeLabel => IsReparse ? "—" : QuantityFormat.Bytes(AggSize);
 
-    public string ModifiedLabel => ModifiedUtc?.ToString("d MMM yyyy", CultureInfo.InvariantCulture) ?? "—";
+    public string FilesLabel => IsReparse ? "—" : QuantityFormat.Count(AggFiles);
+
+    public string ModifiedLabel =>
+        IsReparse ? "—" : ModifiedUtc?.ToString("d MMM yyyy", CultureInfo.InvariantCulture) ?? "—";
 
     public string BadgeText => string.Join(", ", Badges);
+
+    public string RowTooltip
+    {
+        get
+        {
+            if (IsReparse)
+            {
+                string target = ReparseTarget;
+                return string.IsNullOrEmpty(target)
+                    ? "Junction or symlink. It is listed, not followed, and cannot be restored."
+                    : "Points to " + target + ". Junctions and symlinks cannot be restored.";
+            }
+
+            if (Problem != NodeProblem.None)
+            {
+                return ProblemExplanation;
+            }
+
+            return RelPath;
+        }
+    }
+
+    public string ReparseTarget
+    {
+        get
+        {
+            foreach (string badge in Badges)
+            {
+                const string prefix = "Reparse: ";
+                if (!badge.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                string detail = badge[prefix.Length..];
+                int arrow = detail.IndexOf(" -> ", StringComparison.Ordinal);
+                return arrow < 0 ? string.Empty : detail[(arrow + 4)..];
+            }
+
+            return string.Empty;
+        }
+    }
+
+    public string ProblemExplanation => Problem switch
+    {
+        NodeProblem.CloudOnly =>
+            "Cloud placeholder. The file is not on disk here and cannot be restored.",
+        NodeProblem.EfsEncrypted =>
+            "Encrypted with EFS. This app does not decrypt it, so restore cannot copy the plaintext.",
+        NodeProblem.AccessDenied =>
+            "The scan could not read this folder. Run elevated with backup privilege to include it.",
+        NodeProblem.LongPath =>
+            "The path is longer than Explorer usually accepts. Restore uses long-path APIs; Open Folder uses the nearest shorter ancestor.",
+        NodeProblem.InvalidDestName =>
+            "The name is not valid at the destination (trailing space or a reserved device name).",
+        NodeProblem.ZeroByteStub =>
+            "Zero-byte stub. There may be nothing to restore.",
+        _ => string.Empty,
+    };
 
     public string MixedBar
     {
@@ -72,6 +134,11 @@ public sealed record TreeNodeRow(
     {
         get
         {
+            if (IsReparse)
+            {
+                return "—";
+            }
+
             if (MixedSubtree)
             {
                 string bar = MixedBar;

@@ -682,7 +682,10 @@ public sealed class ShellViewModel : ObservableObject
     }
 
     public string SkipHint { get; } =
-        "Skipped items are listed, not opened: junctions and symlinks, OneDrive cloud placeholders, EFS-encrypted files, and folders Windows would not let the scan read.";
+        "Junctions and symlinks: listed as leaves, never followed. " +
+        "Cloud placeholders: not opened, so OneDrive files stay in the cloud. " +
+        "Encrypted (EFS): not decrypted. " +
+        "Access denied: the scan continued without that folder.";
 
     public string ScanStatus
     {
@@ -940,8 +943,8 @@ public sealed class ShellViewModel : ObservableObject
                     OwnerSidDisplay.Line(sourceFull),
                     OwnerSidDisplay.AttributesLine(sourceFull),
                     "Decision: " + node.DecisionLabel,
-                    "Problem: " + node.Problem,
-                    node.IsReparse ? "This reparse point cannot be restored." : string.Empty,
+                    node.Problem == NodeProblem.None ? string.Empty : node.ProblemExplanation,
+                    node.IsReparse ? node.RowTooltip : string.Empty,
                     inspectConflictText,
                     sensitive,
                 ]).Where(static line => line.Length > 0));
