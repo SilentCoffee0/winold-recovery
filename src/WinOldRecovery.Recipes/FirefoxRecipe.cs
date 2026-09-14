@@ -147,6 +147,7 @@ public sealed class FirefoxRecipe : IRecipe
                         ["folder"] = folder,
                         ["name"] = discovered.Name,
                         ["isDefault"] = discovered.IsDefault ? "1" : "0",
+                        ["bookmarkCount"] = bookmarkCount.ToString(),
                         ["bookmarksHtml"] = bookmarksHtml,
                         ["historyCsv"] = historyCsv,
                         ["primaryPassword"] = primaryPassword,
@@ -268,11 +269,7 @@ public sealed class FirefoxRecipe : IRecipe
         return Task.CompletedTask;
     }
 
-    public RecipeVerifyResult Verify(PlanResult plan)
-    {
-        bool ok = plan.Writes.All(static write => File.Exists(write.DestinationPath));
-        return new RecipeVerifyResult(ok, ok ? "Firefox files present" : "Firefox transplant missing");
-    }
+    public RecipeVerifyResult Verify(PlanResult plan) => FirefoxVerify.Check(plan);
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite("firefox", "Firefox must be closed before the profile is transplanted.")];

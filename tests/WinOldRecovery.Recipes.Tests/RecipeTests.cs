@@ -244,6 +244,7 @@ public sealed class RecipeTests
             "addons.mozilla.org/firefox/search/?guid=ublock%40raymondhill.net",
             await File.ReadAllTextAsync(firefoxPlan.Writes.Single(write => write.DestinationPath.EndsWith("extensions.html", StringComparison.Ordinal)).DestinationPath),
             StringComparison.Ordinal);
+        Assert.True(new FirefoxRecipe().Verify(firefoxPlan).Ok);
 
         RecipeCard gitConfig = cards.Single(card => card.Title.StartsWith("Git configuration", StringComparison.Ordinal));
         PlanResult gitConfigPlan = host.PlanCard(new GitRecipe(), gitConfig, Dest(context));
@@ -1058,6 +1059,68 @@ public sealed class RecipeTests
         Assert.Equal(Decision.LeaveBehind, emptyCard.Components.Single(c => c.Key == "transplant").SuggestedDefault);
         Assert.DoesNotContain(detected.Cards, card => card.Facts["name"] == "sneaky");
         Assert.DoesNotContain(Canary, string.Join(';', detected.Cards.SelectMany(card => card.Facts.Values)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Firefox_Verify_ChecksIniPlacesPairAndBookmarkCount()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string firefox = Path.Combine(alice, "AppData", "Roaming", "Mozilla", "Firefox", "Profiles", "l3.default");
+        Directory.CreateDirectory(firefox);
+        await File.WriteAllTextAsync(Path.Combine(firefox, "logins.json"), """{"logins":[]}""");
+        await File.WriteAllTextAsync(Path.Combine(firefox, "key4.db"), "k");
+        WriteSqlite(
+            Path.Combine(firefox, "places.sqlite"),
+            """
+            CREATE TABLE moz_places(id INTEGER PRIMARY KEY, url TEXT, title TEXT, hidden INTEGER DEFAULT 0);
+            CREATE TABLE moz_bookmarks(id INTEGER PRIMARY KEY, type INTEGER, fk INTEGER, title TEXT, parent INTEGER);
+            INSERT INTO moz_places(id, url, title) VALUES (1, 'https://l3.firefox.example', 'L3');
+            INSERT INTO moz_bookmarks(id, type, fk, title, parent) VALUES (1, 1, 1, 'L3', 0);
+            """);
+
+        FirefoxRecipe recipe = new();
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, [recipe]);
+        DetectResult detected = recipe.Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        RecipeCard card = Assert.Single(detected.Cards);
+        PlanResult plan = host.PlanCard(recipe, card, Dest(context));
+        await host.ExecuteAsync("session-1", recipe, plan);
+        Assert.True(recipe.Verify(plan).Ok);
+
+        Dictionary<string, string> wrongCount = new(plan.Card.Facts) { ["bookmarkCount"] = "99" };
+        Assert.False(recipe.Verify(plan with { Card = plan.Card with { Facts = wrongCount } }).Ok);
+
+        string destLogins = Path.Combine(
+            context.Destination,
+            "AppData",
+            "Roaming",
+            "Mozilla",
+            "Firefox",
+            "Profiles",
+            "l3.default-recovered",
+            "logins.json");
+        File.Delete(destLogins);
+        Assert.False(recipe.Verify(plan).Ok);
+        await File.WriteAllTextAsync(destLogins, """{"logins":[]}""");
+        Assert.True(recipe.Verify(plan).Ok);
+
+        string ini = Path.Combine(
+            context.Destination,
+            "AppData",
+            "Roaming",
+            "Mozilla",
+            "Firefox",
+            "profiles.ini");
+        await File.WriteAllTextAsync(ini, "[General]\nStartWithLastProfile=1\n");
+        Assert.False(recipe.Verify(plan).Ok);
     }
 
     [Fact]

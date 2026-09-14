@@ -103,3 +103,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Git Analyze copies `.git` into the session temp folder and runs git.exe with `--git-dir` on that copy and `--work-tree` on the source, so index refresh cannot write under Windows.old.
 - Firefox exports open tabs from the newest `sessionstore*.jsonlz4` (mozLz4) and an extensions list with AMO search links. Builtin add-ons are omitted.
 - Firefox profile discovery reads `profiles.ini` and `installs.ini` (relative and absolute paths, default install mapping). Empty profiles are shown and default to Leave Behind. Paths outside the old user profile are ignored.
+- Firefox L3 verify checks that `profiles.ini` lists the recovered profile, `places.sqlite` `PRAGMA integrity_check` is ok and bookmark counts match, and `key4.db` is paired with `logins.json` or `logins.db`.
