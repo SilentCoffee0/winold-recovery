@@ -82,13 +82,19 @@ public sealed class FileSystemWalkerTests
         }
 
         FileSystemWalker walker = new(context.Database);
-        await walker.WalkAsync(new WalkRequest("session-1", source));
+        WalkProgress? last = null;
+        await walker.WalkAsync(
+            new WalkRequest("session-1", source),
+            new SyncProgress(progress => last = progress));
 
         Dictionary<string, NodeRow> nodes = LoadNodes(context.Database);
         Assert.Equal(25, nodes[@"Projects\app\node_modules"].AggFiles);
         Assert.Equal(250, nodes[@"Projects\app\node_modules"].AggSize);
         Assert.Equal(25, nodes[string.Empty].AggFiles);
         Assert.Equal(250, nodes[string.Empty].AggSize);
+        Assert.NotNull(last);
+        Assert.Equal(25, last.FilesSeen);
+        Assert.Equal(4, last.FoldersSeen);
     }
 
     [Fact]

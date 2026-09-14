@@ -216,6 +216,7 @@ public sealed class FileSystemWalker
     {
         cancellationToken.ThrowIfCancellationRequested();
         counters.NodesVisited++;
+        counters.FoldersSeen++;
         counters.CurrentRelativePath = relativePath;
         Report(progress, force: false, counters, state);
 
@@ -304,6 +305,10 @@ public sealed class FileSystemWalker
                     aggFiles += childAggFiles;
                     counters.BytesSeen += size;
                     counters.NodesVisited++;
+                    if (classification.CountsAsFile)
+                    {
+                        counters.FilesSeen++;
+                    }
                 }
 
                 await FlushIfNeededAsync(state, cancellationToken).ConfigureAwait(false);
@@ -694,7 +699,9 @@ public sealed class FileSystemWalker
                 counters.JunctionsSkipped,
                 counters.CloudSkipped,
                 counters.EncryptedSkipped,
-                counters.AccessDenied));
+                counters.AccessDenied,
+                counters.FilesSeen,
+                counters.FoldersSeen));
     }
 
     private sealed class WalkCounters
@@ -706,6 +713,8 @@ public sealed class FileSystemWalker
         public int JunctionsSkipped { get; set; }
         public int CloudSkipped { get; set; }
         public int EncryptedSkipped { get; set; }
+        public int FilesSeen { get; set; }
+        public int FoldersSeen { get; set; }
         public DateTimeOffset NextProgress { get; set; }
     }
 

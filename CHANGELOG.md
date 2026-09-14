@@ -85,3 +85,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Recent files view inserts a folder-path header above each parent group (UX 3.2); headers cannot be restored.
 - Problems column shows the per-row explanation, not the internal problem enum.
 - Status strip uses system colors for source integrity and space-budget amber/red; hardcoded Gray text is gone. Scan summary always names known apps and high-value items.
+- Scan progress lists profiles found, file/folder counts, size so far, and skip counters (UX 2.2).

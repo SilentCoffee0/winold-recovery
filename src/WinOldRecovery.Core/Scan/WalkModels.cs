@@ -17,7 +17,10 @@ public sealed record WalkProgress(
     int JunctionsSkipped = 0,
     int CloudSkipped = 0,
     int EncryptedSkipped = 0,
-    int AccessDenied = 0);
+    int AccessDenied = 0,
+    int FilesSeen = 0,
+    int FoldersSeen = 0,
+    IReadOnlyList<string>? ProfileNames = null);
 
 public sealed record WalkResult(
     int NodesVisited,

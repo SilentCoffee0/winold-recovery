@@ -1,5 +1,6 @@
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Planning;
+using WinOldRecovery.Core.Scan;
 
 namespace WinOldRecovery.App.ViewModels;
 
@@ -79,5 +80,21 @@ public static class StatusStrip
 
         return text +
             $" We found {knownApps} known apps and {highValueItems} high-value items. Nothing has been changed.";
+    }
+
+    public static string FormatScanProgress(WalkProgress report, IReadOnlyList<string> profileNames)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        ArgumentNullException.ThrowIfNull(profileNames);
+        IReadOnlyList<string> names = report.ProfileNames is { Count: > 0 }
+            ? report.ProfileNames
+            : profileNames;
+        string profiles = names.Count == 0
+            ? "Profiles found: …"
+            : "Profiles found: " + string.Join(", ", names);
+        return profiles +
+            $"  Files: {QuantityFormat.Count(report.FilesSeen)}   Folders: {QuantityFormat.Count(report.FoldersSeen)}   Size so far: {QuantityFormat.Bytes(report.BytesSeen)}" +
+            Environment.NewLine +
+            $"Skipped: {QuantityFormat.Count(report.JunctionsSkipped)} junctions, {QuantityFormat.Count(report.CloudSkipped)} cloud placeholders, {QuantityFormat.Count(report.EncryptedSkipped)} encrypted, {QuantityFormat.Count(report.AccessDenied)} access denied.";
     }
 }

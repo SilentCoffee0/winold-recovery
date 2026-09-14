@@ -1,5 +1,6 @@
 using WinOldRecovery.App.ViewModels;
 using WinOldRecovery.Core.Planning;
+using WinOldRecovery.Core.Scan;
 
 namespace WinOldRecovery.App.Tests;
 
@@ -47,5 +48,27 @@ public sealed class StatusStripTests
         Assert.Contains("Hashed 4 files", text, StringComparison.Ordinal);
         Assert.Contains("We found 3 known apps and 5 high-value items", text, StringComparison.Ordinal);
         Assert.Contains("Nothing has been changed", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FormatScanProgress_ListsProfilesFilesFoldersAndSkips()
+    {
+        WalkProgress report = new(
+            10,
+            4096,
+            @"Users\Alice\Desktop",
+            [],
+            JunctionsSkipped: 2,
+            CloudSkipped: 1,
+            EncryptedSkipped: 0,
+            AccessDenied: 3,
+            FilesSeen: 7,
+            FoldersSeen: 4,
+            ProfileNames: ["Alice", "Public (shared)"]);
+        string text = StatusStrip.FormatScanProgress(report, []);
+        Assert.Contains("Profiles found: Alice, Public (shared)", text, StringComparison.Ordinal);
+        Assert.Contains("Files: 7", text, StringComparison.Ordinal);
+        Assert.Contains("Folders: 4", text, StringComparison.Ordinal);
+        Assert.Contains("Skipped: 2 junctions, 1 cloud placeholders, 0 encrypted, 3 access denied", text, StringComparison.Ordinal);
     }
 }

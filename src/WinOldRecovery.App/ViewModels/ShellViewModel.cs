@@ -63,6 +63,7 @@ public sealed class ShellViewModel : ObservableObject
     private string scanStatus = "Choose a Windows.old folder, then scan.";
     private string currentPath = string.Empty;
     private int nodesVisited;
+    private IReadOnlyList<string> scanProfileNames = [];
     private TreeNodeRow? selectedNode;
     private List<TreeNodeRow> selectedNodes = [];
     private FilesViewMode filesViewMode = FilesViewMode.Tree;
@@ -1506,9 +1507,12 @@ public sealed class ShellViewModel : ObservableObject
             NodesVisited = report.NodesVisited;
             CurrentPathFull = report.CurrentRelativePath;
             CurrentPath = PathDisplay.MiddleEllipsis(report.CurrentRelativePath);
-            ScanStatus =
-                $"Scanning… {QuantityFormat.Count(report.NodesVisited)} entries, {QuantityFormat.Bytes(report.BytesSeen)} so far. " +
-                $"Skipped: {QuantityFormat.Count(report.JunctionsSkipped)} junctions, {QuantityFormat.Count(report.CloudSkipped)} cloud placeholders, {QuantityFormat.Count(report.EncryptedSkipped)} encrypted, {QuantityFormat.Count(report.AccessDenied)} access denied.";
+            if (report.ProfileNames is { Count: > 0 })
+            {
+                scanProfileNames = report.ProfileNames;
+            }
+
+            ScanStatus = StatusStrip.FormatScanProgress(report, scanProfileNames);
         });
 
         try
@@ -1704,6 +1708,7 @@ public sealed class ShellViewModel : ObservableObject
         RestoreProgress = string.Empty;
         ApplyRestoreSkips(null);
         runningApps = [];
+        scanProfileNames = [];
         SourceIntegrityText = "Windows.old untouched";
         SpaceBudgetText = "Selected: — of destination free space";
         SpaceBudgetLevel = SpaceBudgetLevel.Idle;

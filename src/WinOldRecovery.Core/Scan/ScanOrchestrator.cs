@@ -37,6 +37,13 @@ public sealed class ScanOrchestrator
             new OfflineHiveShellFolderSource(safeFs, sessionTemporaryDirectory);
         ProfileDetector detector = new(folders);
         IReadOnlyList<DetectedProfile> profiles = detector.Detect(registered);
+        progress?.Report(
+            new WalkProgress(
+                0,
+                0,
+                string.Empty,
+                [],
+                ProfileNames: profiles.Select(static profile => profile.DisplayName).ToArray()));
         if (!resume)
         {
             await sessionDb.ClearScanDataAsync(sessionId, cancellationToken).ConfigureAwait(false);
