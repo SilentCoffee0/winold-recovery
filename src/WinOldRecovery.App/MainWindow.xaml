@@ -285,6 +285,11 @@
                                             <Setter Property="Foreground"
                                                     Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
                                         </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsGroupHeader}" Value="True">
+                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                            <Setter Property="Foreground"
+                                                    Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </ListView.ItemContainerStyle>

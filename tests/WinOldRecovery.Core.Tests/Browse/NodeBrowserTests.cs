@@ -103,6 +103,44 @@ public sealed class NodeBrowserTests
     }
 
     [Fact]
+    public async Task InsertHeaders_GroupsRecentFilesByParentFolder()
+    {
+        await using BrowserContext context = await BrowserContext.CreateAsync();
+        DateTime now = DateTime.UtcNow;
+        await context.InsertAsync(
+        [
+            Node(1, null, "", "root"),
+            Node(2, 1, @"Users\Alice\Desktop", "Desktop"),
+            Node(3, 1, @"Users\Alice\Documents", "Documents"),
+            Node(4, 2, @"Users\Alice\Desktop\a.txt", "a.txt", mtimeUtc: now),
+            Node(5, 2, @"Users\Alice\Desktop\b.txt", "b.txt", mtimeUtc: now),
+            Node(6, 3, @"Users\Alice\Documents\c.txt", "c.txt", mtimeUtc: now),
+        ]);
+
+        NodeBrowser browser = new(context.Database, "session-1");
+        NodePage recent = browser.GetRecent(30, null);
+        Assert.Equal(3, recent.Rows.Count);
+
+        IReadOnlyList<TreeNodeRow> grouped = RecentGroups.InsertHeaders(recent.Rows, browser);
+        Assert.Equal(5, grouped.Count);
+        Assert.True(grouped[0].IsGroupHeader);
+        Assert.Equal(@"Users\Alice\Desktop", grouped[0].DisplayName);
+        Assert.False(grouped[0].CanRestore);
+        Assert.Equal("a.txt", grouped[1].Name);
+        Assert.Equal("b.txt", grouped[2].Name);
+        Assert.True(grouped[3].IsGroupHeader);
+        Assert.Equal(@"Users\Alice\Documents", grouped[3].DisplayName);
+        Assert.Equal("c.txt", grouped[4].Name);
+
+        IReadOnlyList<TreeNodeRow> continued = RecentGroups.InsertHeaders(
+            [recent.Rows[1]],
+            browser,
+            continueParentId: recent.Rows[1].ParentId);
+        Assert.False(continued[0].IsGroupHeader);
+        Assert.Equal("b.txt", Assert.Single(continued).Name);
+    }
+
+    [Fact]
     public async Task GetRecent_UsesTheSameUtcTimestampFormatAsInsert()
     {
         await using BrowserContext context = await BrowserContext.CreateAsync();

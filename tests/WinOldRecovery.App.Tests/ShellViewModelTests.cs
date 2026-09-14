@@ -487,6 +487,13 @@ public sealed class ShellViewModelTests
         context.ViewModel.RecentDays = 7;
         Assert.Equal(7, context.ViewModel.RecentDays);
         Assert.Contains(context.ViewModel.TreeRows, row => row.Name == "notes.txt");
+        TreeNodeRow header = Assert.Single(
+            context.ViewModel.TreeRows,
+            row => row.IsGroupHeader && row.DisplayName.Contains("Desktop", StringComparison.Ordinal));
+        Assert.False(header.CanRestore);
+        int headerIndex = context.ViewModel.TreeRows.ToList().FindIndex(row => row.Id == header.Id && row.IsGroupHeader);
+        int fileIndex = context.ViewModel.TreeRows.ToList().FindIndex(row => row.Name == "notes.txt");
+        Assert.True(headerIndex >= 0 && fileIndex > headerIndex);
         context.ViewModel.RecentDays = 15;
         Assert.Equal(7, context.ViewModel.RecentDays);
     }

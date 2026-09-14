@@ -34,20 +34,26 @@ public sealed record TreeNodeRow(
     bool MixedSubtree = false,
     long RestoreBytes = 0,
     long LeaveBehindBytes = 0,
-    long UndecidedBytes = 0)
+    long UndecidedBytes = 0,
+    bool IsGroupHeader = false)
 {
     public bool IsReparse => Kind is NodeKind.Junction or NodeKind.Symlink or NodeKind.MountPoint;
 
-    public bool CanRestore => !IsReparse;
+    public bool CanRestore => !IsReparse && !IsGroupHeader;
 
-    public string DisplayName => IsReparse ? "⊘ " + Name : Name;
+    public string DisplayName =>
+        IsGroupHeader
+            ? (string.IsNullOrEmpty(RelPath) ? Name : RelPath)
+            : IsReparse ? "⊘ " + Name : Name;
 
-    public string SizeLabel => IsReparse ? "—" : QuantityFormat.Bytes(AggSize);
+    public string SizeLabel => IsReparse || IsGroupHeader ? "—" : QuantityFormat.Bytes(AggSize);
 
-    public string FilesLabel => IsReparse ? "—" : QuantityFormat.Count(AggFiles);
+    public string FilesLabel => IsReparse || IsGroupHeader ? "—" : QuantityFormat.Count(AggFiles);
 
     public string ModifiedLabel =>
-        IsReparse ? "—" : ModifiedUtc?.ToString("d MMM yyyy", CultureInfo.InvariantCulture) ?? "—";
+        IsReparse || IsGroupHeader
+            ? "—"
+            : ModifiedUtc?.ToString("d MMM yyyy", CultureInfo.InvariantCulture) ?? "—";
 
     public string BadgeText => string.Join(", ", Badges);
 
@@ -132,6 +138,7 @@ public sealed record TreeNodeRow(
 
     public bool IsInheritedDecision =>
         !IsReparse &&
+        !IsGroupHeader &&
         !MixedSubtree &&
         !HasOwnUserDecision &&
         !HasSuggestedDefault &&
@@ -144,7 +151,7 @@ public sealed record TreeNodeRow(
     {
         get
         {
-            if (IsReparse)
+            if (IsReparse || IsGroupHeader)
             {
                 return "—";
             }

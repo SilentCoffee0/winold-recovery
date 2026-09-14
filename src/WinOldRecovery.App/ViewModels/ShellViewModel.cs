@@ -1221,7 +1221,7 @@ public sealed class ShellViewModel : ObservableObject
         }
         else
         {
-            foreach (TreeNodeRow row in page.Rows)
+            foreach (TreeNodeRow row in PresentRows(page.Rows, append: true))
             {
                 TreeRows.Add(row);
             }
@@ -1976,7 +1976,7 @@ public sealed class ShellViewModel : ObservableObject
             _ => nodeBrowser.GetChildren(null),
         };
 
-        foreach (TreeNodeRow row in page.Rows)
+        foreach (TreeNodeRow row in PresentRows(page.Rows, append: false))
         {
             TreeRows.Add(row);
         }
@@ -1987,6 +1987,29 @@ public sealed class ShellViewModel : ObservableObject
         {
             SelectedNode = TreeRows.FirstOrDefault(row => row.Id == SelectedNode.Id) ?? SelectedNode;
         }
+    }
+
+    private IReadOnlyList<TreeNodeRow> PresentRows(IReadOnlyList<TreeNodeRow> rows, bool append)
+    {
+        if (FilesViewMode != FilesViewMode.Recent)
+        {
+            return rows;
+        }
+
+        long? continueParent = null;
+        if (append)
+        {
+            for (int i = TreeRows.Count - 1; i >= 0; i--)
+            {
+                if (!TreeRows[i].IsGroupHeader)
+                {
+                    continueParent = TreeRows[i].ParentId;
+                    break;
+                }
+            }
+        }
+
+        return RecentGroups.InsertHeaders(rows, nodeBrowser, continueParent);
     }
 
     private void CopyPath()

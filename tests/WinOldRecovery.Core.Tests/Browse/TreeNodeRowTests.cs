@@ -34,6 +34,37 @@ public sealed class TreeNodeRowTests
     }
 
     [Fact]
+    public void GroupHeader_ShowsFolderPathAndCannotRestore()
+    {
+        TreeNodeRow header = new(
+            10,
+            1,
+            "Desktop",
+            @"Users\Alice\Desktop",
+            NodeKind.Directory,
+            0,
+            0,
+            0,
+            null,
+            NodeProblem.None,
+            Decision.Restore,
+            false,
+            true,
+            2,
+            [],
+            IsGroupHeader: true);
+
+        Assert.True(header.IsGroupHeader);
+        Assert.False(header.CanRestore);
+        Assert.Equal(@"Users\Alice\Desktop", header.DisplayName);
+        Assert.Equal("—", header.DecisionLabel);
+        Assert.Equal("—", header.SizeLabel);
+        Assert.Equal("—", header.FilesLabel);
+        Assert.Equal("—", header.ModifiedLabel);
+        Assert.False(header.IsInheritedDecision);
+    }
+
+    [Fact]
     public void SuggestedRestore_IsHollowWithConfirmTooltip()
     {
         TreeNodeRow row = new(

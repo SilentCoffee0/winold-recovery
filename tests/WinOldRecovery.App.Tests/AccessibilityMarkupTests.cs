@@ -22,6 +22,7 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("RowTooltip", xaml, StringComparison.Ordinal);
         Assert.Contains("DecisionTooltip", xaml, StringComparison.Ordinal);
         Assert.Contains("IsInheritedDecision", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsGroupHeader", xaml, StringComparison.Ordinal);
         Assert.Contains("GrayTextBrushKey", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"FilesViewTree\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"FilesViewLargest\"", xaml, StringComparison.Ordinal);

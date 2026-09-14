@@ -82,3 +82,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Decision chips use ● / ◌ / ○; suggested defaults stay hollow with a confirm tooltip; inherited decisions are dimmed.
 - Files view uses Tree / Largest / Recent / Unknown / Problems radios (UX 3.2); Search stays a search box.
 - Decide Cards expose Inspect / Open Folder / Restore / Leave Behind on each overview card (UX 3.1); absent, profile, and summary cards stay one-line.
+- Recent files view inserts a folder-path header above each parent group (UX 3.2); headers cannot be restored.
