@@ -8,6 +8,7 @@ using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Core.Scan;
 using WinOldRecovery.Core.Sessions;
 using WinOldRecovery.Core.Verify;
+using WinOldRecovery.Recipes;
 
 namespace WinOldRecovery.Recipes.Tests;
 
@@ -247,7 +248,72 @@ public sealed class RecipeTests
         });
         await GitAnalyze.AnalyzeAsync(context.Runner, Path.Combine(context.Source, "repo"), context.Destination);
         Assert.Equal(5, context.Runner.Requests.Count);
+        Assert.All(
+            context.Runner.Requests,
+            request => Assert.EndsWith("git.exe", request.FileName, StringComparison.OrdinalIgnoreCase));
         Assert.Contains(context.Runner.Requests, request => request.Arguments.Contains("status"));
+    }
+
+    [Fact]
+    public void GitAnalyze_Interpret_CleanPushedWhenARemoteExistsAndTheTreeIsClean()
+    {
+        GitAnalyzeResult result = GitAnalyze.Interpret(
+            "# branch.head main\n# branch.upstream origin/main\n# stash 0\n",
+            "main\torigin/main\t",
+            string.Empty,
+            string.Empty);
+        Assert.Equal("Git: clean, pushed", result.Badge);
+        Assert.True(result.HasRemote);
+        Assert.False(result.Uncommitted);
+        Assert.False(result.Unpushed);
+        Assert.False(result.Stash);
+        Assert.False(result.LocalOnlyBranch);
+    }
+
+    [Fact]
+    public void GitAnalyze_Interpret_UnpushedCommitsAreLocalOnlyWork()
+    {
+        GitAnalyzeResult result = GitAnalyze.Interpret(
+            "# branch.head main\n# branch.upstream origin/main\n",
+            "main\torigin/main\t[ahead 1]",
+            "abc123\tWIP\n",
+            string.Empty);
+        Assert.Equal("Git: local-only work", result.Badge);
+        Assert.True(result.Unpushed);
+        Assert.True(result.HasRemote);
+    }
+
+    [Fact]
+    public void GitAnalyze_Interpret_HeadsWithoutUpstreamAreNoRemote()
+    {
+        GitAnalyzeResult result = GitAnalyze.Interpret(
+            "# branch.head main\n",
+            "main\t\t",
+            string.Empty,
+            string.Empty);
+        Assert.Equal("Git: no remote", result.Badge);
+        Assert.False(result.HasRemote);
+        Assert.True(result.LocalOnlyBranch);
+    }
+
+    [Fact]
+    public void GitAnalyze_Interpret_UnknownAnalysisIsLocalOnlyWork()
+    {
+        Assert.Equal("Git: local-only work", GitAnalyzeResult.Unknown.Badge);
+    }
+
+    [Fact]
+    public void GitAnalyze_Interpret_UncommittedUntrackedAndStashAreLocalOnlyWork()
+    {
+        GitAnalyzeResult result = GitAnalyze.Interpret(
+            "1 .M N...\n? scratch.txt\n# stash 2\n# branch.upstream origin/main\n",
+            "main\torigin/main\t",
+            string.Empty,
+            "stash@{0}\tWIP");
+        Assert.True(result.Uncommitted);
+        Assert.True(result.Untracked);
+        Assert.True(result.Stash);
+        Assert.Equal("Git: local-only work", result.Badge);
     }
 
     [Fact]

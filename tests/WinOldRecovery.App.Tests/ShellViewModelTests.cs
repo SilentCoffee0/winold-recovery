@@ -857,6 +857,67 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task AnalyzeGit_RunsFiveGitRequestsAndReplacesTheRiskBadge()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync([new GitRecipe()]);
+        string source = Path.Combine(context.Root, "Windows.old");
+        string alice = Path.Combine(source, "Users", "Alice");
+        string repo = Path.Combine(alice, "Documents", "notes");
+        Directory.CreateDirectory(Path.Combine(repo, ".git"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "NTUSER.DAT"), "hive");
+        await File.WriteAllTextAsync(Path.Combine(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(repo, ".git", "config"),
+            "[remote \"origin\"]\n\turl = https://example.invalid/repo.git\n");
+
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        OverviewCard gitCard = context.ViewModel.Cards.First(
+            card => card.Kind == "git" && card.Title.Contains("notes", StringComparison.Ordinal));
+        context.ViewModel.SelectedCard = gitCard;
+        Assert.True(context.ViewModel.GitCardSelected);
+        Assert.True(context.ViewModel.AnalyzeGitCommand.CanExecute(null));
+        Assert.Contains(
+            "local-only work",
+            context.ViewModel.SelectedRecipeCard!.Facts["risk"],
+            StringComparison.Ordinal);
+
+        context.Runner.Requests.Clear();
+        await context.ViewModel.AnalyzeGitCommand.ExecuteAsync(null);
+
+        Assert.Equal(5, context.Runner.Requests.Count);
+        Assert.All(
+            context.Runner.Requests,
+            request =>
+            {
+                Assert.EndsWith("git.exe", request.FileName, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("--no-optional-locks", request.Arguments);
+                Assert.Equal("0", request.Environment!["GIT_OPTIONAL_LOCKS"]);
+                Assert.Equal(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    request.Environment["HOME"]);
+            });
+        Assert.Contains(context.Runner.Requests, request => request.Arguments.Contains("status"));
+        Assert.Equal("Git: no remote", context.ViewModel.SelectedRecipeCard!.Facts["risk"]);
+        Assert.Contains("Risk: Git: no remote", context.ViewModel.DetailText, StringComparison.Ordinal);
+
+        for (int depth = 0; depth < 8; depth++)
+        {
+            foreach (TreeNodeRow row in context.ViewModel.TreeRows.ToList())
+            {
+                if (row.ChildCount > 0)
+                {
+                    context.ViewModel.Expand(row);
+                }
+            }
+        }
+
+        TreeNodeRow notes = context.ViewModel.TreeRows.First(row => row.Name == "notes");
+        Assert.Contains("Git: no remote", notes.BadgeText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Scan_MissingFolder_SurfacesRedactedExplanationAndLogPath()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();

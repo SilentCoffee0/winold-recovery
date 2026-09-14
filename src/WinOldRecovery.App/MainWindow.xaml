@@ -706,6 +706,21 @@
                             <Button Content="Leave Behind" Command="{Binding LeaveBehindCommand}"
                                     IsEnabled="{Binding CanMutateSession}"
                                     AutomationProperties.Name="Leave this app card behind" />
+                            <Button Content="Analyze repositories" Command="{Binding AnalyzeGitCommand}"
+                                    Margin="8,0,0,0"
+                                    AutomationProperties.Name="Analyze Git repositories"
+                                    AutomationProperties.AutomationId="AnalyzeGitButton">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding GitCardSelected}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>

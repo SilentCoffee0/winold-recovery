@@ -189,6 +189,7 @@ public sealed class ShellViewModel : ObservableObject
         LeaveOverviewCardCommand = new AsyncRelayCommand<OverviewCard>(
             card => DecideOverviewCardAsync(card, Decision.LeaveBehind),
             static card => card is { ShowVerbs: true });
+        AnalyzeGitCommand = new AsyncRelayCommand(AnalyzeGitAsync, CanAnalyzeGit);
         ExpandCommand = new RelayCommand<TreeNodeRow>(Expand);
         ShowCardsCommand = new RelayCommand(() =>
         {
@@ -283,6 +284,7 @@ public sealed class ShellViewModel : ObservableObject
     public IAsyncRelayCommand<OverviewCard> OpenOverviewCardCommand { get; }
     public IAsyncRelayCommand<OverviewCard> RestoreOverviewCardCommand { get; }
     public IAsyncRelayCommand<OverviewCard> LeaveOverviewCardCommand { get; }
+    public IAsyncRelayCommand AnalyzeGitCommand { get; }
     public IRelayCommand<TreeNodeRow> ExpandCommand { get; }
     public IRelayCommand ShowCardsCommand { get; }
     public IRelayCommand ShowFilesCommand { get; }
@@ -966,11 +968,13 @@ public sealed class ShellViewModel : ObservableObject
                 OnPropertyChanged(nameof(DetailText));
                 OnPropertyChanged(nameof(SelectedRecipeCard));
                 OnPropertyChanged(nameof(RecipeCardSelected));
+                OnPropertyChanged(nameof(GitCardSelected));
                 ReloadRecipeComponents();
                 RestoreCommand.NotifyCanExecuteChanged();
                 LeaveBehindCommand.NotifyCanExecuteChanged();
                 UndecidedCommand.NotifyCanExecuteChanged();
                 OpenFolderCommand.NotifyCanExecuteChanged();
+                AnalyzeGitCommand.NotifyCanExecuteChanged();
             }
         }
     }
@@ -989,6 +993,9 @@ public sealed class ShellViewModel : ObservableObject
 
     public bool RecipeCardSelected => SelectedRecipeCard is not null;
 
+    public bool GitCardSelected =>
+        SelectedRecipeCard is { RecipeId: "git" };
+
     public string DetailText
     {
         get
@@ -1005,6 +1012,7 @@ public sealed class ShellViewModel : ObservableObject
                         "Can the cloud restore it? " + recipe.CloudAlternative,
                         "Does it regenerate? " + recipe.Regeneratable,
                         "If left behind: " + recipe.IfLeftBehind,
+                        .. RecipeRiskLines(recipe),
                         .. recipe.Components.Select(static component =>
                             component.Title + ": " + component.Summary +
                             (component.Fixed ? " (cannot be recovered)" : " — " + component.SuggestedDefault)),
@@ -1603,6 +1611,7 @@ public sealed class ShellViewModel : ObservableObject
             ExecuteVerifyCommand.NotifyCanExecuteChanged();
             ExecutePurgeCommand.NotifyCanExecuteChanged();
             CreateSupportBundleCommand.NotifyCanExecuteChanged();
+            AnalyzeGitCommand.NotifyCanExecuteChanged();
         }
         catch (OperationCanceledException)
         {
@@ -1785,6 +1794,85 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         await OpenFolderAsync().ConfigureAwait(true);
+    }
+
+    private bool CanAnalyzeGit()
+    {
+        return CanWriteSession &&
+            scanCompleted &&
+            GitCardSelected &&
+            lastRecipeCards.Any(IsGitRepoCard);
+    }
+
+    private static bool IsGitRepoCard(RecipeCard card)
+    {
+        return card.RecipeId.Equals("git", StringComparison.Ordinal) &&
+            card.Facts.GetValueOrDefault("kind") == "repo";
+    }
+
+    private static IEnumerable<string> RecipeRiskLines(RecipeCard recipe)
+    {
+        if (recipe.Facts.TryGetValue("risk", out string? risk) &&
+            !string.IsNullOrWhiteSpace(risk))
+        {
+            yield return "Risk: " + risk;
+        }
+    }
+
+    private async Task AnalyzeGitAsync()
+    {
+        if (!CanAnalyzeGit())
+        {
+            return;
+        }
+
+        ScanStatus = "Analyzing Git repositories…";
+        List<RecipeCard> updated = [.. lastRecipeCards];
+        for (int index = 0; index < updated.Count; index++)
+        {
+            RecipeCard card = updated[index];
+            if (!IsGitRepoCard(card) ||
+                !card.Facts.TryGetValue("source", out string? source) ||
+                string.IsNullOrWhiteSpace(source))
+            {
+                continue;
+            }
+
+            GitAnalyzeResult result = await GitAnalyze.AnalyzeAsync(
+                    processRunner,
+                    source,
+                    LiveProfileRoot)
+                .ConfigureAwait(true);
+            Dictionary<string, string> facts = new(card.Facts, StringComparer.Ordinal);
+            facts["risk"] = result.Badge;
+            Decision suggested = string.Equals(result.Badge, "Git: clean, pushed", StringComparison.Ordinal)
+                ? Decision.Undecided
+                : Decision.Restore;
+            RecipeComponent[] components = card.Components
+                .Select(component => component.Key == "repo"
+                    ? component with { SuggestedDefault = suggested, Summary = result.Badge }
+                    : component)
+                .ToArray();
+            updated[index] = card with { Facts = facts, Components = components };
+
+            if (SourceRoot is not null)
+            {
+                string relative = Path.GetRelativePath(SourceRoot, source);
+                if (!relative.StartsWith("..", StringComparison.Ordinal) &&
+                    sessionDb.FindNodeId(workspace.SessionId, relative) is long nodeId)
+                {
+                    await sessionDb.ReplaceKindBadgesAsync(nodeId, "Git", [result.Badge])
+                        .ConfigureAwait(true);
+                }
+            }
+        }
+
+        lastRecipeCards = updated;
+        RebuildCards(lastProfiles);
+        ReloadView();
+        OnPropertyChanged(nameof(SelectedRecipeCard));
+        OnPropertyChanged(nameof(DetailText));
+        ScanStatus = "Git repositories analyzed. Risk badges are on the cards and in the tree.";
     }
 
     private async Task DecideOverviewCardAsync(OverviewCard? card, Decision decision)
@@ -2108,11 +2196,18 @@ public sealed class ShellViewModel : ObservableObject
         {
             bool restoreSuggested = recipe.Components.Any(
                 static component => component.SuggestedDefault == Decision.Restore);
+            string facts = recipe.WhyItMatters;
+            if (recipe.Facts.TryGetValue("risk", out string? risk) &&
+                !string.IsNullOrWhiteSpace(risk))
+            {
+                facts = "[" + risk + "] " + facts;
+            }
+
             Cards.Add(
                 new OverviewCard(
                     recipe.Title,
                     recipe.What,
-                    recipe.WhyItMatters,
+                    facts,
                     restoreSuggested
                         ? DecisionDisplay.Label(Decision.Restore, ownUser: false, suggested: true)
                         : DecisionDisplay.Label(Decision.Undecided, ownUser: false, suggested: false),
@@ -2155,7 +2250,9 @@ public sealed class ShellViewModel : ObservableObject
                 OnPropertyChanged(nameof(SelectedCard));
                 OnPropertyChanged(nameof(SelectedRecipeCard));
                 OnPropertyChanged(nameof(RecipeCardSelected));
+                OnPropertyChanged(nameof(GitCardSelected));
                 ReloadRecipeComponents();
+                AnalyzeGitCommand.NotifyCanExecuteChanged();
             }
         }
 
@@ -2792,6 +2889,7 @@ public sealed class ShellViewModel : ObservableObject
         ResumeDiskFullCommand.NotifyCanExecuteChanged();
         BrowseDestinationCommand.NotifyCanExecuteChanged();
         GoToPurgeCommand.NotifyCanExecuteChanged();
+        AnalyzeGitCommand.NotifyCanExecuteChanged();
     }
 
     private bool CanAcknowledgeVerify()

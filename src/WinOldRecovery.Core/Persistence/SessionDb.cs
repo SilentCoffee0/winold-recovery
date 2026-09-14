@@ -331,6 +331,56 @@ public sealed class SessionDb : IAsyncDisposable
             cancellationToken);
     }
 
+    public Task ReplaceKindBadgesAsync(
+        long nodeId,
+        string kind,
+        IReadOnlyList<string> details,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+        ArgumentNullException.ThrowIfNull(details);
+
+        return WriteAsync(
+            async (connection, token) =>
+            {
+                using SqliteTransaction transaction = connection.BeginTransaction();
+                await using SqliteCommand delete = connection.CreateCommand();
+                delete.Transaction = transaction;
+                delete.CommandText =
+                    """
+                    DELETE FROM badges
+                    WHERE node_id = $nodeId AND kind = $kind;
+                    """;
+                delete.Parameters.AddWithValue("$nodeId", nodeId);
+                delete.Parameters.AddWithValue("$kind", kind);
+                await delete.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+
+                if (details.Count > 0)
+                {
+                    await using SqliteCommand insert = connection.CreateCommand();
+                    insert.Transaction = transaction;
+                    insert.CommandText =
+                        """
+                        INSERT INTO badges(node_id, kind, detail)
+                        VALUES ($nodeId, $kind, $detail);
+                        """;
+                    SqliteParameter nodeIdParam = insert.Parameters.Add("$nodeId", SqliteType.Integer);
+                    SqliteParameter kindParam = insert.Parameters.Add("$kind", SqliteType.Text);
+                    SqliteParameter detailParam = insert.Parameters.Add("$detail", SqliteType.Text);
+                    foreach (string detail in details)
+                    {
+                        nodeIdParam.Value = nodeId;
+                        kindParam.Value = kind;
+                        detailParam.Value = detail;
+                        await insert.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                    }
+                }
+
+                transaction.Commit();
+            },
+            cancellationToken);
+    }
+
     public IReadOnlyList<ClassificationNodeRow> ListClassificationNodes(string sessionId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);

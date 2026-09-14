@@ -99,6 +99,50 @@ public sealed class SessionDbTests
     }
 
     [Fact]
+    public async Task ReplaceKindBadges_ReplacesOnlyThatKindOnTheNode()
+    {
+        await using SessionDbTestContext context = await SessionDbTestContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Created", "0.1.0"));
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "notes",
+                @"Users\Alice\Documents\notes",
+                NodeKind.Directory,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+        await context.Database.InsertBadgesAsync(
+        [
+            new NodeBadgeRow(1, "Git", "Git: local-only work"),
+            new NodeBadgeRow(1, "Sensitive", "secret"),
+        ]);
+
+        await context.Database.ReplaceKindBadgesAsync(1, "Git", ["Git: clean, pushed"]);
+
+        using SqliteConnection reader = context.Database.OpenReadConnection();
+        await using SqliteCommand command = reader.CreateCommand();
+        command.CommandText = "SELECT kind || ':' || detail FROM badges ORDER BY kind;";
+        List<string> badges = [];
+        await using SqliteDataReader rows = await command.ExecuteReaderAsync();
+        while (await rows.ReadAsync())
+        {
+            badges.Add(rows.GetString(0));
+        }
+
+        Assert.Equal(["Git:Git: clean, pushed", "Sensitive:secret"], badges);
+    }
+
+    [Fact]
     public async Task WriterChannel_RoundTripsSessionState()
     {
         await using SessionDbTestContext context = await SessionDbTestContext.CreateAsync();
