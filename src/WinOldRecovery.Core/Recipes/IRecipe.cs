@@ -17,6 +17,9 @@ public interface IRecipe
 
     RecipeVerifyResult Verify(PlanResult plan);
 
+    Task<RecipeVerifyResult> VerifyAsync(PlanResult plan, CancellationToken cancellationToken = default)
+        => Task.FromResult(Verify(plan));
+
     IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan);
 }
 

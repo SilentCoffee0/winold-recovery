@@ -208,11 +208,12 @@ public sealed class RecipeHost
         await recipe.ExecuteAsync(plan, journal, cancellationToken).ConfigureAwait(false);
     }
 
-    public IReadOnlyList<VerifyResultRow> CollectLevel3(
+    public async Task<IReadOnlyList<VerifyResultRow>> CollectLevel3Async(
         string sessionId,
         string reportId,
         IReadOnlyList<RecipeCard> cards,
-        DestinationContext destination)
+        DestinationContext destination,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
         ArgumentException.ThrowIfNullOrWhiteSpace(reportId);
@@ -242,7 +243,10 @@ public sealed class RecipeHost
                     continue;
                 }
 
-                RecipeVerifyResult skipped = recipe.Verify(new PlanResult(card, [], destination));
+                RecipeVerifyResult skipped = await recipe.VerifyAsync(
+                        new PlanResult(card, [], destination),
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 rows.Add(
                     new VerifyResultRow(
                         fallbackId,
@@ -270,7 +274,10 @@ public sealed class RecipeHost
                         component));
             }
 
-            RecipeVerifyResult result = recipe.Verify(new PlanResult(card, writes, destination));
+            RecipeVerifyResult result = await recipe.VerifyAsync(
+                    new PlanResult(card, writes, destination),
+                    cancellationToken)
+                .ConfigureAwait(false);
             rows.Add(
                 new VerifyResultRow(
                     owned[0].Id!.Value,

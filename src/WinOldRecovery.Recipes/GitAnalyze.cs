@@ -5,35 +5,44 @@ namespace WinOldRecovery.Recipes;
 
 public static class GitAnalyze
 {
+    private static readonly string[] StatusArguments =
+    [
+        "status",
+        "--porcelain=v2",
+        "--branch",
+        "--show-stash",
+        "--untracked-files=all",
+        "--ignored=no",
+    ];
+
     public static IReadOnlyList<ProcessRequest> CreateRequests(
         string repositoryPath,
         string destinationHome,
         string? gitExecutable = null)
     {
-        Dictionary<string, string?> environment = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["GIT_OPTIONAL_LOCKS"] = "0",
-            ["GIT_TERMINAL_PROMPT"] = "0",
-            ["HOME"] = destinationHome,
-        };
-        string[] prefix =
-        [
-            "--no-optional-locks",
-            "-c", "safe.directory=*",
-            "-c", "core.fsmonitor=false",
-            "-c", "gc.auto=0",
-            "-c", "maintenance.auto=false",
-            "-C", repositoryPath,
-        ];
-        TimeSpan timeout = TimeSpan.FromSeconds(60);
-        string fileName = string.IsNullOrWhiteSpace(gitExecutable) ? "git.exe" : gitExecutable;
+        (string fileName, string[] prefix, Dictionary<string, string?> environment, TimeSpan timeout) =
+            Invocation(repositoryPath, destinationHome, gitExecutable);
         return
         [
-            Request(fileName, [.. prefix, "status", "--porcelain=v2", "--branch", "--show-stash", "--untracked-files=all", "--ignored=no"], environment, timeout),
+            Request(fileName, [.. prefix, .. StatusArguments], environment, timeout),
             Request(fileName, [.. prefix, "for-each-ref", "--format=%(refname:short)%09%(upstream:short)%09%(upstream:track)", "refs/heads"], environment, timeout),
             Request(fileName, [.. prefix, "log", "--branches", "--not", "--remotes", "--format=%H%x09%s"], environment, timeout),
             Request(fileName, [.. prefix, "stash", "list", "--format=%gd%x09%s"], environment, timeout),
             Request(fileName, [.. prefix, "worktree", "list", "--porcelain"], environment, timeout),
+        ];
+    }
+
+    public static IReadOnlyList<ProcessRequest> CreateVerifyRequests(
+        string repositoryPath,
+        string destinationHome,
+        string? gitExecutable = null)
+    {
+        (string fileName, string[] prefix, Dictionary<string, string?> environment, TimeSpan timeout) =
+            Invocation(repositoryPath, destinationHome, gitExecutable);
+        return
+        [
+            Request(fileName, [.. prefix, "rev-parse", "HEAD"], environment, timeout),
+            Request(fileName, [.. prefix, .. StatusArguments], environment, timeout),
         ];
     }
 
@@ -101,6 +110,55 @@ public static class GitAnalyze
         return Interpret(stdout[0], stdout[1], stdout[2], stdout[3]);
     }
 
+    public static async Task<GitLevel3Result> CompareRestoredAsync(
+        IProcessRunner processRunner,
+        string sourceRepository,
+        string destinationRepository,
+        string destinationHome,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(processRunner);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceRepository);
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationRepository);
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationHome);
+
+        string gitExecutable = ResolveGitExecutable();
+        IReadOnlyList<ProcessRequest> sourceRequests =
+            CreateVerifyRequests(sourceRepository, destinationHome, gitExecutable);
+        IReadOnlyList<ProcessRequest> destRequests =
+            CreateVerifyRequests(destinationRepository, destinationHome, gitExecutable);
+        (bool sourceHeadOk, string sourceHead) = await RunVerifyAsync(
+                processRunner,
+                sourceRequests[0],
+                cancellationToken)
+            .ConfigureAwait(false);
+        (bool sourceStatusOk, string sourceStatus) = await RunVerifyAsync(
+                processRunner,
+                sourceRequests[1],
+                cancellationToken)
+            .ConfigureAwait(false);
+        (bool destHeadOk, string destHead) = await RunVerifyAsync(
+                processRunner,
+                destRequests[0],
+                cancellationToken)
+            .ConfigureAwait(false);
+        (bool destStatusOk, string destStatus) = await RunVerifyAsync(
+                processRunner,
+                destRequests[1],
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        bool gitAvailable = sourceHeadOk || sourceStatusOk || destHeadOk || destStatusOk;
+        if (!gitAvailable)
+        {
+            return new GitLevel3Result(false, true, true);
+        }
+
+        bool headMatches = sourceHeadOk && destHeadOk && HeadsEqual(sourceHead, destHead);
+        bool statusMatches = sourceStatusOk && destStatusOk && StatusEqual(sourceStatus, destStatus);
+        return new GitLevel3Result(true, headMatches, statusMatches);
+    }
+
     public static GitAnalyzeResult Interpret(
         string statusStdout,
         string forEachRefStdout,
@@ -156,6 +214,65 @@ public static class GitAnalyze
         bool unpushed = SplitLines(unpushedLogStdout).Any(static line => line.Length > 0);
         bool stash = stashFromStatus || SplitLines(stashListStdout).Any(static line => line.Length > 0);
         return GitAnalyzeResult.FromFlags(uncommitted, untracked, unpushed, stash, localOnlyBranch, hasRemote);
+    }
+
+    private static async Task<(bool Ok, string StandardOutput)> RunVerifyAsync(
+        IProcessRunner processRunner,
+        ProcessRequest request,
+        CancellationToken cancellationToken)
+    {
+        ProcessResult result;
+        try
+        {
+            result = await processRunner.RunAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Win32Exception)
+        {
+            return (false, string.Empty);
+        }
+        catch (InvalidOperationException)
+        {
+            return (false, string.Empty);
+        }
+
+        return (result.ExitCode == 0, result.StandardOutput ?? string.Empty);
+    }
+
+    private static bool HeadsEqual(string source, string destination)
+    {
+        return string.Equals(source.Trim(), destination.Trim(), StringComparison.Ordinal);
+    }
+
+    private static bool StatusEqual(string source, string destination)
+    {
+        return string.Equals(NormalizeStatus(source), NormalizeStatus(destination), StringComparison.Ordinal);
+    }
+
+    private static string NormalizeStatus(string text)
+    {
+        return text.Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
+    }
+
+    private static (string FileName, string[] Prefix, Dictionary<string, string?> Environment, TimeSpan Timeout)
+        Invocation(string repositoryPath, string destinationHome, string? gitExecutable)
+    {
+        Dictionary<string, string?> environment = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["GIT_OPTIONAL_LOCKS"] = "0",
+            ["GIT_TERMINAL_PROMPT"] = "0",
+            ["HOME"] = destinationHome,
+        };
+        string[] prefix =
+        [
+            "--no-optional-locks",
+            "-c", "safe.directory=*",
+            "-c", "core.fsmonitor=false",
+            "-c", "gc.auto=0",
+            "-c", "maintenance.auto=false",
+            "-C", repositoryPath,
+        ];
+        string fileName = string.IsNullOrWhiteSpace(gitExecutable) ? "git.exe" : gitExecutable;
+        return (fileName, prefix, environment, TimeSpan.FromSeconds(60));
     }
 
     private static IEnumerable<string> SplitLines(string text)
@@ -271,4 +388,9 @@ public sealed record GitAnalyzeResult(
             hasRemote,
             badge);
     }
+}
+
+public sealed record GitLevel3Result(bool GitAvailable, bool HeadMatches, bool StatusMatches)
+{
+    public bool Ok => !GitAvailable || (HeadMatches && StatusMatches);
 }

@@ -78,7 +78,7 @@ public sealed class RecipeTests
         Assert.True(new SshRecipe().Verify(plan).Ok);
         Assert.Equal(planned, created);
 
-        IReadOnlyList<VerifyResultRow> level3 = host.CollectLevel3(
+        IReadOnlyList<VerifyResultRow> level3 = await host.CollectLevel3Async(
             "session-1",
             "report-ssh",
             cards,
@@ -314,6 +314,148 @@ public sealed class RecipeTests
         Assert.True(result.Untracked);
         Assert.True(result.Stash);
         Assert.Equal("Git: local-only work", result.Badge);
+    }
+
+    [Fact]
+    public void GitAnalyze_CreateVerifyRequests_UsesRevParseAndStatusFlags()
+    {
+        IReadOnlyList<ProcessRequest> requests = GitAnalyze.CreateVerifyRequests(
+            @"D:\Windows.old\Users\Alice\repo",
+            @"C:\Users\Alice");
+        Assert.Equal(2, requests.Count);
+        Assert.Contains("rev-parse", requests[0].Arguments);
+        Assert.Contains("HEAD", requests[0].Arguments);
+        Assert.Contains("status", requests[1].Arguments);
+        Assert.Contains("--porcelain=v2", requests[1].Arguments);
+        Assert.Contains("--branch", requests[1].Arguments);
+        Assert.Contains("--show-stash", requests[1].Arguments);
+        Assert.Contains("--untracked-files=all", requests[1].Arguments);
+        Assert.Contains("--ignored=no", requests[1].Arguments);
+        Assert.All(
+            requests,
+            request =>
+            {
+                Assert.Equal("git.exe", request.FileName);
+                Assert.Contains("--no-optional-locks", request.Arguments);
+                Assert.Contains("safe.directory=*", request.Arguments);
+                Assert.Contains("-C", request.Arguments);
+                Assert.Contains(@"D:\Windows.old\Users\Alice\repo", request.Arguments);
+                Assert.Equal("0", request.Environment!["GIT_OPTIONAL_LOCKS"]);
+                Assert.Equal(@"C:\Users\Alice", request.Environment["HOME"]);
+            });
+    }
+
+    [Fact]
+    public async Task GitAnalyze_CompareRestored_MismatchedHeadFails()
+    {
+        MappedGitRunner runner = new(
+            @"C:\src",
+            @"C:\dst",
+            "abc123",
+            "def456",
+            "# branch.head main\n",
+            "# branch.head main\n");
+        GitLevel3Result result = await GitAnalyze.CompareRestoredAsync(
+            runner,
+            @"C:\src",
+            @"C:\dst",
+            @"C:\Users\Alice");
+        Assert.True(result.GitAvailable);
+        Assert.False(result.HeadMatches);
+        Assert.True(result.StatusMatches);
+        Assert.False(result.Ok);
+    }
+
+    [Fact]
+    public async Task GitAnalyze_CompareRestored_MissingGitSkipsCompare()
+    {
+        GitLevel3Result result = await GitAnalyze.CompareRestoredAsync(
+            new ExitOneRunner(),
+            @"C:\src",
+            @"C:\dst",
+            @"C:\Users\Alice");
+        Assert.False(result.GitAvailable);
+        Assert.True(result.Ok);
+    }
+
+    [Fact]
+    public async Task Git_Verify_MismatchedHeadFileFailsWithoutGit()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        (GitRecipe recipe, PlanResult plan) = await RestoreGitRepoAsync(context);
+        Assert.True(recipe.Verify(plan).Ok);
+        await File.WriteAllTextAsync(
+            Path.Combine(plan.Writes[0].DestinationPath, ".git", "HEAD"),
+            "ref: refs/heads/other\n");
+        RecipeVerifyResult result = recipe.Verify(plan);
+        Assert.False(result.Ok);
+        Assert.Contains("HEAD", result.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Git_VerifyAsync_MissingGitStillOkWhenFilesPresent()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        (GitRecipe recipe, PlanResult plan) = await RestoreGitRepoAsync(context);
+        PlanResult withMissingGit = plan with
+        {
+            Destination = new DestinationContext(
+                context.Destination,
+                context.Exports,
+                context.SafeFs,
+                new ExitOneRunner()),
+        };
+        RecipeVerifyResult result = await recipe.VerifyAsync(withMissingGit);
+        Assert.True(result.Ok);
+        Assert.Equal("Git files present", result.Detail);
+    }
+
+    [Fact]
+    public async Task Git_VerifyAsync_StatusMismatchFailsWhenGitIsPresent()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        (GitRecipe recipe, PlanResult plan) = await RestoreGitRepoAsync(context);
+        string source = plan.Writes[0].SourcePath!;
+        string dest = plan.Writes[0].DestinationPath;
+        PlanResult withGit = plan with
+        {
+            Destination = new DestinationContext(
+                context.Destination,
+                context.Exports,
+                context.SafeFs,
+                new MappedGitRunner(
+                    source,
+                    dest,
+                    "abc123",
+                    "abc123",
+                    "# branch.head main\n",
+                    "# branch.head main\n? scratch.txt\n")),
+        };
+        Assert.True(recipe.Verify(withGit).Ok);
+        RecipeVerifyResult result = await recipe.VerifyAsync(withGit);
+        Assert.False(result.Ok);
+        Assert.Contains("status", result.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Git_CollectLevel3_FailsWhenRestoredHeadDiffers()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        GitRecipe recipe = new();
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, [recipe]);
+        (_, PlanResult plan) = await RestoreGitRepoAsync(context, host, recipe);
+        await File.WriteAllTextAsync(
+            Path.Combine(plan.Writes[0].DestinationPath, ".git", "HEAD"),
+            "ref: refs/heads/other\n");
+        IReadOnlyList<VerifyResultRow> level3 = await host.CollectLevel3Async(
+            "session-1",
+            "report-git",
+            [plan.Card],
+            Dest(context));
+        Assert.Contains(level3, row => row.Level == 3 && !row.Ok);
+        Assert.Contains(
+            level3,
+            row => row.Detail.Contains("HEAD", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -945,6 +1087,32 @@ public sealed class RecipeTests
         return new DestinationContext(context.Destination, context.Exports, context.SafeFs, context.Runner);
     }
 
+    private static async Task<(GitRecipe Recipe, PlanResult Plan)> RestoreGitRepoAsync(
+        RecipeContext context,
+        RecipeHost? host = null,
+        GitRecipe? recipe = null)
+    {
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string notes = Path.Combine(alice, "Documents", "notes");
+        Directory.CreateDirectory(Path.Combine(notes, ".git"));
+        await File.WriteAllTextAsync(Path.Combine(notes, ".git", "HEAD"), "ref: refs/heads/main\n");
+        recipe ??= new GitRecipe();
+        host ??= new RecipeHost(context.Database, context.SafeFs, context.Runner, [recipe]);
+        DetectResult detected = recipe.Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        RecipeCard card = detected.Cards.Single(item => item.Facts.GetValueOrDefault("kind") == "repo");
+        PlanResult plan = host.PlanCard(recipe, card, Dest(context));
+        await host.ExecuteAsync("session-1", recipe, plan);
+        return (recipe, plan);
+    }
+
     private static HashSet<string> SnapshotFiles(params string[] roots)
     {
         HashSet<string> files = new(StringComparer.OrdinalIgnoreCase);
@@ -1027,6 +1195,54 @@ public sealed class RecipeTests
         {
             Requests.Add(request);
             return Task.FromResult(new ProcessResult(0, string.Empty, string.Empty));
+        }
+    }
+
+    private sealed class ExitOneRunner : IProcessRunner
+    {
+        public Task<ProcessResult> RunAsync(ProcessRequest request, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new ProcessResult(1, string.Empty, string.Empty));
+        }
+    }
+
+    private sealed class MappedGitRunner(
+        string sourceRepo,
+        string destRepo,
+        string sourceHead,
+        string destHead,
+        string sourceStatus,
+        string destStatus) : IProcessRunner
+    {
+        public Task<ProcessResult> RunAsync(ProcessRequest request, CancellationToken cancellationToken = default)
+        {
+            string? repo = null;
+            for (int i = 0; i < request.Arguments.Count - 1; i++)
+            {
+                if (request.Arguments[i] == "-C")
+                {
+                    repo = request.Arguments[i + 1];
+                    break;
+                }
+            }
+
+            bool dest = repo is not null && repo.Equals(destRepo, StringComparison.OrdinalIgnoreCase);
+            bool source = repo is not null && repo.Equals(sourceRepo, StringComparison.OrdinalIgnoreCase);
+            if (!dest && !source)
+            {
+                return Task.FromResult(new ProcessResult(1, string.Empty, string.Empty));
+            }
+            if (request.Arguments.Contains("rev-parse"))
+            {
+                return Task.FromResult(new ProcessResult(0, dest ? destHead : sourceHead, string.Empty));
+            }
+
+            if (request.Arguments.Contains("status"))
+            {
+                return Task.FromResult(new ProcessResult(0, dest ? destStatus : sourceStatus, string.Empty));
+            }
+
+            return Task.FromResult(new ProcessResult(1, string.Empty, string.Empty));
         }
     }
 }

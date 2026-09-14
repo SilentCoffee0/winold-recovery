@@ -2931,11 +2931,12 @@ public sealed class ShellViewModel : ObservableObject
         if (recipeHost is not null)
         {
             DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner);
-            level3 = recipeHost.CollectLevel3(
-                workspace.SessionId,
-                report.ReportId,
-                lastRecipeCards,
-                destination);
+            level3 = await recipeHost.CollectLevel3Async(
+                    workspace.SessionId,
+                    report.ReportId,
+                    lastRecipeCards,
+                    destination)
+                .ConfigureAwait(true);
             await sessionDb.InsertVerifyResultsAsync(level3).ConfigureAwait(true);
             foreach (VerifyResultRow row in level3)
             {

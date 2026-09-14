@@ -162,7 +162,53 @@ public sealed class GitRecipe : IRecipe
     {
         bool ok = plan.Writes.All(static write =>
             File.Exists(write.DestinationPath) || Directory.Exists(write.DestinationPath));
-        return new RecipeVerifyResult(ok, ok ? "Git files present" : "Git restore missing");
+        if (!ok)
+        {
+            return new RecipeVerifyResult(false, "Git restore missing");
+        }
+
+        if (!HeadsMatch(plan))
+        {
+            return new RecipeVerifyResult(false, "HEAD does not match the source");
+        }
+
+        return new RecipeVerifyResult(true, "Git files present");
+    }
+
+    public async Task<RecipeVerifyResult> VerifyAsync(
+        PlanResult plan,
+        CancellationToken cancellationToken = default)
+    {
+        RecipeVerifyResult files = Verify(plan);
+        if (!files.Ok)
+        {
+            return files;
+        }
+
+        RecipeWrite? repo = RepoWrite(plan);
+        if (repo?.SourcePath is null || plan.Destination is null)
+        {
+            return files;
+        }
+
+        GitLevel3Result git = await GitAnalyze.CompareRestoredAsync(
+                plan.Destination.ProcessRunner,
+                repo.SourcePath,
+                repo.DestinationPath,
+                plan.Destination.DestinationProfileRoot,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!git.GitAvailable)
+        {
+            return files;
+        }
+
+        if (!git.Ok)
+        {
+            return new RecipeVerifyResult(false, "git HEAD or status does not match the source");
+        }
+
+        return new RecipeVerifyResult(true, "Git HEAD and status match the source");
     }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) => [];
@@ -280,6 +326,45 @@ public sealed class GitRecipe : IRecipe
         }
 
         return null;
+    }
+
+    private static RecipeWrite? RepoWrite(PlanResult plan)
+    {
+        return plan.Writes.FirstOrDefault(static write =>
+            write.Kind == RecipeWriteKind.CopyTree && write.SourcePath is not null);
+    }
+
+    private static bool HeadsMatch(PlanResult plan)
+    {
+        foreach (RecipeWrite write in plan.Writes)
+        {
+            if (write.Kind != RecipeWriteKind.CopyTree || write.SourcePath is null)
+            {
+                continue;
+            }
+
+            string sourceHead = Path.Combine(write.SourcePath, ".git", "HEAD");
+            if (!File.Exists(sourceHead))
+            {
+                continue;
+            }
+
+            string destHead = Path.Combine(write.DestinationPath, ".git", "HEAD");
+            if (!File.Exists(destHead))
+            {
+                return false;
+            }
+
+            if (!string.Equals(
+                    File.ReadAllText(sourceHead).Trim(),
+                    File.ReadAllText(destHead).Trim(),
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool HasRemote(SafeFs safeFs, string gitDir)

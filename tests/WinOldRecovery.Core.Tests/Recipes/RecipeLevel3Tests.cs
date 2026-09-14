@@ -22,7 +22,7 @@ public sealed class RecipeLevel3Tests
             new SilentRunner(),
             [new StubRecipe(verifyOk: false)]);
         RecipeCard card = StubRecipe.Card();
-        IReadOnlyList<VerifyResultRow> level3 = host.CollectLevel3(
+        IReadOnlyList<VerifyResultRow> level3 = await host.CollectLevel3Async(
             "session-1",
             "report-ok",
             [card],
