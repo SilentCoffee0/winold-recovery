@@ -120,6 +120,12 @@ public sealed class RecipeTests
         Directory.CreateDirectory(firefox);
         await File.WriteAllTextAsync(Path.Combine(firefox, "logins.json"), """{"logins":[{"encryptedUsername":"WINOLD_RECOVERY_CANARY_DO_NOT_LOG_7F3A91"}]}""");
         await File.WriteAllTextAsync(Path.Combine(firefox, "key4.db"), "k");
+        await File.WriteAllBytesAsync(
+            Path.Combine(firefox, "sessionstore.jsonlz4"),
+            MozLz4.Encode("""{"windows":[{"tabs":[{"entries":[{"url":"https://tabs.firefox.example/open"}],"index":1}]}]}"""u8));
+        await File.WriteAllTextAsync(
+            Path.Combine(firefox, "extensions.json"),
+            """{"addons":[{"id":"ublock@raymondhill.net","type":"extension","location":"app-profile","defaultLocale":{"name":"uBlock Origin"}}]}""");
         WriteSqlite(
             Path.Combine(firefox, "places.sqlite"),
             """
@@ -209,6 +215,14 @@ public sealed class RecipeTests
         Assert.Contains(
             "firefox.example",
             await File.ReadAllTextAsync(firefoxPlan.Writes.Single(write => write.DestinationPath.EndsWith("bookmarks.html", StringComparison.Ordinal)).DestinationPath),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "tabs.firefox.example",
+            await File.ReadAllTextAsync(firefoxPlan.Writes.Single(write => write.DestinationPath.EndsWith("tabs.html", StringComparison.Ordinal)).DestinationPath),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "addons.mozilla.org/firefox/search/?guid=ublock%40raymondhill.net",
+            await File.ReadAllTextAsync(firefoxPlan.Writes.Single(write => write.DestinationPath.EndsWith("extensions.html", StringComparison.Ordinal)).DestinationPath),
             StringComparison.Ordinal);
 
         RecipeCard gitConfig = cards.Single(card => card.Title.StartsWith("Git configuration", StringComparison.Ordinal));
@@ -857,6 +871,68 @@ public sealed class RecipeTests
         Assert.Equal(Key4PrimaryPassword.NotSet, card.Facts["primaryPassword"]);
         Assert.Contains("No Primary Password", card.WhatIsRestored, StringComparison.Ordinal);
         Assert.DoesNotContain(Canary, string.Join(';', card.Facts.Values), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MozLz4_RoundtripAndRejectsBadMagic()
+    {
+        byte[] encoded = MozLz4.Encode("hello-firefox"u8);
+        Assert.True(MozLz4.TryDecode(encoded, out byte[] decoded));
+        Assert.Equal("hello-firefox"u8.ToArray(), decoded);
+        Assert.False(MozLz4.TryDecode("not-mozlz4-data"u8, out _));
+    }
+
+    [Fact]
+    public void FirefoxExports_TabsUseSelectedEntryAndSkipBuiltinAddons()
+    {
+        (int tabCount, string tabsHtml) = FirefoxExports.TabsFromJson(
+            """
+            {"windows":[{"tabs":[
+              {"entries":[{"url":"https://first.example"},{"url":"https://selected.example"}],"index":2},
+              {"entries":[{"url":"https://only.example"}]}
+            ]}]}
+            """);
+        Assert.Equal(2, tabCount);
+        Assert.Contains("selected.example", tabsHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("first.example", tabsHtml, StringComparison.Ordinal);
+        Assert.Contains("only.example", tabsHtml, StringComparison.Ordinal);
+
+        (int extensionCount, string extensionsHtml) = FirefoxExports.ExtensionsFromJson(
+            """
+            {"addons":[
+              {"id":"ublock@raymondhill.net","type":"extension","location":"app-profile","defaultLocale":{"name":"uBlock Origin"}},
+              {"id":"default-theme@mozilla.org","type":"theme","location":"app-builtin"},
+              {"id":"built@mozilla.org","type":"extension","location":"app-builtin"}
+            ]}
+            """);
+        Assert.Equal(1, extensionCount);
+        Assert.Contains("addons.mozilla.org/firefox/search/?guid=", extensionsHtml, StringComparison.Ordinal);
+        Assert.Contains("uBlock Origin", extensionsHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("built@mozilla.org", extensionsHtml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task FirefoxExports_TabsPreferNewestSessionstore()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string profile = Path.Combine(context.Source, "firefox-profile");
+        string backups = Path.Combine(profile, "sessionstore-backups");
+        Directory.CreateDirectory(backups);
+        string older = Path.Combine(profile, "sessionstore.jsonlz4");
+        string newer = Path.Combine(backups, "recovery.jsonlz4");
+        await File.WriteAllBytesAsync(
+            older,
+            MozLz4.Encode("""{"windows":[{"tabs":[{"entries":[{"url":"https://older.firefox.example"}]}]}]}"""u8));
+        await File.WriteAllBytesAsync(
+            newer,
+            MozLz4.Encode("""{"windows":[{"tabs":[{"entries":[{"url":"https://newer.firefox.example"}]}]}]}"""u8));
+        File.SetLastWriteTimeUtc(older, new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        File.SetLastWriteTimeUtc(newer, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        (int tabCount, string tabsHtml) = FirefoxExports.Tabs(context.SafeFs, profile);
+        Assert.Equal(1, tabCount);
+        Assert.Contains("newer.firefox.example", tabsHtml, StringComparison.Ordinal);
+        Assert.DoesNotContain("older.firefox.example", tabsHtml, StringComparison.Ordinal);
     }
 
     [Fact]

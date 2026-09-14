@@ -101,3 +101,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Git offline analysis parses `HEAD`, `refs/heads`, packed-refs, remotes (credentials stripped), stash, reflog time, and index mtime. Uncommitted/unpushed stay `unknown (install Git to analyze)`; reftable repos skip the ref walk. Tests never launch a real `git.exe`.
 - Firefox cards report Primary Password as set / not set / unknown from a temp copy of `key4.db` metadata (empty-password check only). Logins are never decrypted.
 - Git Analyze copies `.git` into the session temp folder and runs git.exe with `--git-dir` on that copy and `--work-tree` on the source, so index refresh cannot write under Windows.old.
+- Firefox exports open tabs from the newest `sessionstore*.jsonlz4` (mozLz4) and an extensions list with AMO search links. Builtin add-ons are omitted.

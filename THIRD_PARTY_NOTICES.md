@@ -32,6 +32,12 @@ Copyright Eric Zimmerman and contributors. Licensed under the MIT License.
 
 https://github.com/EricZimmerman/Registry
 
+## K4os.Compression.LZ4
+
+Copyright Milosz Krajewski. Licensed under the MIT License.
+
+https://github.com/MiloszKrajewski/K4os.Compression.LZ4
+
 ## CommunityToolkit.Mvvm
 
 Copyright .NET Foundation and Contributors. Licensed under the MIT License.

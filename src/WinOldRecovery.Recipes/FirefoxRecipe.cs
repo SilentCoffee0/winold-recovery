@@ -93,6 +93,10 @@ public sealed class FirefoxRecipe : IRecipe
                     Path.Combine(profile, "key4.db"),
                     firefoxTemp)
                 : Key4PrimaryPassword.Missing;
+            (int tabCount, string tabsHtml) = FirefoxExports.Tabs(context.SafeFs, profile);
+            (int extensionCount, string extensionsHtml) = FirefoxExports.Extensions(
+                context.SafeFs,
+                Path.Combine(profile, "extensions.json"));
 
             cards.Add(
                 new RecipeCard(
@@ -130,6 +134,22 @@ public sealed class FirefoxRecipe : IRecipe
                             false,
                             null,
                             true),
+                        new RecipeComponent(
+                            "tabs-export",
+                            "Open tabs list",
+                            tabCount + " tabs",
+                            tabCount > 0 ? Decision.Restore : Decision.LeaveBehind,
+                            false,
+                            null,
+                            false),
+                        new RecipeComponent(
+                            "extensions-export",
+                            "Extensions list",
+                            extensionCount + " extensions",
+                            extensionCount > 0 ? Decision.Restore : Decision.LeaveBehind,
+                            false,
+                            null,
+                            false),
                     ],
                     context.ProfileName + ":" + Path.GetFileName(profile),
                     new Dictionary<string, string>
@@ -140,6 +160,8 @@ public sealed class FirefoxRecipe : IRecipe
                         ["bookmarksHtml"] = bookmarksHtml,
                         ["historyCsv"] = historyCsv,
                         ["primaryPassword"] = primaryPassword,
+                        ["tabsHtml"] = tabsHtml,
+                        ["extensionsHtml"] = extensionsHtml,
                     }));
         }
 
@@ -218,6 +240,34 @@ public sealed class FirefoxRecipe : IRecipe
                     csv,
                     csv.Length,
                     "history-export"));
+        }
+
+        if (RecipeDecisions.ShouldRestore(decisions, "tabs-export"))
+        {
+            string html = decisions.Card.Facts.GetValueOrDefault("tabsHtml") ??
+                "<!DOCTYPE html><title>Open tabs</title>";
+            writes.Add(
+                new RecipeWrite(
+                    RecipeWriteKind.WriteContent,
+                    null,
+                    Path.Combine(exportRoot, "tabs.html"),
+                    html,
+                    html.Length,
+                    "tabs-export"));
+        }
+
+        if (RecipeDecisions.ShouldRestore(decisions, "extensions-export"))
+        {
+            string html = decisions.Card.Facts.GetValueOrDefault("extensionsHtml") ??
+                "<!DOCTYPE html><title>Extensions</title>";
+            writes.Add(
+                new RecipeWrite(
+                    RecipeWriteKind.WriteContent,
+                    null,
+                    Path.Combine(exportRoot, "extensions.html"),
+                    html,
+                    html.Length,
+                    "extensions-export"));
         }
 
         return new PlanResult(decisions.Card, writes);
