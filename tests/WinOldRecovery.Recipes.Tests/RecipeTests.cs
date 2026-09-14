@@ -7,6 +7,7 @@ using WinOldRecovery.Core.Recipes;
 using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Core.Scan;
 using WinOldRecovery.Core.Sessions;
+using WinOldRecovery.Core.Verify;
 
 namespace WinOldRecovery.Recipes.Tests;
 
@@ -75,6 +76,15 @@ public sealed class RecipeTests
 
         Assert.True(new SshRecipe().Verify(plan).Ok);
         Assert.Equal(planned, created);
+
+        IReadOnlyList<VerifyResultRow> level3 = host.CollectLevel3(
+            "session-1",
+            "report-ssh",
+            cards,
+            Dest(context));
+        Assert.Contains(level3, row => row.Level == 3 && row.Ok);
+        await context.Database.InsertVerifyResultsAsync(level3);
+        Assert.True(context.Database.LastVerifyReportAllOk("session-1"));
     }
 
     [Fact]

@@ -2622,27 +2622,24 @@ public sealed class ShellViewModel : ObservableObject
         try
         {
         VerifyReport report = await new Verifier(sessionDb, safeFs).VerifyAsync(lastPlan).ConfigureAwait(true);
-        verifyCompleted = report.AllOk;
         List<string> recipeLines = [];
+        IReadOnlyList<VerifyResultRow> level3 = [];
         if (recipeHost is not null)
         {
             DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner);
-            foreach (RecipeCard card in lastRecipeCards)
+            level3 = recipeHost.CollectLevel3(
+                workspace.SessionId,
+                report.ReportId,
+                lastRecipeCards,
+                destination);
+            await sessionDb.InsertVerifyResultsAsync(level3).ConfigureAwait(true);
+            foreach (VerifyResultRow row in level3)
             {
-                IRecipe? recipe = recipeHost.Find(card.RecipeId);
-                if (recipe is null)
-                {
-                    continue;
-                }
-
-                RecipeVerifyResult recipeVerify = recipe.Verify(recipeHost.PlanCard(recipe, card, destination, workspace.SessionId));
-                recipeLines.Add(card.Title + ": " + recipeVerify.Detail + (recipeVerify.Ok ? "  ✔" : "  failed"));
-                if (!recipeVerify.Ok)
-                {
-                    verifyCompleted = false;
-                }
+                recipeLines.Add(row.Detail + (row.Ok ? "  ✔" : "  failed"));
             }
         }
+
+        verifyCompleted = report.AllOk && level3.All(static row => row.Ok);
 
         VerifyFailureText = FormatVerifyFailures(recipeLines);
         string counts = VerifyReportFormat.Counts(report);

@@ -6,6 +6,7 @@ using WinOldRecovery.Core.Planning;
 using WinOldRecovery.Core.Processes;
 using WinOldRecovery.Core.Restore;
 using WinOldRecovery.Core.Scan;
+using WinOldRecovery.Core.Verify;
 
 namespace WinOldRecovery.Core.Recipes;
 
@@ -134,6 +135,12 @@ public sealed class RecipeHost
         {
             cancellationToken.ThrowIfCancellationRequested();
             PlanItem item = stored[index++];
+            await sessionDb.SetKvAsync(
+                    sessionId,
+                    ComponentKeyKv(item.Id!.Value),
+                    write.ComponentKey,
+                    cancellationToken)
+                .ConfigureAwait(false);
             await journal.StartedAsync(write.ComponentKey, cancellationToken).ConfigureAwait(false);
             try
             {
@@ -166,6 +173,87 @@ public sealed class RecipeHost
         }
 
         await recipe.ExecuteAsync(plan, journal, cancellationToken).ConfigureAwait(false);
+    }
+
+    public IReadOnlyList<VerifyResultRow> CollectLevel3(
+        string sessionId,
+        string reportId,
+        IReadOnlyList<RecipeCard> cards,
+        DestinationContext destination)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reportId);
+        ArgumentNullException.ThrowIfNull(cards);
+        ArgumentNullException.ThrowIfNull(destination);
+
+        IReadOnlyList<PlanItem> items = sessionDb.ListPlanItems(sessionId);
+        Dictionary<string, List<PlanItem>> byRecipe = items
+            .Where(static item => item.RecipeId is not null && item.Id is not null)
+            .GroupBy(static item => item.RecipeId!, StringComparer.Ordinal)
+            .ToDictionary(static group => group.Key, static group => group.ToList(), StringComparer.Ordinal);
+        PlanItem? fallback = items.FirstOrDefault(static item => item.Id is not null);
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        List<VerifyResultRow> rows = [];
+        foreach (RecipeCard card in cards)
+        {
+            IRecipe? recipe = Find(card.RecipeId);
+            if (recipe is null)
+            {
+                continue;
+            }
+
+            if (!byRecipe.TryGetValue(card.RecipeId, out List<PlanItem>? owned) || owned.Count == 0)
+            {
+                if (fallback?.Id is not long fallbackId)
+                {
+                    continue;
+                }
+
+                RecipeVerifyResult skipped = recipe.Verify(new PlanResult(card, [], destination));
+                rows.Add(
+                    new VerifyResultRow(
+                        fallbackId,
+                        reportId,
+                        3,
+                        skipped.Ok,
+                        card.Title + ": " + skipped.Detail,
+                        now));
+                continue;
+            }
+
+            List<RecipeWrite> writes = [];
+            foreach (PlanItem item in owned)
+            {
+                string component = sessionDb.GetKv(sessionId, ComponentKeyKv(item.Id!.Value)) ?? "files";
+                writes.Add(
+                    new RecipeWrite(
+                        item.Operation == PlanOperation.CopyTree
+                            ? RecipeWriteKind.CopyTree
+                            : RecipeWriteKind.CopyFile,
+                        item.SourcePath,
+                        item.DestinationPath,
+                        null,
+                        item.Bytes,
+                        component));
+            }
+
+            RecipeVerifyResult result = recipe.Verify(new PlanResult(card, writes, destination));
+            rows.Add(
+                new VerifyResultRow(
+                    owned[0].Id!.Value,
+                    reportId,
+                    3,
+                    result.Ok,
+                    card.Title + ": " + result.Detail,
+                    now));
+        }
+
+        return rows;
+    }
+
+    private static string ComponentKeyKv(long planItemId)
+    {
+        return "recipe.component." + planItemId.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 }
 

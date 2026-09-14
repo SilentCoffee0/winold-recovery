@@ -91,3 +91,4 @@ All notable changes to WinOld Recovery will be documented here.
 - CI walks 1,000,000 on-disk empty files in under 60 s and keeps the test-process working set under 1.5 GB. The published-EXE 1M scan remains a manual check.
 - CopyTree resume no longer probes a thousand keep-both names per file. Integration tests arm a source watchdog and kill a 50,000-file copy process, then resume with no `.winold-partial` leftovers.
 - Named SAFETY_MODEL tests cover I4 (no whole-AppData plan), I9 (recipe execute matches the planned file set), I10 (purge token is null when any gate fails), I11 (walker reparse leaves), I12 (offline OpenRead refusal), I13 (source/destination containment both ways), and I14 (restored files do not copy source ACLs). The window title includes the source path and current step.
+- Verify stores recipe L3 rows on the same report as L0–L2. A failed recipe check fails the verify store, so I10 cannot mint a purge token from UI flags alone.
