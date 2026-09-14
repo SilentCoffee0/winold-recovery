@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using Microsoft.Data.Sqlite;
 using WinOldRecovery.Core.Browse;
 using WinOldRecovery.Core.Decisions;
@@ -100,6 +101,31 @@ public sealed class NodeBrowserTests
         Assert.Equal(NodeBrowser.ChildPageSize, page.Rows.Count);
         Assert.Equal(NodeBrowser.ChildPageSize + 1, page.TotalCount);
         Assert.True(page.Truncated);
+    }
+
+    [Fact]
+    public async Task GetChildren_SecondPageStartsAfterTheLimit()
+    {
+        await using BrowserContext context = await BrowserContext.CreateAsync();
+        List<PersistedNode> nodes = [Node(1, null, "", "root")];
+        for (int i = 0; i < NodeBrowser.ChildPageSize + 1; i++)
+        {
+            long id = i + 2;
+            string name = "f" + i.ToString("D4", CultureInfo.InvariantCulture) + ".txt";
+            nodes.Add(Node(id, 1, name, name));
+        }
+
+        await context.InsertAsync(nodes);
+        NodeBrowser browser = new(context.Database, "session-1");
+        NodePage second = browser.GetChildren(1, offset: NodeBrowser.ChildPageSize);
+        Assert.Single(second.Rows);
+        Assert.Equal("f2000.txt", second.Rows[0].Name);
+        Assert.False(second.Truncated);
+
+        TreeNodeRow? leaf = browser.GetNode(3);
+        Assert.NotNull(leaf);
+        IReadOnlyList<TreeNodeRow> ancestors = browser.GetAncestors(leaf.Id);
+        Assert.Contains(ancestors, row => row.Id == 1);
     }
 
     private static PersistedNode Node(

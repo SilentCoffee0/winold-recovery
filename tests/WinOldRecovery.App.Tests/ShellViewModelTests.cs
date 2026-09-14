@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using WinOldRecovery.App;
 using WinOldRecovery.App.Help;
 using WinOldRecovery.App.ViewModels;
@@ -62,6 +63,93 @@ public sealed class ShellViewModelTests
 
         Assert.Equal(FilesViewMode.Search, context.ViewModel.FilesViewMode);
         Assert.Contains(context.ViewModel.TreeRows, row => row.Name == "notes.txt");
+    }
+
+    [Fact]
+    public async Task RevealInTree_SelectsTheSearchHitUnderItsParents()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "Desktop", "notes.txt"),
+            "keep");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        context.ViewModel.SearchText = "notes";
+        context.ViewModel.SearchNow();
+        context.ViewModel.SelectedNode = context.ViewModel.TreeRows.First(row => row.Name == "notes.txt");
+        context.ViewModel.RevealInTree();
+
+        Assert.Equal(FilesViewMode.Tree, context.ViewModel.FilesViewMode);
+        Assert.Equal("notes.txt", context.ViewModel.SelectedNode?.Name);
+        Assert.Contains(context.ViewModel.TreeRows, row => row.Name == "Desktop");
+    }
+
+    [Fact]
+    public async Task RecentDays_ReloadsRecentFiles()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "Desktop", "notes.txt"),
+            "keep");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        context.ViewModel.FilesViewMode = FilesViewMode.Recent;
+        context.ViewModel.RecentDays = 7;
+        Assert.Equal(7, context.ViewModel.RecentDays);
+        Assert.Contains(context.ViewModel.TreeRows, row => row.Name == "notes.txt");
+        context.ViewModel.RecentDays = 15;
+        Assert.Equal(7, context.ViewModel.RecentDays);
+    }
+
+    [Fact]
+    public async Task Expand_RemovesNestedRowsWhenTheParentIsCollapsed()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "Desktop", "notes.txt"),
+            "keep");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        context.ViewModel.FilesViewMode = FilesViewMode.Tree;
+        ExpandDirectories(context);
+        ExpandDirectories(context);
+
+        TreeNodeRow alice = FindRow(context, "Alice");
+        context.ViewModel.Expand(alice);
+        context.ViewModel.Expand(FindRow(context, "Desktop"));
+        Assert.Contains(context.ViewModel.TreeRows, row => row.Name == "notes.txt");
+
+        context.ViewModel.Expand(FindRow(context, "Alice"));
+        Assert.DoesNotContain(context.ViewModel.TreeRows, row => row.Name == "notes.txt");
+        Assert.Contains(context.ViewModel.TreeRows, row => row.Name == "Desktop");
+    }
+
+    [Fact]
+    public async Task CanGoTo_BlocksEveryStepWhileRestoreRuns()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        context.ViewModel.SetRestoringForTests(true);
+        Assert.False(context.ViewModel.CanGoTo(WorkflowStep.Scan));
+        Assert.False(context.ViewModel.CanGoTo(WorkflowStep.Decide));
+        context.ViewModel.SetRestoringForTests(false);
+        Assert.True(context.ViewModel.CanGoTo(WorkflowStep.Scan));
     }
 
     [Fact]
@@ -180,6 +268,22 @@ public sealed class ShellViewModelTests
         Assert.Contains("not-windows-old", context.ViewModel.SelectedSourcePath, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("does not contain Users", context.ViewModel.SourceHint, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("Scan", context.ViewModel.ScanButtonLabel);
+    }
+
+    private static void ExpandDirectories(ShellTestContext context)
+    {
+        foreach (TreeNodeRow row in context.ViewModel.TreeRows.ToList())
+        {
+            if (row.ChildCount > 0)
+            {
+                context.ViewModel.Expand(row);
+            }
+        }
+    }
+
+    private static TreeNodeRow FindRow(ShellTestContext context, string name)
+    {
+        return context.ViewModel.TreeRows.First(row => row.Name == name);
     }
 
     private sealed class ShellTestContext : IAsyncDisposable

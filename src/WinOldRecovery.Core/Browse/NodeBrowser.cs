@@ -50,22 +50,22 @@ public sealed class NodeBrowser
             relPrefix: prefix);
     }
 
-    public NodePage GetRecent(int days, long? underNodeId)
+    public NodePage GetRecent(int days, long? underNodeId, int offset = 0)
     {
         DateTimeOffset cutoff = DateTimeOffset.UtcNow.AddDays(-days);
         string under = RelPathFilter(underNodeId, out string? prefix);
         return Query(
             parentFilter: "1 = 1",
             extraFilter: Combine("mtime_utc >= $cutoff AND kind <> 'Directory'", under),
-            orderBy: "mtime_utc DESC, name COLLATE NOCASE",
-            offset: 0,
+            orderBy: "parent_id, mtime_utc DESC, name COLLATE NOCASE",
+            offset,
             limit: ChildPageSize,
             parentId: null,
             relPrefix: prefix,
             cutoffUtc: cutoff);
     }
 
-    public NodePage Search(string query, long? underNodeId)
+    public NodePage Search(string query, long? underNodeId, int offset = 0)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         string under = RelPathFilter(underNodeId, out string? prefix);
@@ -76,7 +76,7 @@ public sealed class NodeBrowser
             parentFilter: "1 = 1",
             extraFilter: Combine(nameFilter, under),
             orderBy: "rel_path COLLATE NOCASE",
-            offset: 0,
+            offset,
             limit: ChildPageSize,
             parentId: null,
             relPrefix: prefix,
@@ -127,6 +127,25 @@ public sealed class NodeBrowser
             limit: 1,
             parentId: nodeId);
         return page.Rows.Count == 0 ? null : page.Rows[0];
+    }
+
+    public IReadOnlyList<TreeNodeRow> GetAncestors(long nodeId)
+    {
+        List<TreeNodeRow> chain = [];
+        TreeNodeRow? current = GetNode(nodeId);
+        while (current?.ParentId is long parentId)
+        {
+            current = GetNode(parentId);
+            if (current is null)
+            {
+                break;
+            }
+
+            chain.Add(current);
+        }
+
+        chain.Reverse();
+        return chain;
     }
 
     public TreeNodeRow? FindByRelPath(string relPath)

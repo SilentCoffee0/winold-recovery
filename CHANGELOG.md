@@ -49,3 +49,4 @@ All notable changes to WinOld Recovery will be documented here.
 - In-app redacted session log viewer; middle-ellipsis long paths with full path in Inspect; panes collapse to Cards/Files/Inspect tabs below 1200 px; space budget says when a plan will not fit or is near the limit.
 - Scan source picker shows created/estimated-deletion dates, Browse for any folder, Pause/Resume with skipped-item counters, and thousands-separated sizes in the Files list.
 - Explorer Open Folder walks up from paths longer than 259 characters; FlaUI smoke requests UAC (`runas`) when `RUN_FLAUI=1`; elevated FixtureGen helper script `tools/run-elevated-m0.ps1`.
+- Decide Files paging past 2,000 children, Recent 7/30/90-day selector, Reveal in tree, purge source-integrity text, and blocked step navigation during restore.

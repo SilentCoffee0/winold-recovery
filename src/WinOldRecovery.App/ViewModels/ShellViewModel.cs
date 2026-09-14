@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WinOldRecovery.App.Help;
@@ -91,6 +92,13 @@ public sealed class ShellViewModel : ObservableObject
     private bool compactLayout;
     private bool compactInspect;
     private string currentPathFull = string.Empty;
+    private bool isRestoring;
+    private int recentDays = 30;
+    private bool treeTruncated;
+    private long? pagedParentId;
+    private int pagedLoaded;
+    private int pagedTotal;
+    private string sourceIntegrityText = "Windows.old untouched";
 
     private static string LiveProfileRoot =>
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -155,6 +163,8 @@ public sealed class ShellViewModel : ObservableObject
             },
             () => SelectedNode is not null);
         CopyPathCommand = new RelayCommand(CopyPath, () => SelectedNode is not null && SourceRoot is not null);
+        ShowMoreCommand = new RelayCommand(ShowMore, () => TreeTruncated);
+        RevealInTreeCommand = new RelayCommand(RevealInTree, () => SelectedNode is not null);
         ExecuteRestoreCommand = new AsyncRelayCommand(ExecuteRestoreAsync, () => lastPlan is not null && lastPreflight is { CanProceed: true } && !IsScanning);
         ExecuteVerifyCommand = new AsyncRelayCommand(ExecuteVerifyAsync, () => restoreCompleted);
         PreparePreviewCommand = new AsyncRelayCommand(PreparePreviewAsync, () => scanCompleted && SourceRoot is not null);
@@ -187,6 +197,8 @@ public sealed class ShellViewModel : ObservableObject
     public IRelayCommand SearchCommand { get; }
     public IRelayCommand InspectCommand { get; }
     public IRelayCommand CopyPathCommand { get; }
+    public IRelayCommand ShowMoreCommand { get; }
+    public IRelayCommand RevealInTreeCommand { get; }
     public IAsyncRelayCommand ExecuteRestoreCommand { get; }
     public IAsyncRelayCommand ExecuteVerifyCommand { get; }
     public IAsyncRelayCommand PreparePreviewCommand { get; }
@@ -295,7 +307,49 @@ public sealed class ShellViewModel : ObservableObject
         set => SetProperty(ref purgeTypedFolderName, value);
     }
 
-    public string SourceIntegrityText { get; } = "Windows.old untouched";
+    public string SourceIntegrityText
+    {
+        get => sourceIntegrityText;
+        private set => SetProperty(ref sourceIntegrityText, value);
+    }
+
+    public IReadOnlyList<int> RecentDayChoices { get; } = [7, 30, 90];
+
+    public int RecentDays
+    {
+        get => recentDays;
+        set
+        {
+            if (value is not (7 or 30 or 90))
+            {
+                return;
+            }
+
+            if (SetProperty(ref recentDays, value) && FilesViewMode == FilesViewMode.Recent)
+            {
+                ReloadView();
+            }
+        }
+    }
+
+    public bool TreeTruncated
+    {
+        get => treeTruncated;
+        private set
+        {
+            if (SetProperty(ref treeTruncated, value))
+            {
+                ShowMoreCommand.NotifyCanExecuteChanged();
+                OnPropertyChanged(nameof(PagingStatus));
+            }
+        }
+    }
+
+    public string PagingStatus =>
+        pagedTotal == 0 ? string.Empty : "Showing " + pagedLoaded.ToString("N0", CultureInfo.InvariantCulture) +
+            " of " + pagedTotal.ToString("N0", CultureInfo.InvariantCulture);
+
+    public bool IsRecentView => FilesViewMode == FilesViewMode.Recent;
 
     public string SpaceBudgetText
     {
@@ -444,6 +498,7 @@ public sealed class ShellViewModel : ObservableObject
                 OpenFolderCommand.NotifyCanExecuteChanged();
                 InspectCommand.NotifyCanExecuteChanged();
                 CopyPathCommand.NotifyCanExecuteChanged();
+                RevealInTreeCommand.NotifyCanExecuteChanged();
                 OnPropertyChanged(nameof(DetailText));
             }
         }
@@ -456,6 +511,7 @@ public sealed class ShellViewModel : ObservableObject
         {
             if (SetProperty(ref filesViewMode, value))
             {
+                OnPropertyChanged(nameof(IsRecentView));
                 ReloadView();
             }
         }
@@ -596,6 +652,11 @@ public sealed class ShellViewModel : ObservableObject
 
     public bool CanGoTo(WorkflowStep step)
     {
+        if (isRestoring)
+        {
+            return false;
+        }
+
         if (step <= CurrentStep)
         {
             return true;
@@ -678,6 +739,73 @@ public sealed class ShellViewModel : ObservableObject
 
         NodePage page = nodeBrowser.GetChildren(row.Id);
         ReplaceRowsUnder(row, page.Rows);
+        ApplyPaging(page, row.Id);
+    }
+
+    public void ShowMore()
+    {
+        if (!TreeTruncated ||
+            FilesViewMode is FilesViewMode.Largest or FilesViewMode.Unknown or FilesViewMode.Problems)
+        {
+            return;
+        }
+
+        NodePage page = FilesViewMode switch
+        {
+            FilesViewMode.Recent => nodeBrowser.GetRecent(RecentDays, null, pagedLoaded),
+            FilesViewMode.Search => string.IsNullOrWhiteSpace(SearchText)
+                ? new NodePage([], 0, false)
+                : nodeBrowser.Search(SearchText, null, pagedLoaded),
+            _ => nodeBrowser.GetChildren(pagedParentId, pagedLoaded),
+        };
+
+        if (FilesViewMode == FilesViewMode.Tree && pagedParentId is long parentId)
+        {
+            TreeNodeRow? parent = TreeRows.FirstOrDefault(row => row.Id == parentId);
+            if (parent is not null)
+            {
+                AppendRowsUnder(parent, page.Rows);
+            }
+        }
+        else
+        {
+            foreach (TreeNodeRow row in page.Rows)
+            {
+                TreeRows.Add(row);
+            }
+        }
+
+        pagedLoaded += page.Rows.Count;
+        pagedTotal = page.TotalCount;
+        TreeTruncated = page.Truncated;
+        OnPropertyChanged(nameof(PagingStatus));
+        OnPropertyChanged(nameof(TreeRows));
+    }
+
+    public void RevealInTree()
+    {
+        if (SelectedNode is null)
+        {
+            return;
+        }
+
+        long targetId = SelectedNode.Id;
+        List<long> chain = [.. nodeBrowser.GetAncestors(targetId).Select(static row => row.Id), targetId];
+        DecidePane = DecidePane.Files;
+        FilesViewMode = FilesViewMode.Tree;
+        ReloadView();
+        for (int i = 0; i < chain.Count - 1; i++)
+        {
+            TreeNodeRow? parent = TreeRows.FirstOrDefault(row => row.Id == chain[i]);
+            if (parent is null)
+            {
+                continue;
+            }
+
+            ExpandUntil(parent, chain[i + 1]);
+        }
+
+        SelectedNode = TreeRows.FirstOrDefault(row => row.Id == targetId) ?? nodeBrowser.GetNode(targetId);
     }
 
     public void SearchNow()
@@ -944,7 +1072,7 @@ public sealed class ShellViewModel : ObservableObject
         NodePage page = FilesViewMode switch
         {
             FilesViewMode.Largest => CombineLargest(),
-            FilesViewMode.Recent => nodeBrowser.GetRecent(30, null),
+            FilesViewMode.Recent => nodeBrowser.GetRecent(RecentDays, null),
             FilesViewMode.Search => string.IsNullOrWhiteSpace(SearchText)
                 ? new NodePage([], 0, false)
                 : nodeBrowser.Search(SearchText, null),
@@ -958,6 +1086,7 @@ public sealed class ShellViewModel : ObservableObject
             TreeRows.Add(row);
         }
 
+        ApplyPaging(page, null);
         OnPropertyChanged(nameof(TreeRows));
         if (SelectedNode is not null)
         {
@@ -1058,27 +1187,16 @@ public sealed class ShellViewModel : ObservableObject
 
     private void ReplaceRowsUnder(TreeNodeRow parent, IReadOnlyList<TreeNodeRow> children)
     {
-        int index = -1;
-        for (int i = 0; i < TreeRows.Count; i++)
-        {
-            if (TreeRows[i].Id == parent.Id)
-            {
-                index = i;
-                break;
-            }
-        }
-
+        int index = IndexOfRow(parent.Id);
         if (index < 0)
         {
             return;
         }
 
-        for (int i = TreeRows.Count - 1; i > index; i--)
+        int end = ExclusiveSubtreeEnd(index);
+        for (int i = end - 1; i > index; i--)
         {
-            if (TreeRows[i].ParentId == parent.Id)
-            {
-                TreeRows.RemoveAt(i);
-            }
+            TreeRows.RemoveAt(i);
         }
 
         int insertAt = index + 1;
@@ -1088,6 +1206,77 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(TreeRows));
+    }
+
+    private void AppendRowsUnder(TreeNodeRow parent, IReadOnlyList<TreeNodeRow> children)
+    {
+        int index = IndexOfRow(parent.Id);
+        if (index < 0)
+        {
+            return;
+        }
+
+        int insertAt = ExclusiveSubtreeEnd(index);
+        foreach (TreeNodeRow child in children)
+        {
+            TreeRows.Insert(insertAt++, child);
+        }
+    }
+
+    private int IndexOfRow(long id)
+    {
+        for (int i = 0; i < TreeRows.Count; i++)
+        {
+            if (TreeRows[i].Id == id)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private int ExclusiveSubtreeEnd(int parentIndex)
+    {
+        HashSet<long> inside = [TreeRows[parentIndex].Id];
+        int i = parentIndex + 1;
+        while (i < TreeRows.Count)
+        {
+            long? parentId = TreeRows[i].ParentId;
+            if (parentId is long id && inside.Contains(id))
+            {
+                inside.Add(TreeRows[i].Id);
+                i++;
+                continue;
+            }
+
+            break;
+        }
+
+        return i;
+    }
+
+    private void ApplyPaging(NodePage page, long? parentId)
+    {
+        pagedParentId = parentId;
+        pagedLoaded = page.Rows.Count;
+        pagedTotal = page.TotalCount;
+        TreeTruncated = page.Truncated;
+        OnPropertyChanged(nameof(PagingStatus));
+    }
+
+    private void ExpandUntil(TreeNodeRow parent, long childId)
+    {
+        Expand(parent);
+        while (TreeRows.All(row => row.Id != childId) && TreeTruncated && pagedParentId == parent.Id)
+        {
+            ShowMore();
+        }
+    }
+
+    internal void SetRestoringForTests(bool restoring)
+    {
+        isRestoring = restoring;
     }
 
     public async Task PreparePreviewAsync()
@@ -1201,6 +1390,7 @@ public sealed class ShellViewModel : ObservableObject
 
         try
         {
+        isRestoring = true;
         RestoreRunner runner = new(new CopyEngine(sessionDb, safeFs));
         RestoreResult result = await runner.RunAsync(lastPlan).ConfigureAwait(true);
         if (result.Completed && recipeHost is not null)
@@ -1232,11 +1422,16 @@ public sealed class ShellViewModel : ObservableObject
                 ? "Restore finished. Verify the copies before considering a purge."
                 : "Restore did not finish. A redacted log is at " + workspace.LogPath + ".";
         ExecuteVerifyCommand.NotifyCanExecuteChanged();
+        isRestoring = false;
         CurrentStep = WorkflowStep.Restore;
         }
         catch (Exception exception)
         {
             ShowHandledFailure(exception);
+        }
+        finally
+        {
+            isRestoring = false;
         }
     }
 
@@ -1284,7 +1479,7 @@ public sealed class ShellViewModel : ObservableObject
                 verifyCompleted,
                 filesChecked,
                 undecidedAcknowledged,
-                RestoreJobActive: IsScanning,
+                RestoreJobActive: IsScanning || isRestoring,
                 PurgeTypedFolderName,
                 folderName,
                 canonical,
@@ -1298,6 +1493,7 @@ public sealed class ShellViewModel : ObservableObject
             return;
         }
 
+        SourceIntegrityText = "Deleting…";
         PurgeExecuteResult result = await new PurgeExecutor()
             .ExecuteAsync(
                 new PurgeExecuteRequest(
@@ -1312,6 +1508,7 @@ public sealed class ShellViewModel : ObservableObject
         ScanStatus = result.Completed
             ? "Purge finished (" + result.Method + "). Session records remain in this app's data folder."
             : "Purge did not finish: " + result.Detail + " A redacted log is at " + workspace.LogPath + ".";
+        SourceIntegrityText = result.Completed ? "Windows.old removed" : SourceIntegrityText;
         CurrentStep = WorkflowStep.Purge;
         }
         catch (Exception exception)

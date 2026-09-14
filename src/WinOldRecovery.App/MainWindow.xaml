@@ -128,6 +128,21 @@
                             <ComboBox Width="120"
                                       ItemsSource="{Binding FilesViewModes}"
                                       SelectedItem="{Binding FilesViewMode}" />
+                            <ComboBox Width="72" Margin="8,0,0,0"
+                                      ItemsSource="{Binding RecentDayChoices}"
+                                      SelectedItem="{Binding RecentDays}"
+                                      AutomationProperties.Name="Recent days">
+                                <ComboBox.Style>
+                                    <Style TargetType="ComboBox">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsRecentView}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ComboBox.Style>
+                            </ComboBox>
                             <TextBox Width="180" Margin="8,0,0,0"
                                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.Name="Search files" />
@@ -189,6 +204,7 @@
                         <ListView.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Inspect" Command="{Binding InspectCommand}" />
+                                <MenuItem Header="Reveal in tree" Command="{Binding RevealInTreeCommand}" />
                                 <MenuItem Header="Open Folder" Command="{Binding OpenFolderCommand}" />
                                 <MenuItem Header="Restore" Command="{Binding RestoreCommand}" />
                                 <MenuItem Header="Leave Behind" Command="{Binding LeaveBehindCommand}" />
@@ -251,6 +267,12 @@
                                 AutomationProperties.Name="Run verify" />
                         <Button Content="Expand" Command="{Binding ExpandCommand}" CommandParameter="{Binding SelectedNode}"
                                 AutomationProperties.Name="Expand folder" />
+                        <Button Content="Show more" Command="{Binding ShowMoreCommand}" Margin="8,0,0,0"
+                                AutomationProperties.Name="Show more children"
+                                Visibility="{Binding TreeTruncated, Converter={StaticResource VisibleWhenTrue}}" />
+                        <Button Content="Reveal in tree" Command="{Binding RevealInTreeCommand}" Margin="8,0,0,0"
+                                AutomationProperties.Name="Reveal in tree" />
+                        <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="{Binding PagingStatus}" />
                     </StackPanel>
                     <DockPanel Grid.Row="3">
                         <DockPanel.Style>
