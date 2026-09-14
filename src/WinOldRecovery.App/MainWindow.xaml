@@ -393,6 +393,18 @@
                         <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
                                    Text="{Binding RestoreProgress}"
                                    AutomationProperties.Name="Restore progress" />
+                        <DockPanel DockPanel.Dock="Top" Margin="0,4,0,0"
+                                   Visibility="{Binding HasRestoreWarnings, Converter={StaticResource VisibleWhenTrue}}">
+                            <Button DockPanel.Dock="Right" Content="{Binding RestoreWarningsToggleLabel}"
+                                    Command="{Binding ToggleRestoreWarningsCommand}" Margin="8,0,0,0"
+                                    AutomationProperties.Name="Show restore warnings"
+                                    AutomationProperties.AutomationId="ShowRestoreWarningsButton" />
+                            <TextBlock Text="{Binding RestoreWarningSummary}" VerticalAlignment="Center"
+                                       AutomationProperties.Name="Restore warnings" />
+                        </DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Margin="0,4,0,0" TextWrapping="Wrap"
+                                   Text="{Binding RestoreWarningDetail}"
+                                   AutomationProperties.Name="Restore warning details" />
                         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Content="Pause — keeps what is already copied"
                                     Command="{Binding PauseRestoreCommand}" Margin="0,0,8,0"

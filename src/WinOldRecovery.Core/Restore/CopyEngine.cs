@@ -25,13 +25,18 @@ public sealed class RestorePausedException : Exception
         string.Equals(Reason, UserReason, StringComparison.Ordinal);
 }
 
-public sealed record RestoreItemResult(long PlanItemId, string State, string? DestinationPath);
+public sealed record RestoreItemResult(
+    long PlanItemId,
+    string State,
+    string? DestinationPath,
+    RestoreSkipCounts? Skips = null);
 
 public sealed record RestoreResult(
     bool Completed,
     bool PausedDiskFull,
     IReadOnlyList<RestoreItemResult> Items,
-    bool PausedByUser = false);
+    bool PausedByUser = false,
+    RestoreSkipCounts? Skips = null);
 
 public sealed class CopyEngine
 {
@@ -83,21 +88,29 @@ public sealed class CopyEngine
         await sessionDb.AppendJournalAsync(planItemId, "Started", cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
+        RestoreSkipCounts skips = new();
         try
         {
             bool resume = latest is "Started" or "Paused";
             if (item.Operation == PlanOperation.CopyTree)
             {
-                CopyTree(item, resume, cancellationToken, pauseToken);
+                CopyTree(item, resume, cancellationToken, pauseToken, skips);
             }
             else
             {
-                CopyOneFile(item.SourcePath, item.DestinationPath, item, resume, cancellationToken, pauseToken);
+                CopyOneFile(
+                    item.SourcePath,
+                    item.DestinationPath,
+                    item,
+                    resume,
+                    cancellationToken,
+                    pauseToken,
+                    skips);
             }
 
             await sessionDb.AppendJournalAsync(planItemId, "Completed", cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
-            return new RestoreItemResult(planItemId, "Completed", item.DestinationPath);
+            return new RestoreItemResult(planItemId, "Completed", item.DestinationPath, skips);
         }
         catch (RestorePausedException paused)
         {
@@ -124,7 +137,7 @@ public sealed class CopyEngine
                     exception.Message,
                     cancellationToken)
                 .ConfigureAwait(false);
-            return new RestoreItemResult(planItemId, "Failed", item.DestinationPath);
+            return new RestoreItemResult(planItemId, "Failed", item.DestinationPath, skips);
         }
     }
 
@@ -207,15 +220,16 @@ public sealed class CopyEngine
         PlanItem item,
         bool resume,
         CancellationToken cancellationToken,
-        CancellationToken pauseToken)
+        CancellationToken pauseToken,
+        RestoreSkipCounts skips)
     {
-        foreach (string sourceFile in EnumerateSourceFiles(item.SourcePath))
+        foreach (string sourceFile in EnumerateSourceFiles(item.SourcePath, skips))
         {
             cancellationToken.ThrowIfCancellationRequested();
             ThrowIfUserPaused(pauseToken);
             string relative = Path.GetRelativePath(item.SourcePath, sourceFile);
             string destinationFile = Path.Combine(item.DestinationPath, relative);
-            CopyOneFile(sourceFile, destinationFile, item, resume, cancellationToken, pauseToken);
+            CopyOneFile(sourceFile, destinationFile, item, resume, cancellationToken, pauseToken, skips);
         }
     }
 
@@ -225,11 +239,13 @@ public sealed class CopyEngine
         PlanItem item,
         bool resume,
         CancellationToken cancellationToken,
-        CancellationToken pauseToken)
+        CancellationToken pauseToken,
+        RestoreSkipCounts skips)
     {
         FileAttributes attributes = File.GetAttributes(sourcePath);
         if (IsUnrestorable(attributes))
         {
+            skips.Add(attributes);
             return;
         }
 
@@ -311,7 +327,7 @@ public sealed class CopyEngine
         }
     }
 
-    internal static IEnumerable<string> EnumerateSourceFiles(string root)
+    internal static IEnumerable<string> EnumerateSourceFiles(string root, RestoreSkipCounts? skips = null)
     {
         Stack<string> directories = new();
         directories.Push(root);
@@ -330,6 +346,7 @@ public sealed class CopyEngine
                 FileAttributes attributes = File.GetAttributes(entry);
                 if (IsUnrestorable(attributes))
                 {
+                    skips?.Add(attributes);
                     continue;
                 }
 

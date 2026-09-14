@@ -63,7 +63,8 @@ public sealed class RestoreRunner
                     false,
                     paused.IsDiskFull,
                     results,
-                    paused.IsUserPause);
+                    paused.IsUserPause,
+                    RestoreSkipCounts.FromResults(results));
             }
 
             index++;
@@ -80,7 +81,8 @@ public sealed class RestoreRunner
             results.Count == plan.Items.Count &&
             results.All(static result => result.State is "Completed" or "Skipped"),
             false,
-            results);
+            results,
+            Skips: RestoreSkipCounts.FromResults(results));
     }
 }
 

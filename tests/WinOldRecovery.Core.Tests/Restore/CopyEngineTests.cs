@@ -291,11 +291,14 @@ public sealed class CopyEngineTests
             tree,
             Path.Combine(context.Destination, "Desktop"),
             ConflictPolicy.KeepBoth);
-        await new CopyEngine(context.Database, context.SafeFs).CopyAsync(item);
+        RestoreItemResult copied = await new CopyEngine(context.Database, context.SafeFs).CopyAsync(item);
 
         Assert.True(File.Exists(Path.Combine(context.Destination, "Desktop", "a.txt")));
         Assert.False(Directory.Exists(Path.Combine(context.Destination, "Desktop", "link")));
         Assert.False(File.Exists(Path.Combine(context.Destination, "Desktop", "link", "secret.txt")));
+        Assert.NotNull(copied.Skips);
+        Assert.Equal(1, copied.Skips.Reparse);
+        Assert.Equal(1, copied.Skips.Total);
 
         RestorePlan plan = new(
             context.SessionId,
@@ -336,6 +339,9 @@ public sealed class CopyEngineTests
         Assert.Equal("Completed", copy.State);
         Assert.True(File.Exists(Path.Combine(context.Destination, "Desktop", "keep.txt")));
         Assert.False(File.Exists(Path.Combine(context.Destination, "Desktop", "cloud.txt")));
+        Assert.NotNull(copy.Skips);
+        Assert.Equal(1, copy.Skips.Offline);
+        Assert.Equal(1, copy.Skips.Total);
         Assert.True(report.AllOk, string.Join(';', report.Rows.Select(row => row.Level + ":" + row.Ok + ":" + row.Detail)));
         Assert.True(context.Database.LastVerifyReportAllOk(context.SessionId));
         Assert.Equal(1, report.SizeTimeFiles);

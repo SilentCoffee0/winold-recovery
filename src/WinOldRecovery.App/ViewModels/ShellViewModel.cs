@@ -123,6 +123,9 @@ public sealed class ShellViewModel : ObservableObject
     private string verifyAckReason = string.Empty;
     private string verifyFailureText = string.Empty;
     private string inspectConflictText = string.Empty;
+    private string restoreWarningSummary = string.Empty;
+    private string restoreWarningDetail = string.Empty;
+    private bool restoreWarningsExpanded;
 
     private static string LiveProfileRoot =>
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -231,6 +234,9 @@ public sealed class ShellViewModel : ObservableObject
         PauseRestoreCommand = new RelayCommand(
             PauseRestore,
             () => isRestoring && restorePause is { IsCancellationRequested: false });
+        ToggleRestoreWarningsCommand = new RelayCommand(
+            () => RestoreWarningsExpanded = !RestoreWarningsExpanded,
+            () => HasRestoreWarnings);
         GoToPurgeCommand = new RelayCommand(
             () => CurrentStep = WorkflowStep.Purge,
             () => CanGoTo(WorkflowStep.Purge));
@@ -277,6 +283,7 @@ public sealed class ShellViewModel : ObservableObject
     public IRelayCommand CancelDiskFullCommand { get; }
     public IRelayCommand CancelRestoreCommand { get; }
     public IRelayCommand PauseRestoreCommand { get; }
+    public IRelayCommand ToggleRestoreWarningsCommand { get; }
     public IRelayCommand GoToPurgeCommand { get; }
     public IRelayCommand ReviewUndecidedCommand { get; }
     public IAsyncRelayCommand AcknowledgeVerifyCommand { get; }
@@ -494,6 +501,39 @@ public sealed class ShellViewModel : ObservableObject
         get => restoreProgress;
         private set => SetProperty(ref restoreProgress, value);
     }
+
+    public string RestoreWarningSummary
+    {
+        get => restoreWarningSummary;
+        private set
+        {
+            if (SetProperty(ref restoreWarningSummary, value))
+            {
+                OnPropertyChanged(nameof(HasRestoreWarnings));
+                OnPropertyChanged(nameof(RestoreWarningsToggleLabel));
+                ToggleRestoreWarningsCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public string RestoreWarningDetail => restoreWarningsExpanded ? restoreWarningDetail : string.Empty;
+
+    public bool HasRestoreWarnings => restoreWarningSummary.Length > 0;
+
+    public bool RestoreWarningsExpanded
+    {
+        get => restoreWarningsExpanded;
+        private set
+        {
+            if (SetProperty(ref restoreWarningsExpanded, value))
+            {
+                OnPropertyChanged(nameof(RestoreWarningDetail));
+                OnPropertyChanged(nameof(RestoreWarningsToggleLabel));
+            }
+        }
+    }
+
+    public string RestoreWarningsToggleLabel => restoreWarningsExpanded ? "Hide" : "Show";
 
     public bool SessionReadOnly => sessionReadOnly;
 
@@ -1451,6 +1491,7 @@ public sealed class ShellViewModel : ObservableObject
         DiskFullVisible = false;
         PreviewSummaryText = string.Empty;
         RestoreProgress = string.Empty;
+        ApplyRestoreSkips(null);
         runningApps = [];
         SourceIntegrityText = "Windows.old untouched";
         ExecuteRestoreCommand.NotifyCanExecuteChanged();
@@ -2133,6 +2174,7 @@ public sealed class ShellViewModel : ObservableObject
         restorePause = new CancellationTokenSource();
         PauseRestoreCommand.NotifyCanExecuteChanged();
         RebuildRestoreJobs(lastPlan);
+        ApplyRestoreSkips(null);
         DateTimeOffset restoreStartedAt = DateTimeOffset.UtcNow;
         Progress<RestoreProgress> progress = new(report =>
         {
@@ -2169,6 +2211,7 @@ public sealed class ShellViewModel : ObservableObject
 
         restoreCompleted = result.Completed;
         RefreshRestoreJobStatuses();
+        ApplyRestoreSkips(result.Skips);
         if (result.PausedDiskFull)
         {
             RestorePlan pending = PlanProgress.Pending(sessionDb, lastPlan);
@@ -2481,6 +2524,15 @@ public sealed class ShellViewModel : ObservableObject
             };
             RestoreJobs[i].SetStatus(status);
         }
+    }
+
+    private void ApplyRestoreSkips(RestoreSkipCounts? skips)
+    {
+        RestoreSkipCounts counts = skips ?? new RestoreSkipCounts();
+        restoreWarningDetail = RestoreSkipFormat.Detail(counts);
+        RestoreWarningsExpanded = false;
+        RestoreWarningSummary = RestoreSkipFormat.Summary(counts);
+        OnPropertyChanged(nameof(RestoreWarningDetail));
     }
 
     private void CreateSupportBundle()
