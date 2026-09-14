@@ -147,9 +147,10 @@
                                     </Style>
                                 </ComboBox.Style>
                             </ComboBox>
-                            <TextBox Width="180" Margin="8,0,0,0"
+                            <TextBox x:Name="SearchBox" Width="180" Margin="8,0,0,0"
                                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Search files" />
+                                     AutomationProperties.Name="Search files"
+                                     AutomationProperties.AutomationId="SearchBox" />
                             <Button Content="Search" Command="{Binding SearchCommand}" Margin="8,0,0,0"
                                     AutomationProperties.Name="Search now" />
                             <CheckBox Content="Hash files smaller than 64 MB during scan"

@@ -195,6 +195,56 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task Inspect_ShowsOldestNewestAndClassificationWhy()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        string desktop = Path.Combine(source, "Users", "Alice", "Desktop");
+        Directory.CreateDirectory(desktop);
+        await File.WriteAllTextAsync(Path.Combine(source, "Users", "Alice", "NTUSER.DAT"), "hive");
+        await File.WriteAllTextAsync(Path.Combine(source, "Users", "Alice", "vault.kdbx"), "keepass");
+        string oldFile = Path.Combine(desktop, "old.txt");
+        string newFile = Path.Combine(desktop, "new.txt");
+        await File.WriteAllTextAsync(oldFile, "old");
+        await File.WriteAllTextAsync(newFile, "new");
+        File.SetLastWriteTimeUtc(oldFile, new DateTime(2024, 1, 3, 0, 0, 0, DateTimeKind.Utc));
+        File.SetLastWriteTimeUtc(newFile, new DateTime(2026, 9, 11, 0, 0, 0, DateTimeKind.Utc));
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        ExpandDirectories(context);
+        ExpandDirectories(context);
+        context.ViewModel.Expand(FindRow(context, "Alice"));
+        context.ViewModel.SelectedNode = FindRow(context, "vault.kdbx");
+        Assert.Contains("password vault", context.ViewModel.DetailText, StringComparison.OrdinalIgnoreCase);
+
+        context.ViewModel.Expand(FindRow(context, "Desktop"));
+        context.ViewModel.SelectedNode = FindRow(context, "Desktop");
+        Assert.Contains("Oldest: 3 Jan 2024", context.ViewModel.DetailText, StringComparison.Ordinal);
+        Assert.Contains("Newest: 11 Sep 2026", context.ViewModel.DetailText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Space_TogglesFolderExpandAndCollapse()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(Path.Combine(source, "Users", "Alice", "NTUSER.DAT"), "hive");
+        await File.WriteAllTextAsync(Path.Combine(source, "Users", "Alice", "Desktop", "notes.txt"), "keep");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        ExpandDirectories(context);
+        ExpandDirectories(context);
+        TreeNodeRow alice = FindRow(context, "Alice");
+        context.ViewModel.SelectedNode = alice;
+        Assert.True(context.ViewModel.ApplyKeyboard("Space"));
+        Assert.Contains(context.ViewModel.TreeRows, row => row.Name == "Desktop");
+        context.ViewModel.SelectedNode = FindRow(context, "Alice");
+        Assert.True(context.ViewModel.ApplyKeyboard("Space"));
+        Assert.DoesNotContain(context.ViewModel.TreeRows, row => row.Name == "Desktop");
+    }
+
+    [Fact]
     public async Task PreparePreview_ListsCannotRestoreAndUndecidedItems()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();

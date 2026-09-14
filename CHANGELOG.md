@@ -71,3 +71,5 @@ All notable changes to WinOld Recovery will be documented here.
 - Restore progress shows percent, copied bytes, and a remaining-time estimate; Verify lists size/time and SHA-256 file counts.
 - Inspect shows owner SID (or "old account, no longer exists"), file attributes, and thousands-separated sizes.
 - Restore lists skipped junctions/cloud/EFS files as Warnings (N) with a Show toggle.
+- Space expands or collapses the focused tree folder; Ctrl+F focuses Search. Inspect shows oldest/newest modification and the matching classification Why.
+- Folder-scoped tree queries (Largest/Recent/Search under a node, Inspect mtime range) match descendants: the LIKE prefix now treats `\` as a literal before the `%` wildcard.

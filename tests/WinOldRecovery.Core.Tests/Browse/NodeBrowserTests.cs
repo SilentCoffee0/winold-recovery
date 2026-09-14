@@ -81,6 +81,28 @@ public sealed class NodeBrowserTests
     }
 
     [Fact]
+    public async Task GetMtimeRange_ReturnsOldestAndNewestUnderAFolder()
+    {
+        await using BrowserContext context = await BrowserContext.CreateAsync();
+        DateTime old = new(2024, 1, 3, 0, 0, 0, DateTimeKind.Utc);
+        DateTime recent = new(2026, 9, 11, 0, 0, 0, DateTimeKind.Utc);
+        await context.InsertAsync(
+        [
+            Node(1, null, "Docs", "Docs", mtimeUtc: recent),
+            Node(2, 1, @"Docs\old.txt", "old.txt", mtimeUtc: old),
+            Node(3, 1, @"Docs\new.txt", "new.txt", mtimeUtc: recent),
+        ]);
+
+        NodeBrowser browser = new(context.Database, "session-1");
+        (DateTimeOffset? oldest, DateTimeOffset? newest) = browser.GetMtimeRange(1);
+        Assert.Equal(old, oldest?.UtcDateTime);
+        Assert.Equal(recent, newest?.UtcDateTime);
+        string text = NodeBrowser.FormatMtimeRange(oldest, newest);
+        Assert.Contains("Oldest: 3 Jan 2024", text, StringComparison.Ordinal);
+        Assert.Contains("Newest: 11 Sep 2026", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task GetRecent_UsesTheSameUtcTimestampFormatAsInsert()
     {
         await using BrowserContext context = await BrowserContext.CreateAsync();

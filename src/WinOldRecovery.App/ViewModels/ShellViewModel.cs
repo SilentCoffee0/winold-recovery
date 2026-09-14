@@ -53,6 +53,7 @@ public sealed class ShellViewModel : ObservableObject
     private readonly RecipeHost? recipeHost;
     private readonly DecisionEngine decisionEngine;
     private readonly NodeBrowser nodeBrowser;
+    private readonly IReadOnlyList<ClassificationRule> classificationRules = ClassificationRuleCatalog.LoadEmbedded();
     private readonly FirstRunState firstRun;
     private readonly LocalHelp localHelp;
     private CancellationTokenSource? scanCancellation;
@@ -123,6 +124,8 @@ public sealed class ShellViewModel : ObservableObject
     private string verifyAckReason = string.Empty;
     private string verifyFailureText = string.Empty;
     private string inspectConflictText = string.Empty;
+    private string inspectMtimeText = string.Empty;
+    private string inspectWhyText = string.Empty;
     private string restoreWarningSummary = string.Empty;
     private string restoreWarningDetail = string.Empty;
     private bool restoreWarningsExpanded;
@@ -881,7 +884,8 @@ public sealed class ShellViewModel : ObservableObject
                     "Planned destination: " + PathDisplay.MiddleEllipsis(destination),
                     "Full destination path: " + destination,
                     "Size: " + QuantityFormat.Bytes(node.AggSize) + "  Files: " + QuantityFormat.Count(node.AggFiles),
-                    "Modified: " + (node.ModifiedUtc?.ToString("d MMM yyyy") ?? "—"),
+                    inspectMtimeText,
+                    inspectWhyText,
                     OwnerSidDisplay.Line(sourceFull),
                     OwnerSidDisplay.AttributesLine(sourceFull),
                     "Decision: " + node.DecisionLabel,
@@ -898,6 +902,14 @@ public sealed class ShellViewModel : ObservableObject
         if (SelectedNode is null || SourceRoot is null || SelectedNode.IsReparse)
         {
             inspectConflictText = string.Empty;
+            inspectMtimeText = SelectedNode is null
+                ? string.Empty
+                : NodeBrowser.FormatMtimeRange(SelectedNode.ModifiedUtc, SelectedNode.ModifiedUtc);
+            inspectWhyText = SelectedNode is null
+                ? string.Empty
+                : string.Join(
+                    Environment.NewLine,
+                    ClassificationExplanations.ForNode(SelectedNode, classificationRules));
             OnPropertyChanged(nameof(DetailText));
             return;
         }
@@ -905,6 +917,13 @@ public sealed class ShellViewModel : ObservableObject
         string source = Path.Combine(SourceRoot, SelectedNode.RelPath);
         inspectConflictText = DestinationConflictPreview.Format(
             DestinationConflictPreview.Scan(source, PlannedDestinationPath));
+        (DateTimeOffset? oldest, DateTimeOffset? newest) = nodeBrowser.GetMtimeRange(SelectedNode.Id);
+        inspectMtimeText = NodeBrowser.FormatMtimeRange(
+            oldest ?? SelectedNode.ModifiedUtc,
+            newest ?? SelectedNode.ModifiedUtc);
+        inspectWhyText = string.Join(
+            Environment.NewLine,
+            ClassificationExplanations.ForNode(SelectedNode, classificationRules));
         OnPropertyChanged(nameof(DetailText));
     }
 
@@ -995,7 +1014,7 @@ public sealed class ShellViewModel : ObservableObject
             case "Space":
                 if (SelectedNode is not null)
                 {
-                    Expand(SelectedNode);
+                    ToggleExpand(SelectedNode);
                     return true;
                 }
 
@@ -1015,6 +1034,28 @@ public sealed class ShellViewModel : ObservableObject
         NodePage page = nodeBrowser.GetChildren(row.Id);
         ReplaceRowsUnder(row, page.Rows);
         ApplyPaging(page, row.Id);
+    }
+
+    public void ToggleExpand(TreeNodeRow? row)
+    {
+        if (row is null || FilesViewMode != FilesViewMode.Tree)
+        {
+            return;
+        }
+
+        int index = IndexOfRow(row.Id);
+        if (index >= 0 && ExclusiveSubtreeEnd(index) > index + 1)
+        {
+            ReplaceRowsUnder(row, []);
+            if (pagedParentId == row.Id)
+            {
+                ApplyPaging(new NodePage([], 0, false), row.Id);
+            }
+
+            return;
+        }
+
+        Expand(row);
     }
 
     public void ShowMore()

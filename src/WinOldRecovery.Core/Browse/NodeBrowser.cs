@@ -128,6 +128,72 @@ public sealed class NodeBrowser
         return page.Rows.Count == 0 ? null : page.Rows[0];
     }
 
+    public (DateTimeOffset? Oldest, DateTimeOffset? Newest) GetMtimeRange(long nodeId)
+    {
+        TreeNodeRow? node = GetNode(nodeId);
+        if (node is null)
+        {
+            return (null, null);
+        }
+
+        using SqliteConnection connection = sessionDb.OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        if (string.IsNullOrEmpty(node.RelPath))
+        {
+            command.CommandText =
+                """
+                SELECT MIN(mtime_utc), MAX(mtime_utc)
+                FROM nodes
+                WHERE session_id = $sessionId
+                  AND mtime_utc IS NOT NULL
+                  AND kind NOT IN ('Directory', 'Junction', 'Symlink', 'MountPoint')
+                """;
+        }
+        else
+        {
+            command.CommandText =
+                """
+                SELECT MIN(mtime_utc), MAX(mtime_utc)
+                FROM nodes
+                WHERE session_id = $sessionId
+                  AND mtime_utc IS NOT NULL
+                  AND kind NOT IN ('Directory', 'Junction', 'Symlink', 'MountPoint')
+                  AND (id = $id OR rel_path = $relExact OR rel_path LIKE $relPrefix ESCAPE '\')
+                """;
+            command.Parameters.AddWithValue("$id", nodeId);
+            command.Parameters.AddWithValue("$relExact", node.RelPath);
+            command.Parameters.AddWithValue("$relPrefix", EscapeLike(node.RelPath) + @"\\%");
+        }
+
+        using SqliteDataReader reader = command.ExecuteReader();
+        if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1))
+        {
+            return (node.ModifiedUtc, node.ModifiedUtc);
+        }
+
+        return (
+            DateTimeOffset.Parse(reader.GetString(0), CultureInfo.InvariantCulture),
+            DateTimeOffset.Parse(reader.GetString(1), CultureInfo.InvariantCulture));
+    }
+
+    public static string FormatMtimeRange(DateTimeOffset? oldest, DateTimeOffset? newest)
+    {
+        if (oldest is null && newest is null)
+        {
+            return string.Empty;
+        }
+
+        string oldLabel = oldest?.ToString("d MMM yyyy", CultureInfo.InvariantCulture) ?? "—";
+        string newLabel = newest?.ToString("d MMM yyyy", CultureInfo.InvariantCulture) ?? "—";
+        if (string.Equals(oldLabel, newLabel, StringComparison.Ordinal))
+        {
+            return "Modified: " + oldLabel;
+        }
+
+        return "Oldest: " + oldLabel + Environment.NewLine + "Newest: " + newLabel;
+    }
+
     public IReadOnlyList<TreeNodeRow> GetAncestors(long nodeId)
     {
         List<TreeNodeRow> chain = [];
@@ -294,7 +360,7 @@ public sealed class NodeBrowser
 
         if (relPrefix is not null)
         {
-            command.Parameters.AddWithValue("$relPrefix", EscapeLike(relPrefix) + @"\%");
+            command.Parameters.AddWithValue("$relPrefix", EscapeLike(relPrefix) + @"\\%");
             command.Parameters.AddWithValue("$relExact", relPrefix);
         }
 

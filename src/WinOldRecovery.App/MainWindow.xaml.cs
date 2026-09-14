@@ -57,6 +57,8 @@ public partial class MainWindow : Window
         if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.F)
         {
             ViewModel.SearchNow();
+            SearchBox.Focus();
+            SearchBox.SelectAll();
             e.Handled = true;
             return;
         }
