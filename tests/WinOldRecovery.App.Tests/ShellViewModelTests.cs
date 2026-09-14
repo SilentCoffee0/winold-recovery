@@ -44,6 +44,29 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task SecondScan_ReplacesTheTreeAndRelocksPurge()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        int firstCount = context.ViewModel.TreeRows.Count;
+        context.ViewModel.UnlockPurgeForTests();
+        Assert.True(context.ViewModel.CanGoTo(WorkflowStep.Purge));
+
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        Assert.Equal(firstCount, context.ViewModel.TreeRows.Count);
+        Assert.False(context.ViewModel.CanGoTo(WorkflowStep.Purge));
+        Assert.False(context.ViewModel.VerifyCompleted);
+        Assert.Equal("Windows.old untouched", context.ViewModel.SourceIntegrityText);
+    }
+
+    [Fact]
     public async Task SearchNow_SwitchesToSearchView()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();

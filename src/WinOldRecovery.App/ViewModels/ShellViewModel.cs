@@ -86,6 +86,7 @@ public sealed class ShellViewModel : ObservableObject
     private bool logVisible;
     private string logText = string.Empty;
     private bool scanPaused;
+    private bool scanAbortRequested;
     private string? pausedSourcePath;
     private string sourceHint = string.Empty;
     private readonly IFolderPicker folderPicker;
@@ -129,8 +130,8 @@ public sealed class ShellViewModel : ObservableObject
         decisionEngine = new DecisionEngine(sessionDb, workspace.SessionId);
         nodeBrowser = new NodeBrowser(sessionDb, workspace.SessionId);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => !IsScanning && !isRestoring && SelectedSourcePath is not null);
-        CancelScanCommand = new RelayCommand(CancelScan, () => IsScanning);
-        PauseScanCommand = new RelayCommand(CancelScan, () => IsScanning);
+        CancelScanCommand = new RelayCommand(AbortScan, () => IsScanning);
+        PauseScanCommand = new RelayCommand(PauseScan, () => IsScanning);
         BrowseSourceCommand = new RelayCommand(BrowseSource);
         RestoreCommand = new AsyncRelayCommand(() => ApplyDecisionAsync(Decision.Restore), CanMutateSelection);
         LeaveBehindCommand = new AsyncRelayCommand(() => ApplyDecisionAsync(Decision.LeaveBehind), CanMutateSelection);
@@ -899,7 +900,12 @@ public sealed class ShellViewModel : ObservableObject
                 string.Equals(pausedSourcePath, SelectedSourcePath, StringComparison.OrdinalIgnoreCase);
             scanPaused = false;
             pausedSourcePath = null;
+            scanAbortRequested = false;
             OnPropertyChanged(nameof(ScanButtonLabel));
+            if (!resume)
+            {
+                ResetWorkflowAfterFreshScan();
+            }
 
             ScanRunResult result = await scanOrchestrator.RunAsync(
                     workspace.SessionId,
@@ -951,13 +957,32 @@ public sealed class ShellViewModel : ObservableObject
             OnPropertyChanged(nameof(WindowTitle));
             OnPropertyChanged(nameof(ScanCompleted));
             PreparePreviewCommand.NotifyCanExecuteChanged();
+            ExecuteRestoreCommand.NotifyCanExecuteChanged();
+            ExecuteVerifyCommand.NotifyCanExecuteChanged();
+            ExecutePurgeCommand.NotifyCanExecuteChanged();
+            CreateSupportBundleCommand.NotifyCanExecuteChanged();
         }
         catch (OperationCanceledException)
         {
-            scanPaused = true;
-            pausedSourcePath = SelectedSourcePath;
-            OnPropertyChanged(nameof(ScanButtonLabel));
-            ScanStatus = "Scan paused. Partial results were kept. Choose Resume scan to continue.";
+            if (scanAbortRequested)
+            {
+                await sessionDb.ClearScanDataAsync(workspace.SessionId).ConfigureAwait(true);
+                ResetWorkflowAfterFreshScan();
+                scanCompleted = false;
+                SourceRoot = null;
+                ReloadView();
+                CurrentStep = WorkflowStep.Scan;
+                OnPropertyChanged(nameof(ScanCompleted));
+                OnPropertyChanged(nameof(WindowTitle));
+                ScanStatus = "Scan cancelled. Choose Scan to start again.";
+            }
+            else
+            {
+                scanPaused = true;
+                pausedSourcePath = SelectedSourcePath;
+                OnPropertyChanged(nameof(ScanButtonLabel));
+                ScanStatus = "Scan paused. Partial results were kept. Choose Resume scan to continue.";
+            }
         }
         catch (Exception exception)
         {
@@ -1018,9 +1043,33 @@ public sealed class ShellViewModel : ObservableObject
         SourceHint = users + deletion;
     }
 
-    private void CancelScan()
+    private void PauseScan()
     {
+        scanAbortRequested = false;
         scanCancellation?.Cancel();
+    }
+
+    private void AbortScan()
+    {
+        scanAbortRequested = true;
+        scanCancellation?.Cancel();
+    }
+
+    private void ResetWorkflowAfterFreshScan()
+    {
+        lastPlan = null;
+        lastPreflight = null;
+        restoreCompleted = false;
+        verifyCompleted = false;
+        Conflicts.Clear();
+        SourceIntegrityText = "Windows.old untouched";
+        ExecuteRestoreCommand.NotifyCanExecuteChanged();
+        ExecuteVerifyCommand.NotifyCanExecuteChanged();
+        ExecutePurgeCommand.NotifyCanExecuteChanged();
+        CreateSupportBundleCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(RestoreCompleted));
+        OnPropertyChanged(nameof(VerifyCompleted));
+        OnPropertyChanged(nameof(OverwriteButtonLabel));
     }
 
     private bool CanMutateSelection()
@@ -1330,6 +1379,15 @@ public sealed class ShellViewModel : ObservableObject
     internal void SetRestoringForTests(bool restoring)
     {
         SetRestoring(restoring);
+    }
+
+    internal void UnlockPurgeForTests()
+    {
+        restoreCompleted = true;
+        verifyCompleted = true;
+        ExecuteVerifyCommand.NotifyCanExecuteChanged();
+        ExecutePurgeCommand.NotifyCanExecuteChanged();
+        CreateSupportBundleCommand.NotifyCanExecuteChanged();
     }
 
     public async Task PreparePreviewAsync()

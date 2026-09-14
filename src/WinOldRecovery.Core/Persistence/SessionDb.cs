@@ -880,6 +880,75 @@ public sealed class SessionDb : IAsyncDisposable
             cancellationToken);
     }
 
+    public Task ClearScanDataAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+
+        return WriteAsync(
+            async (connection, token) =>
+            {
+                using SqliteTransaction transaction = connection.BeginTransaction();
+                await ExecClearAsync(
+                        connection,
+                        transaction,
+                        "DELETE FROM plan_items WHERE session_id = $sessionId;",
+                        sessionId,
+                        token)
+                    .ConfigureAwait(false);
+                await ExecClearAsync(
+                        connection,
+                        transaction,
+                        "DELETE FROM cards WHERE session_id = $sessionId;",
+                        sessionId,
+                        token)
+                    .ConfigureAwait(false);
+                await ExecClearAsync(
+                        connection,
+                        transaction,
+                        "UPDATE nodes SET parent_id = NULL WHERE session_id = $sessionId;",
+                        sessionId,
+                        token)
+                    .ConfigureAwait(false);
+                await ExecClearAsync(
+                        connection,
+                        transaction,
+                        "DELETE FROM nodes WHERE session_id = $sessionId;",
+                        sessionId,
+                        token)
+                    .ConfigureAwait(false);
+                await ExecClearAsync(
+                        connection,
+                        transaction,
+                        "DELETE FROM profiles WHERE session_id = $sessionId;",
+                        sessionId,
+                        token)
+                    .ConfigureAwait(false);
+                await ExecClearAsync(
+                        connection,
+                        transaction,
+                        "DELETE FROM kv WHERE session_id = $sessionId;",
+                        sessionId,
+                        token)
+                    .ConfigureAwait(false);
+                transaction.Commit();
+            },
+            cancellationToken);
+    }
+
+    private static async Task ExecClearAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string sql,
+        string sessionId,
+        CancellationToken token)
+    {
+        await using SqliteCommand command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+    }
+
     public IReadOnlyList<string> GetChildNames(string sessionId, long parentId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);

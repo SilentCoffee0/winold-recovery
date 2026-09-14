@@ -38,6 +38,7 @@ public sealed class ScanOrchestrator
         IReadOnlyList<DetectedProfile> profiles = detector.Detect(registered);
         if (!resume)
         {
+            await sessionDb.ClearScanDataAsync(sessionId, cancellationToken).ConfigureAwait(false);
             await sessionDb.InsertProfilesAsync(
                     profiles.Select(profile => new ProfileRecord(
                         sessionId,

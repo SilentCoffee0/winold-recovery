@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Persistence;
 using WinOldRecovery.Core.Safety;
+using WinOldRecovery.Core.Scan;
 
 namespace WinOldRecovery.Core.Tests.Persistence;
 
@@ -59,6 +60,35 @@ public sealed class SessionDbTests
         Assert.Equal(ExpectedTables, tables);
         Assert.Equal("wal", journalMode, ignoreCase: true);
         Assert.Equal(SessionDb.CurrentSchemaVersion, version);
+    }
+
+    [Fact]
+    public async Task ClearScanData_RemovesNodesWithoutDroppingTheSession()
+    {
+        await using SessionDbTestContext context = await SessionDbTestContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Scanning", "0.1.0"));
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "Windows.old",
+                "",
+                NodeKind.Directory,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+
+        Assert.Equal(1, context.Database.GetMaxNodeId("session-1"));
+        await context.Database.ClearScanDataAsync("session-1");
+        Assert.Equal(0, context.Database.GetMaxNodeId("session-1"));
     }
 
     [Fact]

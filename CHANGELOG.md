@@ -51,3 +51,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Explorer Open Folder walks up from paths longer than 259 characters; FlaUI smoke requests UAC (`runas`) when `RUN_FLAUI=1`; elevated FixtureGen helper script `tools/run-elevated-m0.ps1`.
 - Decide Files paging past 2,000 children, Recent 7/30/90-day selector, Reveal in tree, purge source-integrity text, and blocked step navigation during restore.
 - Decide shortcuts ignore typing in text boxes; Restore/Leave Behind keep the expanded tree; overwrite ticks update the button; glob search is case-insensitive; Recent uses the same UTC timestamp format as scan inserts.
+- A new Scan clears the previous tree and relocks Purge (I10); Cancel discards the in-flight scan, Pause still resumes.
