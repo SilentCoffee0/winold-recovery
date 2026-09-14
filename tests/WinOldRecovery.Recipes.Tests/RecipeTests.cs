@@ -251,6 +251,100 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Git_DetectsReposOutsideProjectsAndKeepsOutermostCard()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string notes = Path.Combine(alice, "Documents", "notes");
+        Directory.CreateDirectory(Path.Combine(notes, ".git", "refs", "heads"));
+        await File.WriteAllTextAsync(Path.Combine(notes, ".git", "HEAD"), "ref: refs/heads/main\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(notes, ".git", "config"),
+            "[core]\n\trepositoryformatversion = 0\n");
+        string nested = Path.Combine(notes, "vendor", "lib");
+        Directory.CreateDirectory(Path.Combine(nested, ".git"));
+        await File.WriteAllTextAsync(Path.Combine(nested, ".git", "HEAD"), "ref: refs/heads/main\n");
+        Directory.CreateDirectory(Path.Combine(alice, ".config", "git"));
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, ".config", "git", "config"),
+            "[user]\n\tname = Alice\n");
+
+        GitRecipe recipe = new();
+        DetectResult detected = recipe.Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+
+        Assert.Contains(detected.Cards, card => card.Title.Contains("Git configuration", StringComparison.Ordinal));
+        Assert.Contains(detected.Cards, card => card.Title.Contains("notes", StringComparison.Ordinal));
+        Assert.DoesNotContain(detected.Cards, card => card.Title.Contains("lib", StringComparison.Ordinal));
+        Assert.Contains(
+            detected.Badges,
+            badge => badge.Kind == "Git" &&
+                badge.Detail.Contains("no remote", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Git_DetectPersistsBadgeOntoTheScanNode()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string notes = Path.Combine(alice, "Documents", "notes");
+        Directory.CreateDirectory(Path.Combine(notes, ".git"));
+        await File.WriteAllTextAsync(Path.Combine(notes, ".git", "HEAD"), "ref: refs/heads/main\n");
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "notes",
+                @"Users\Alice\Documents\notes",
+                NodeKind.Directory,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, [new GitRecipe()]);
+        await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+
+        using SqliteConnection connection = new(
+            new SqliteConnectionStringBuilder { DataSource = Path.Combine(context.Root, "session.db") }.ConnectionString);
+        connection.Open();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = "SELECT kind || ':' || detail FROM badges;";
+        string? badge = Convert.ToString(command.ExecuteScalar());
+        Assert.Contains("Git:", badge, StringComparison.Ordinal);
+        Assert.Contains("no remote", badge, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void SnssReader_ExtractsNavigationUrls()
     {
         byte[] session = SnssReader.CreateSessionFile(

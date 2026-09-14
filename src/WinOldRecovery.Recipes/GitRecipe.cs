@@ -1,4 +1,5 @@
 using WinOldRecovery.Core.Decisions;
+using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Recipes;
 
 namespace WinOldRecovery.Recipes;
@@ -10,7 +11,13 @@ public sealed class GitRecipe : IRecipe
     public DetectResult Detect(ProfileContext context)
     {
         List<RecipeCard> cards = [];
+        List<(string RelativePath, string Kind, string Detail)> badges = [];
         string gitconfig = Path.Combine(context.OldProfileRoot, ".gitconfig");
+        if (!context.SafeFs.FileExists(gitconfig))
+        {
+            gitconfig = Path.Combine(context.OldProfileRoot, ".config", "git", "config");
+        }
+
         if (context.SafeFs.FileExists(gitconfig))
         {
             string text = context.SafeFs.ReadAllText(gitconfig);
@@ -27,50 +34,50 @@ public sealed class GitRecipe : IRecipe
             };
         }
 
-        string projects = Path.Combine(context.OldProfileRoot, "Projects");
-        if (context.SafeFs.DirectoryExists(projects))
+        List<string> trees = DetectorWalk.EnumerateGitWorkingTrees(context.SafeFs, context.OldProfileRoot, 8)
+            .ToList();
+        foreach (string entry in DetectorWalk.OutermostDirectories(trees))
         {
-            foreach (string entry in context.SafeFs.EnumerateFileSystemEntries(projects))
-            {
-                string gitDir = Path.Combine(entry, ".git");
-                if (!context.SafeFs.DirectoryExists(gitDir) && !context.SafeFs.FileExists(gitDir))
-                {
-                    continue;
-                }
-
-                string headPath = Path.Combine(gitDir, "HEAD");
-                string head = context.SafeFs.FileExists(headPath) ? context.SafeFs.ReadAllText(headPath).Trim() : "unknown";
-                cards.Add(
-                    new RecipeCard(
-                        Id,
-                        "Git repository — " + Path.GetFileName(entry),
-                        "A Git repository found in the old profile.",
-                        "Unpushed commits and uncommitted work cannot be cloned from a remote.",
-                        "The whole working tree including .git. Offline analysis cannot see uncommitted changes until Git is installed.",
-                        "Re-clone if a remote exists and there is no local-only work.",
-                        "node_modules and build folders may regenerate.",
-                        "Local-only work is gone.",
-                        [
-                            new RecipeComponent(
-                                "repo",
-                                "Restore repository",
-                                head,
-                                Decision.Restore,
-                                false,
-                                null,
-                                false),
-                        ],
-                        context.ProfileName + ":" + Path.GetFileName(entry),
-                        new Dictionary<string, string>
-                        {
-                            ["source"] = entry,
-                            ["head"] = head,
-                            ["kind"] = "repo",
-                        }));
-            }
+            string? gitDir = ResolveGitDir(context.SafeFs, entry);
+            string headPath = gitDir is null ? Path.Combine(entry, ".git", "HEAD") : Path.Combine(gitDir, "HEAD");
+            string head = context.SafeFs.FileExists(headPath)
+                ? context.SafeFs.ReadAllText(headPath).Trim()
+                : "unknown";
+            string relative = DetectorWalk.RelativeUnder(context.OldProfileRoot, entry);
+            bool hasRemote = gitDir is not null && HasRemote(context.SafeFs, gitDir);
+            string risk = hasRemote ? "Git: local-only work" : "Git: no remote";
+            badges.Add((relative, "Git", risk));
+            cards.Add(
+                new RecipeCard(
+                    Id,
+                    "Git repository — " + Path.GetFileName(entry),
+                    "A Git repository found in the old profile.",
+                    "Unpushed commits and uncommitted work cannot be cloned from a remote.",
+                    "The whole working tree including .git. Offline analysis cannot see uncommitted changes until Git is installed.",
+                    "Re-clone if a remote exists and there is no local-only work.",
+                    "node_modules and build folders may regenerate.",
+                    "Local-only work is gone.",
+                    [
+                        new RecipeComponent(
+                            "repo",
+                            "Restore repository",
+                            head,
+                            Decision.Restore,
+                            false,
+                            null,
+                            false),
+                    ],
+                    context.ProfileName + ":" + relative,
+                    new Dictionary<string, string>
+                    {
+                        ["source"] = entry,
+                        ["head"] = head,
+                        ["kind"] = "repo",
+                        ["risk"] = risk,
+                    }));
         }
 
-        return new DetectResult(cards, []);
+        return new DetectResult(cards, badges);
     }
 
     public PlanResult Plan(CardDecisions decisions, DestinationContext destination)
@@ -191,5 +198,46 @@ public sealed class GitRecipe : IRecipe
                 ["preview"] = scrubbed,
                 ["kind"] = "config",
             });
+    }
+
+    private static string? ResolveGitDir(SafeFs safeFs, string workTree)
+    {
+        string git = Path.Combine(workTree, ".git");
+        if (safeFs.DirectoryExists(git))
+        {
+            return git;
+        }
+
+        if (!safeFs.FileExists(git))
+        {
+            return null;
+        }
+
+        foreach (string line in safeFs.ReadAllText(git).Split('\n'))
+        {
+            string trimmed = line.Trim();
+            if (!trimmed.StartsWith("gitdir:", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string target = trimmed["gitdir:".Length..].Trim();
+            return Path.IsPathRooted(target)
+                ? target
+                : Path.GetFullPath(Path.Combine(workTree, target));
+        }
+
+        return null;
+    }
+
+    private static bool HasRemote(SafeFs safeFs, string gitDir)
+    {
+        string config = Path.Combine(gitDir, "config");
+        if (!safeFs.FileExists(config))
+        {
+            return false;
+        }
+
+        return safeFs.ReadAllText(config).Contains("[remote ", StringComparison.OrdinalIgnoreCase);
     }
 }

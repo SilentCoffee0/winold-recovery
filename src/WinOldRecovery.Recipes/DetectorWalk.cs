@@ -65,9 +65,10 @@ internal static class DetectorWalk
                 }
 
                 bool isDirectory = safeFs.DirectoryExists(entry);
+                string name = Path.GetFileName(entry);
                 if (isDirectory)
                 {
-                    if (depth < maxDepth && !skip.Contains(Path.GetFileName(entry)))
+                    if (depth < maxDepth && !skip.Contains(name))
                     {
                         stack.Push((entry, depth + 1));
                     }
@@ -78,6 +79,79 @@ internal static class DetectorWalk
                 yield return entry;
             }
         }
+    }
+
+    public static IEnumerable<string> EnumerateGitWorkingTrees(
+        SafeFs safeFs,
+        string root,
+        int maxDepth)
+    {
+        if (!safeFs.DirectoryExists(root) || IsReparse(root))
+        {
+            yield break;
+        }
+
+        HashSet<string> skip = new(DefaultSkipNames, StringComparer.OrdinalIgnoreCase);
+        skip.Add(".cache");
+        Stack<(string Path, int Depth)> stack = new();
+        stack.Push((root, 0));
+        while (stack.Count > 0)
+        {
+            (string directory, int depth) = stack.Pop();
+            IReadOnlyList<string> entries;
+            try
+            {
+                entries = safeFs.EnumerateFileSystemEntries(directory);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (string entry in entries)
+            {
+                if (IsReparse(entry))
+                {
+                    continue;
+                }
+
+                string name = Path.GetFileName(entry);
+                if (name.Equals(".git", StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return directory;
+                    continue;
+                }
+
+                if (safeFs.DirectoryExists(entry) &&
+                    depth < maxDepth &&
+                    !skip.Contains(name))
+                {
+                    stack.Push((entry, depth + 1));
+                }
+            }
+        }
+    }
+
+    public static IReadOnlyList<string> OutermostDirectories(IReadOnlyList<string> paths)
+    {
+        List<string> ordered = paths
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static path => path.Length)
+            .ToList();
+        List<string> outermost = [];
+        foreach (string path in ordered)
+        {
+            if (outermost.Any(parent =>
+                    path.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                    path.StartsWith(parent + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            outermost.Add(path);
+        }
+
+        return outermost;
     }
 
     public static string StripExtended(string path)

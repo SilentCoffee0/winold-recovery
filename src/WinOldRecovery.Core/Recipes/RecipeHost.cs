@@ -47,6 +47,7 @@ public sealed class RecipeHost
         IReadOnlyList<ProfileRecord> storedProfiles = sessionDb.ListProfiles(sessionId);
         List<RecipeCard> cards = [];
         List<PersistedRecipeCard> rows = [];
+        List<NodeBadgeRow> badges = [];
         HashSet<string> seen = new(StringComparer.Ordinal);
         foreach (DetectedProfile profile in profiles)
         {
@@ -83,10 +84,23 @@ public sealed class RecipeHost
                             JsonSerializer.Serialize(card),
                             Components: card.Components));
                 }
+
+                foreach ((string relativePath, string kind, string detail) in detected.Badges)
+                {
+                    string nodeRel = string.IsNullOrWhiteSpace(relativePath)
+                        ? profile.RelativePath
+                        : Path.Combine(profile.RelativePath, relativePath.Replace('/', '\\'));
+                    long? nodeId = sessionDb.FindNodeId(sessionId, nodeRel);
+                    if (nodeId is long id)
+                    {
+                        badges.Add(new NodeBadgeRow(id, kind, detail));
+                    }
+                }
             }
         }
 
         await sessionDb.ReplaceRecipeCardsAsync(sessionId, rows, cancellationToken).ConfigureAwait(false);
+        await sessionDb.InsertBadgesAsync(badges, cancellationToken).ConfigureAwait(false);
         return cards;
     }
 
