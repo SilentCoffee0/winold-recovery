@@ -60,6 +60,7 @@ public sealed class NodeBrowserTests
         TreeNodeRow row = Assert.Single(problems.Rows);
         Assert.Equal("cloud.txt", row.Name);
         Assert.Equal(NodeProblem.CloudOnly, row.Problem);
+        Assert.Contains("not on disk", row.ProblemLabel, StringComparison.Ordinal);
     }
 
     [Fact]

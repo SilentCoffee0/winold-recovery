@@ -116,6 +116,11 @@ public sealed record TreeNodeRow(
         _ => string.Empty,
     };
 
+    public string ProblemLabel =>
+        Problem == NodeProblem.None
+            ? string.Empty
+            : string.IsNullOrEmpty(ProblemExplanation) ? Problem.ToString() : ProblemExplanation;
+
     public string MixedBar
     {
         get

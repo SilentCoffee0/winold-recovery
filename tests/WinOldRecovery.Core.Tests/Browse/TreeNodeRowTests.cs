@@ -31,6 +31,7 @@ public sealed class TreeNodeRowTests
         Assert.Equal("photo.jpg", row.DisplayName);
         Assert.Contains("not on disk", row.ProblemExplanation, StringComparison.Ordinal);
         Assert.Equal(row.ProblemExplanation, row.RowTooltip);
+        Assert.Equal(row.ProblemExplanation, row.ProblemLabel);
     }
 
     [Fact]

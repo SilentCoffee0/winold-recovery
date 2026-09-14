@@ -346,7 +346,7 @@
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
-                                <GridViewColumn Header="Problem" DisplayMemberBinding="{Binding Problem}" Width="120" />
+                                <GridViewColumn Header="Problem" DisplayMemberBinding="{Binding ProblemLabel}" Width="280" />
                                 <GridViewColumn Header="Badges" DisplayMemberBinding="{Binding BadgeText}" Width="160" />
                             </GridView>
                         </ListView.View>
