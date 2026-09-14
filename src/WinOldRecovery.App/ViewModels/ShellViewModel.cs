@@ -57,6 +57,7 @@ public sealed class ShellViewModel : ObservableObject
     private string currentPath = string.Empty;
     private int nodesVisited;
     private TreeNodeRow? selectedNode;
+    private List<TreeNodeRow> selectedNodes = [];
     private FilesViewMode filesViewMode = FilesViewMode.Tree;
     private string searchText = string.Empty;
     private DecidePane decidePane = DecidePane.Cards;
@@ -136,6 +137,8 @@ public sealed class ShellViewModel : ObservableObject
         RestoreCommand = new AsyncRelayCommand(() => ApplyDecisionAsync(Decision.Restore), CanMutateSelection);
         LeaveBehindCommand = new AsyncRelayCommand(() => ApplyDecisionAsync(Decision.LeaveBehind), CanMutateSelection);
         UndecidedCommand = new AsyncRelayCommand(ClearDecisionAsync, CanMutateSelection);
+        RestoreExceptRegeneratableCommand = new AsyncRelayCommand(RestoreExceptRegeneratableAsync, CanMutateSelection);
+        RestoreNewerCommand = new AsyncRelayCommand(RestoreNewerAsync, CanMutateSelection);
         OpenFolderCommand = new AsyncRelayCommand(OpenFolderAsync, () => SelectedNode is not null && SourceRoot is not null);
         ExpandCommand = new RelayCommand<TreeNodeRow>(Expand);
         ShowCardsCommand = new RelayCommand(() =>
@@ -190,6 +193,8 @@ public sealed class ShellViewModel : ObservableObject
     public IAsyncRelayCommand RestoreCommand { get; }
     public IAsyncRelayCommand LeaveBehindCommand { get; }
     public IAsyncRelayCommand UndecidedCommand { get; }
+    public IAsyncRelayCommand RestoreExceptRegeneratableCommand { get; }
+    public IAsyncRelayCommand RestoreNewerCommand { get; }
     public IAsyncRelayCommand OpenFolderCommand { get; }
     public IRelayCommand<TreeNodeRow> ExpandCommand { get; }
     public IRelayCommand ShowCardsCommand { get; }
@@ -486,6 +491,26 @@ public sealed class ShellViewModel : ObservableObject
 
     public string? SourceRoot { get; private set; }
 
+    public IReadOnlyList<TreeNodeRow> SelectedNodes => selectedNodes;
+
+    public void ReplaceSelection(IReadOnlyList<TreeNodeRow> rows)
+    {
+        selectedNodes = rows.Count == 0 ? [] : [.. rows];
+        TreeNodeRow? primary = selectedNodes.Count == 0 ? null : selectedNodes[^1];
+        if (!Equals(selectedNode, primary))
+        {
+            SelectedNode = primary;
+        }
+        else
+        {
+            RestoreCommand.NotifyCanExecuteChanged();
+            LeaveBehindCommand.NotifyCanExecuteChanged();
+            UndecidedCommand.NotifyCanExecuteChanged();
+            RestoreExceptRegeneratableCommand.NotifyCanExecuteChanged();
+            RestoreNewerCommand.NotifyCanExecuteChanged();
+        }
+    }
+
     public TreeNodeRow? SelectedNode
     {
         get => selectedNode;
@@ -496,6 +521,8 @@ public sealed class ShellViewModel : ObservableObject
                 RestoreCommand.NotifyCanExecuteChanged();
                 LeaveBehindCommand.NotifyCanExecuteChanged();
                 UndecidedCommand.NotifyCanExecuteChanged();
+                RestoreExceptRegeneratableCommand.NotifyCanExecuteChanged();
+                RestoreNewerCommand.NotifyCanExecuteChanged();
                 OpenFolderCommand.NotifyCanExecuteChanged();
                 InspectCommand.NotifyCanExecuteChanged();
                 CopyPathCommand.NotifyCanExecuteChanged();
@@ -1075,28 +1102,85 @@ public sealed class ShellViewModel : ObservableObject
     private bool CanMutateSelection()
     {
         return CurrentStep == WorkflowStep.Decide &&
-            SelectedNode is { CanRestore: true };
+            DecisionTargets().Any(static row => row.CanRestore);
+    }
+
+    private IReadOnlyList<TreeNodeRow> DecisionTargets()
+    {
+        if (selectedNodes.Count > 0)
+        {
+            return selectedNodes;
+        }
+
+        return SelectedNode is null ? [] : [SelectedNode];
     }
 
     private async Task ApplyDecisionAsync(Decision decision)
     {
-        if (SelectedNode is null || !SelectedNode.CanRestore)
+        IReadOnlyList<TreeNodeRow> targets = DecisionTargets().Where(static row => row.CanRestore).ToArray();
+        if (targets.Count == 0)
         {
             return;
         }
 
-        await decisionEngine.SetUserDecisionAsync(SelectedNode.Id, decision).ConfigureAwait(true);
+        await decisionEngine.ApplyUserDecisionsAsync(
+                targets.Select(static row => row.Id).ToArray(),
+                decision)
+            .ConfigureAwait(true);
         RefreshAfterDecision();
     }
 
     private async Task ClearDecisionAsync()
     {
-        if (SelectedNode is null)
+        IReadOnlyList<TreeNodeRow> targets = DecisionTargets();
+        if (targets.Count == 0)
         {
             return;
         }
 
-        await decisionEngine.ClearUserDecisionAsync(SelectedNode.Id).ConfigureAwait(true);
+        foreach (TreeNodeRow row in targets)
+        {
+            await decisionEngine.ClearUserDecisionAsync(row.Id).ConfigureAwait(true);
+        }
+
+        RefreshAfterDecision();
+    }
+
+    private async Task RestoreExceptRegeneratableAsync()
+    {
+        await ApplyMatchingAsync(filesOnly: false, excludeRegeneratable: true, minMtimeUtc: null)
+            .ConfigureAwait(true);
+    }
+
+    private async Task RestoreNewerAsync()
+    {
+        DateTimeOffset cutoff = DateTimeOffset.UtcNow.AddDays(-RecentDays);
+        await ApplyMatchingAsync(filesOnly: true, excludeRegeneratable: false, cutoff)
+            .ConfigureAwait(true);
+    }
+
+    private async Task ApplyMatchingAsync(
+        bool filesOnly,
+        bool excludeRegeneratable,
+        DateTimeOffset? minMtimeUtc)
+    {
+        IReadOnlyList<TreeNodeRow> targets = DecisionTargets().Where(static row => row.CanRestore).ToArray();
+        if (targets.Count == 0)
+        {
+            return;
+        }
+
+        foreach (TreeNodeRow row in targets)
+        {
+            await decisionEngine.ApplyUserDecisionToMatchingAsync(
+                    row.Id,
+                    Decision.Restore,
+                    filesOnly,
+                    excludeRegeneratable,
+                    minMtimeUtc)
+                .ConfigureAwait(true);
+        }
+
         RefreshAfterDecision();
     }
 

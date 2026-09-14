@@ -34,6 +34,11 @@ public sealed class NodeBrowserTests
         Assert.Equal(2, children.TotalCount);
         Assert.All(children.Rows, row => Assert.Equal("Restore (inherited)", row.DecisionLabel));
         Assert.False(children.Truncated);
+
+        await engine.SetUserDecisionAsync(3, Decision.LeaveBehind);
+        TreeNodeRow folder = Assert.Single(browser.GetChildren(1).Rows);
+        Assert.Equal("mixed", folder.DecisionLabel);
+        Assert.True(folder.MixedSubtree);
     }
 
     [Fact]

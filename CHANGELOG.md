@@ -52,3 +52,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Decide Files paging past 2,000 children, Recent 7/30/90-day selector, Reveal in tree, purge source-integrity text, and blocked step navigation during restore.
 - Decide shortcuts ignore typing in text boxes; Restore/Leave Behind keep the expanded tree; overwrite ticks update the button; glob search is case-insensitive; Recent uses the same UTC timestamp format as scan inserts.
 - A new Scan clears the previous tree and relocks Purge (I10); Cancel discards the in-flight scan, Pause still resumes.
+- Decide Files shows mixed subtrees, Restore/Leave Behind apply to the extended selection, and the context menu can restore except regeneratable or only files inside the Recent window.

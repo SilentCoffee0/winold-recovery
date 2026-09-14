@@ -213,7 +213,22 @@ public sealed class NodeBrowser
                         WHERE decisions.node_id = nodes.id AND decisions.source = 'SuggestedDefault')
                         AS has_suggested,
                     (SELECT COUNT(*) FROM nodes AS children WHERE children.parent_id = nodes.id)
-                        AS child_count
+                        AS child_count,
+                    EXISTS (
+                        SELECT 1
+                        FROM nodes AS descendant
+                        WHERE descendant.eff_decision <> nodes.eff_decision
+                          AND descendant.id IN (
+                            WITH RECURSIVE subtree(id) AS (
+                                SELECT child.id FROM nodes AS child WHERE child.parent_id = nodes.id
+                                UNION ALL
+                                SELECT next.id
+                                FROM nodes AS next
+                                INNER JOIN subtree ON next.parent_id = subtree.id
+                            )
+                            SELECT id FROM subtree
+                          )
+                    ) AS is_mixed
                 FROM nodes
                 WHERE {where}
                 ORDER BY {orderBy}
@@ -244,7 +259,8 @@ public sealed class NodeBrowser
                         reader.GetInt64(11) != 0,
                         reader.GetInt64(12) != 0,
                         Convert.ToInt32(reader.GetInt64(13), CultureInfo.InvariantCulture),
-                        LoadBadges(connection, id)));
+                        LoadBadges(connection, id),
+                        reader.GetInt64(14) != 0));
             }
         }
 

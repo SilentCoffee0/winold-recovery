@@ -64,6 +64,30 @@ public sealed class DecisionEngineTests
         Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(context.Grandchild));
     }
 
+    [Fact]
+    public async Task ApplyUserDecisionToMatching_SkipsRegeneratableBadges()
+    {
+        await using DecisionTestContext context = await DecisionTestContext.CreateAsync();
+        await context.InsertTreeAsync();
+        await context.Database.InsertBadgesAsync(
+        [
+            new NodeBadgeRow(context.Child, "Regeneratable", "Regeneratable"),
+        ]);
+        DecisionEngine engine = new(context.Database, "session-1");
+        await engine.ApplyUserDecisionToMatchingAsync(
+            context.Child,
+            Decision.Restore,
+            filesOnly: false,
+            excludeRegeneratable: true,
+            minMtimeUtc: null);
+
+        Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(context.Child));
+        Assert.Equal(Decision.Restore, engine.GetEffectiveDecision(context.Grandchild));
+        Assert.DoesNotContain(
+            context.Child,
+            engine.ListMatchingSubtreeIds(context.Child, false, true, null));
+    }
+
     private sealed class DecisionTestContext : IAsyncDisposable
     {
         private DecisionTestContext(string root, SessionDb database)

@@ -30,7 +30,8 @@ public sealed record TreeNodeRow(
     bool HasOwnUserDecision,
     bool HasSuggestedDefault,
     int ChildCount,
-    IReadOnlyList<string> Badges)
+    IReadOnlyList<string> Badges,
+    bool MixedSubtree = false)
 {
     public bool IsReparse => Kind is NodeKind.Junction or NodeKind.Symlink or NodeKind.MountPoint;
 
@@ -48,6 +49,11 @@ public sealed record TreeNodeRow(
     {
         get
         {
+            if (MixedSubtree)
+            {
+                return "mixed";
+            }
+
             if (HasOwnUserDecision)
             {
                 return EffectiveDecision.ToString();

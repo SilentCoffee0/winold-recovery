@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using WinOldRecovery.App.ViewModels;
+using WinOldRecovery.Core.Browse;
 
 namespace WinOldRecovery.App;
 
@@ -91,5 +92,24 @@ public partial class MainWindow : Window
         {
             e.Handled = true;
         }
+    }
+
+    private void OnFilesSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ListView list)
+        {
+            return;
+        }
+
+        List<TreeNodeRow> rows = [];
+        foreach (object item in list.SelectedItems)
+        {
+            if (item is TreeNodeRow row)
+            {
+                rows.Add(row);
+            }
+        }
+
+        ViewModel.ReplaceSelection(rows);
     }
 }

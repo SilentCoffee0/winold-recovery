@@ -204,6 +204,38 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task ReplaceSelection_RestoresEverySelectedNode()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "Desktop", "a.txt"),
+            "a");
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "Desktop", "b.txt"),
+            "b");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        context.ViewModel.FilesViewMode = FilesViewMode.Tree;
+        ExpandDirectories(context);
+        ExpandDirectories(context);
+        context.ViewModel.Expand(FindRow(context, "Alice"));
+        context.ViewModel.Expand(FindRow(context, "Desktop"));
+
+        TreeNodeRow a = FindRow(context, "a.txt");
+        TreeNodeRow b = FindRow(context, "b.txt");
+        context.ViewModel.ReplaceSelection([a, b]);
+        await context.ViewModel.RestoreCommand.ExecuteAsync(null);
+
+        Assert.Equal(Decision.Restore, FindRow(context, "a.txt").EffectiveDecision);
+        Assert.Equal(Decision.Restore, FindRow(context, "b.txt").EffectiveDecision);
+    }
+
+    [Fact]
     public void TickingAConflict_UpdatesTheOverwriteButton()
     {
         bool notified = false;

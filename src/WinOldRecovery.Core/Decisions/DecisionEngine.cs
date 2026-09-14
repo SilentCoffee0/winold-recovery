@@ -159,6 +159,96 @@ public sealed class DecisionEngine
         return new SubtreeDecisionSummary(effective, kinds > 1, restore, leave, undecided);
     }
 
+    public async Task ApplyUserDecisionsAsync(
+        IReadOnlyList<long> nodeIds,
+        Decision decision,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(nodeIds);
+        foreach (long nodeId in nodeIds)
+        {
+            await SetUserDecisionAsync(nodeId, decision, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async Task ApplyUserDecisionToMatchingAsync(
+        long rootNodeId,
+        Decision decision,
+        bool filesOnly,
+        bool excludeRegeneratable,
+        DateTimeOffset? minMtimeUtc,
+        CancellationToken cancellationToken = default)
+    {
+        foreach (long nodeId in ListMatchingSubtreeIds(rootNodeId, filesOnly, excludeRegeneratable, minMtimeUtc))
+        {
+            await SetUserDecisionAsync(nodeId, decision, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public IReadOnlyList<long> ListMatchingSubtreeIds(
+        long rootNodeId,
+        bool filesOnly,
+        bool excludeRegeneratable,
+        DateTimeOffset? minMtimeUtc)
+    {
+        using SqliteConnection connection = sessionDb.OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        List<string> filters =
+        [
+            "nodes.kind NOT IN ('Junction', 'Symlink', 'MountPoint')",
+        ];
+        if (filesOnly)
+        {
+            filters.Add("nodes.kind <> 'Directory'");
+        }
+
+        if (excludeRegeneratable)
+        {
+            filters.Add(
+                """
+                NOT EXISTS (
+                    SELECT 1 FROM badges
+                    WHERE badges.node_id = nodes.id AND badges.kind = 'Regeneratable')
+                """);
+        }
+
+        if (minMtimeUtc is not null)
+        {
+            filters.Add("nodes.mtime_utc >= $cutoff");
+        }
+
+        command.CommandText =
+            $"""
+            WITH RECURSIVE subtree(id) AS (
+                SELECT id FROM nodes WHERE id = $id
+                UNION ALL
+                SELECT child.id
+                FROM nodes AS child
+                INNER JOIN subtree ON child.parent_id = subtree.id
+            )
+            SELECT nodes.id
+            FROM nodes
+            WHERE nodes.id IN (SELECT id FROM subtree)
+              AND {string.Join(" AND ", filters)};
+            """;
+        command.Parameters.AddWithValue("$id", rootNodeId);
+        if (minMtimeUtc is not null)
+        {
+            command.Parameters.AddWithValue(
+                "$cutoff",
+                minMtimeUtc.Value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
+        }
+
+        List<long> ids = [];
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            ids.Add(reader.GetInt64(0));
+        }
+
+        return ids;
+    }
+
     private async Task SetDecisionAsync(
         long nodeId,
         Decision decision,
