@@ -34,20 +34,14 @@ public sealed class FirefoxRecipe : IRecipe
     public DetectResult Detect(ProfileContext context)
     {
         string firefox = Path.Combine(context.OldProfileRoot, "AppData", "Roaming", "Mozilla", "Firefox");
-        string profilesDir = Path.Combine(firefox, "Profiles");
-        if (!context.SafeFs.DirectoryExists(profilesDir))
-        {
-            return new DetectResult([], []);
-        }
-
+        IReadOnlyList<DiscoveredFirefoxProfile> profiles = FirefoxIni.Discover(
+            context.SafeFs,
+            firefox,
+            context.OldProfileRoot);
         List<RecipeCard> cards = [];
-        foreach (string profile in context.SafeFs.EnumerateFileSystemEntries(profilesDir))
+        foreach (DiscoveredFirefoxProfile discovered in profiles)
         {
-            if (!context.SafeFs.DirectoryExists(profile))
-            {
-                continue;
-            }
-
+            string profile = discovered.Directory;
             List<string> present = [];
             foreach (string name in AllowList)
             {
@@ -57,19 +51,12 @@ public sealed class FirefoxRecipe : IRecipe
                 }
             }
 
-            if (present.Count == 0)
-            {
-                continue;
-            }
-
             bool hasPlaces = present.Contains("places.sqlite");
             string bookmarksHtml = string.Empty;
             string historyCsv = "url,title\n";
             int bookmarkCount = 0;
-            string firefoxTemp = Path.Combine(
-                context.SessionTemporaryDirectory,
-                "firefox",
-                Path.GetFileName(profile));
+            string folder = Path.GetFileName(profile);
+            string firefoxTemp = Path.Combine(context.SessionTemporaryDirectory, "firefox", folder);
             if (hasPlaces)
             {
                 try
@@ -97,11 +84,12 @@ public sealed class FirefoxRecipe : IRecipe
             (int extensionCount, string extensionsHtml) = FirefoxExports.Extensions(
                 context.SafeFs,
                 Path.Combine(profile, "extensions.json"));
+            string titleName = discovered.IsDefault ? discovered.Name + " (default)" : discovered.Name;
 
             cards.Add(
                 new RecipeCard(
                     Id,
-                    "Firefox — " + Path.GetFileName(profile),
+                    "Firefox — " + titleName,
                     "Everything Firefox knows: bookmarks, history, open tabs, saved passwords, cookies, add-ons and settings.",
                     "Firefox does not tie passwords to the Windows account, so they can come back.",
                     "Copied as a new profile so nothing in your current Firefox is touched. " +
@@ -113,7 +101,7 @@ public sealed class FirefoxRecipe : IRecipe
                         new RecipeComponent(
                             "transplant",
                             "Profile transplant",
-                            string.Join(", ", present),
+                            present.Count == 0 ? "Empty profile" : string.Join(", ", present),
                             hasPlaces ? Decision.Restore : Decision.LeaveBehind,
                             false,
                             null,
@@ -151,12 +139,14 @@ public sealed class FirefoxRecipe : IRecipe
                             null,
                             false),
                     ],
-                    context.ProfileName + ":" + Path.GetFileName(profile),
+                    context.ProfileName + ":" + folder,
                     new Dictionary<string, string>
                     {
                         ["source"] = profile,
                         ["files"] = string.Join("|", present),
-                        ["folder"] = Path.GetFileName(profile),
+                        ["folder"] = folder,
+                        ["name"] = discovered.Name,
+                        ["isDefault"] = discovered.IsDefault ? "1" : "0",
                         ["bookmarksHtml"] = bookmarksHtml,
                         ["historyCsv"] = historyCsv,
                         ["primaryPassword"] = primaryPassword,

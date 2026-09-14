@@ -341,6 +341,19 @@ public sealed class FixtureGenerator
             Path.Combine(firefox, "logins.json"),
             $$"""{"logins":[{"encryptedUsername":"{{Canary}}"}]}""");
         WriteText(Path.Combine(firefox, "key4.db"), string.Empty);
+        WriteText(
+            Path.Combine(alice, "AppData", "Roaming", "Mozilla", "Firefox", "profiles.ini"),
+            """
+            [General]
+            StartWithLastProfile=1
+            Version=2
+
+            [Profile0]
+            Name=fixture
+            IsRelative=1
+            Path=Profiles/fixture.default
+            Default=1
+            """);
 
         string chrome = Path.Combine(
             alice,

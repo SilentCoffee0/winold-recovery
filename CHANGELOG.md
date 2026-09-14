@@ -102,3 +102,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Firefox cards report Primary Password as set / not set / unknown from a temp copy of `key4.db` metadata (empty-password check only). Logins are never decrypted.
 - Git Analyze copies `.git` into the session temp folder and runs git.exe with `--git-dir` on that copy and `--work-tree` on the source, so index refresh cannot write under Windows.old.
 - Firefox exports open tabs from the newest `sessionstore*.jsonlz4` (mozLz4) and an extensions list with AMO search links. Builtin add-ons are omitted.
+- Firefox profile discovery reads `profiles.ini` and `installs.ini` (relative and absolute paths, default install mapping). Empty profiles are shown and default to Leave Behind. Paths outside the old user profile are ignored.

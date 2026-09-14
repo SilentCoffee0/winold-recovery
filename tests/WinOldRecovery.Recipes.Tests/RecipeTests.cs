@@ -118,6 +118,23 @@ public sealed class RecipeTests
             SnssReader.CreateSessionFile(3, [(SnssReader.UpdateTabNavigation, "https://tabs.example/open"u8.ToArray())]));
         string firefox = Path.Combine(alice, "AppData", "Roaming", "Mozilla", "Firefox", "Profiles", "fixture.default");
         Directory.CreateDirectory(firefox);
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, "AppData", "Roaming", "Mozilla", "Firefox", "profiles.ini"),
+            """
+            [General]
+            StartWithLastProfile=1
+            Version=2
+
+            [Install308046B0AF4A39CB]
+            Default=Profiles/fixture.default
+            Locked=1
+
+            [Profile0]
+            Name=fixture
+            IsRelative=1
+            Path=Profiles/fixture.default
+            Default=1
+            """);
         await File.WriteAllTextAsync(Path.Combine(firefox, "logins.json"), """{"logins":[{"encryptedUsername":"WINOLD_RECOVERY_CANARY_DO_NOT_LOG_7F3A91"}]}""");
         await File.WriteAllTextAsync(Path.Combine(firefox, "key4.db"), "k");
         await File.WriteAllBytesAsync(
@@ -166,6 +183,9 @@ public sealed class RecipeTests
         Assert.Contains(cards, card => card.RecipeId == "ssh");
         Assert.Contains(cards, card => card.RecipeId == "chrome");
         Assert.Contains(cards, card => card.RecipeId == "firefox");
+        Assert.Equal(
+            "Firefox — fixture (default)",
+            cards.Single(card => card.RecipeId == "firefox").Title);
         Assert.Contains(cards, card => card.Title.Contains("Git", StringComparison.Ordinal));
         string dump = string.Join('\n', cards.Select(card => card.Title + card.What + string.Join(';', card.Facts.Values)));
         Assert.DoesNotContain(Canary, dump, StringComparison.Ordinal);
@@ -933,6 +953,111 @@ public sealed class RecipeTests
         Assert.Equal(1, tabCount);
         Assert.Contains("newer.firefox.example", tabsHtml, StringComparison.Ordinal);
         Assert.DoesNotContain("older.firefox.example", tabsHtml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FirefoxIni_ParsesProfilesAndInstallDefaults()
+    {
+        IReadOnlyList<FirefoxProfileRecord> profiles = FirefoxIni.ParseProfiles(
+            """
+            [General]
+            StartWithLastProfile=1
+
+            [InstallABCDEF]
+            Default=Profiles/from-install
+            Locked=1
+
+            [Profile0]
+            Name=work
+            IsRelative=1
+            Path=Profiles/abcd.work
+            Default=1
+
+            [Profile1]
+            Name=absolute
+            IsRelative=0
+            Path=C:\Users\Alice\ff-extra
+            """);
+        Assert.Equal(2, profiles.Count);
+        Assert.Equal("work", profiles[0].Name);
+        Assert.True(profiles[0].IsRelative);
+        Assert.True(profiles[0].IsDefault);
+        Assert.Equal(@"C:\Users\Alice\ff-extra", profiles[1].Path);
+        Assert.False(profiles[1].IsRelative);
+        Assert.Equal(
+            "Profiles/from-install",
+            Assert.Single(FirefoxIni.ParseInstallDefaults(
+                """
+                [ABCDEF]
+                Default=Profiles/from-install
+                Locked=1
+
+                [General]
+                StartWithLastProfile=1
+                """)));
+    }
+
+    [Fact]
+    public async Task Firefox_Detect_UsesIniAbsolutePathShowsEmptyAndIgnoresOutside()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string firefox = Path.Combine(alice, "AppData", "Roaming", "Mozilla", "Firefox");
+        Directory.CreateDirectory(firefox);
+        string empty = Path.Combine(firefox, "Profiles", "zzzz.empty");
+        Directory.CreateDirectory(empty);
+        string relocated = Path.Combine(alice, "Documents", "relocated.firefox");
+        Directory.CreateDirectory(relocated);
+        await File.WriteAllTextAsync(Path.Combine(relocated, "prefs.js"), "user_pref(\"fixture\", true);");
+        string outside = Path.Combine(context.Root, "outside.firefox");
+        Directory.CreateDirectory(outside);
+        await File.WriteAllTextAsync(Path.Combine(outside, "places.sqlite"), "no");
+        await File.WriteAllTextAsync(
+            Path.Combine(firefox, "profiles.ini"),
+            $"""
+            [Profile0]
+            Name=relocated
+            IsRelative=0
+            Path={relocated}
+
+            [Profile1]
+            Name=empty
+            IsRelative=1
+            Path=Profiles/zzzz.empty
+
+            [Profile2]
+            Name=sneaky
+            IsRelative=0
+            Path={outside}
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(firefox, "installs.ini"),
+            """
+            [308046B0AF4A39CB]
+            Default=Profiles/zzzz.empty
+            Locked=1
+            """);
+
+        FirefoxRecipe recipe = new();
+        DetectResult detected = recipe.Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        Assert.Equal(2, detected.Cards.Count);
+        RecipeCard relocatedCard = detected.Cards.Single(card => card.Facts["name"] == "relocated");
+        Assert.Equal(Decision.LeaveBehind, relocatedCard.Components.Single(c => c.Key == "transplant").SuggestedDefault);
+        Assert.Contains("prefs.js", relocatedCard.Facts["files"], StringComparison.Ordinal);
+        RecipeCard emptyCard = detected.Cards.Single(card => card.Facts["name"] == "empty");
+        Assert.Equal("1", emptyCard.Facts["isDefault"]);
+        Assert.Equal("Empty profile", emptyCard.Components.Single(c => c.Key == "transplant").Summary);
+        Assert.Equal(Decision.LeaveBehind, emptyCard.Components.Single(c => c.Key == "transplant").SuggestedDefault);
+        Assert.DoesNotContain(detected.Cards, card => card.Facts["name"] == "sneaky");
+        Assert.DoesNotContain(Canary, string.Join(';', detected.Cards.SelectMany(card => card.Facts.Values)), StringComparison.Ordinal);
     }
 
     [Fact]
