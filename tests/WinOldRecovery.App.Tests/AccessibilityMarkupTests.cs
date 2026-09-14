@@ -63,6 +63,15 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("AutomationProperties.AutomationId=\"DismissFirstRunButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("FirstRunBody", xaml, StringComparison.Ordinal);
         Assert.Contains("ThemeMode=\"System\"", File.ReadAllText(FindAppXaml()), StringComparison.Ordinal);
+        Assert.Contains("SystemFonts.MessageFontFamilyKey", xaml, StringComparison.Ordinal);
+        Assert.Contains("SystemFonts.MessageFontSizeKey", xaml, StringComparison.Ordinal);
+        Assert.Contains("UseLayoutRounding", xaml, StringComparison.Ordinal);
+        string appXaml = File.ReadAllText(FindAppXaml());
+        Assert.Contains("SystemFonts.MessageFontFamilyKey", appXaml, StringComparison.Ordinal);
+        Assert.Contains("SystemFonts.MessageFontSizeKey", appXaml, StringComparison.Ordinal);
+        string manifest = File.ReadAllText(FindAppManifest());
+        Assert.Contains("PerMonitorV2", manifest, StringComparison.Ordinal);
+        Assert.Contains("dpiAware", manifest, StringComparison.Ordinal);
     }
 
     private static string FindMainWindowXaml()
@@ -109,5 +118,22 @@ public sealed class AccessibilityMarkupTests
         }
 
         throw new FileNotFoundException("App.xaml was not found from the test output directory.");
+    }
+
+    private static string FindAppManifest()
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            string candidate = Path.Combine(directory.FullName, "build", "app.manifest");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException("app.manifest was not found from the test output directory.");
     }
 }

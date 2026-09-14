@@ -86,3 +86,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Problems column shows the per-row explanation, not the internal problem enum.
 - Status strip uses system colors for source integrity and space-budget amber/red; hardcoded Gray text is gone. Scan summary always names known apps and high-value items.
 - Scan progress lists profiles found, file/folder counts, size so far, and skip counters (UX 2.2).
+- The shell uses the system message font and size so text follows Windows DPI and accessibility text size (UX 9).
