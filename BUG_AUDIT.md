@@ -138,7 +138,9 @@ destination junction is deleted). That mutation was applied, observed red, then 
   fixtures).
 - `RegistryCleanupSage` cannot be proven on this Medium IL console (no HKLM
   write). Real `cleanmgr` on a setup-created `Windows.old` is still pending.
-- No kill-process storm during copy; resume tests simulate journal states.
+- Kill-process CopyTree of 50,000 files is covered in the integration suite
+  (`tools/RestoreHarness`). Killing the published elevated EXE mid-copy is still
+  pending on an interactive desktop.
 - FlaUI scan→purge e2e still skipped without `RUN_FLAUI=1` and UAC.
 - Elevated deny-ACL FixtureGen, 200 MB VHDX disk-full, 1M-node memory, SignPath:
   see `docs/spikes/PENDING_MANUAL.md`.

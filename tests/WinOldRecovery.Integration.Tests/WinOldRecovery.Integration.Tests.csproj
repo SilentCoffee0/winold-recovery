@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\src\WinOldRecovery.Core\WinOldRecovery.Core.csproj" />
     <ProjectReference Include="..\..\src\WinOldRecovery.Recipes\WinOldRecovery.Recipes.csproj" />
     <ProjectReference Include="..\..\tools\FixtureGen\FixtureGen.csproj" />
+    <ProjectReference Include="..\..\tools\RestoreHarness\RestoreHarness.csproj" />
   </ItemGroup>
 
 </Project>

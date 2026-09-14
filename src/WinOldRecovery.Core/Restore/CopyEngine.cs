@@ -45,6 +45,7 @@ public sealed class CopyEngine
 
     private readonly SessionDb sessionDb;
     private readonly SafeFs safeFs;
+    private readonly byte[] copyBuffer = new byte[BufferSize];
 
     public CopyEngine(SessionDb sessionDb, SafeFs safeFs)
     {
@@ -92,9 +93,11 @@ public sealed class CopyEngine
         try
         {
             bool resume = latest is "Started" or "Paused";
+            IReadOnlySet<string> approved = OverwriteApprovals.Parse(
+                sessionDb.GetKv(item.SessionId, OverwriteApprovals.KvKey));
             if (item.Operation == PlanOperation.CopyTree)
             {
-                CopyTree(item, resume, cancellationToken, pauseToken, skips);
+                CopyTree(item, resume, approved, cancellationToken, pauseToken, skips);
             }
             else
             {
@@ -103,6 +106,7 @@ public sealed class CopyEngine
                     item.DestinationPath,
                     item,
                     resume,
+                    approved,
                     cancellationToken,
                     pauseToken,
                     skips);
@@ -187,22 +191,21 @@ public sealed class CopyEngine
 
     public static string? FindRestoredPath(string sourcePath, string plannedDestination)
     {
-        foreach (string candidate in KeepBothCandidates(plannedDestination))
-        {
-            if (LooksLikeSuccessfulCopy(sourcePath, candidate))
-            {
-                return candidate;
-            }
-        }
-
         if (LooksLikeSuccessfulCopy(sourcePath, plannedDestination))
         {
             return plannedDestination;
         }
 
+        string? firstExistingKeepBoth = null;
         foreach (string candidate in KeepBothCandidates(plannedDestination))
         {
-            if (File.Exists(candidate))
+            if (!File.Exists(candidate))
+            {
+                break;
+            }
+
+            firstExistingKeepBoth ??= candidate;
+            if (LooksLikeSuccessfulCopy(sourcePath, candidate))
             {
                 return candidate;
             }
@@ -213,12 +216,13 @@ public sealed class CopyEngine
             return plannedDestination;
         }
 
-        return null;
+        return firstExistingKeepBoth;
     }
 
     private void CopyTree(
         PlanItem item,
         bool resume,
+        IReadOnlySet<string> approved,
         CancellationToken cancellationToken,
         CancellationToken pauseToken,
         RestoreSkipCounts skips)
@@ -229,7 +233,15 @@ public sealed class CopyEngine
             ThrowIfUserPaused(pauseToken);
             string relative = Path.GetRelativePath(item.SourcePath, sourceFile);
             string destinationFile = Path.Combine(item.DestinationPath, relative);
-            CopyOneFile(sourceFile, destinationFile, item, resume, cancellationToken, pauseToken, skips);
+            CopyOneFile(
+                sourceFile,
+                destinationFile,
+                item,
+                resume,
+                approved,
+                cancellationToken,
+                pauseToken,
+                skips);
         }
     }
 
@@ -238,6 +250,7 @@ public sealed class CopyEngine
         string destinationPath,
         PlanItem item,
         bool resume,
+        IReadOnlySet<string> approved,
         CancellationToken cancellationToken,
         CancellationToken pauseToken,
         RestoreSkipCounts skips)
@@ -250,8 +263,6 @@ public sealed class CopyEngine
         }
 
         string finalPath = destinationPath;
-        IReadOnlySet<string> approved = OverwriteApprovals.Parse(
-            sessionDb.GetKv(item.SessionId, OverwriteApprovals.KvKey));
         bool overwriteThis = item.OverwriteApproved || approved.Contains(destinationPath);
         string? already = FindRestoredPath(sourcePath, destinationPath);
         if (already is not null && LooksLikeSuccessfulCopy(sourcePath, already) && !overwriteThis)
@@ -296,13 +307,12 @@ public sealed class CopyEngine
             using (FileStream source = safeFs.OpenRead(sourcePath))
             using (FileStream destination = safeFs.OpenWrite(partial, FileMode.CreateNew))
             {
-                byte[] buffer = new byte[BufferSize];
                 int read;
-                while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+                while ((read = source.Read(copyBuffer, 0, copyBuffer.Length)) > 0)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     ThrowIfUserPaused(pauseToken);
-                    destination.Write(buffer, 0, read);
+                    destination.Write(copyBuffer, 0, read);
                 }
             }
 

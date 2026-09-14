@@ -5,6 +5,7 @@ using WinOldRecovery.Core.Processes;
 using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Core.Scan;
 using WinOldRecovery.FixtureGen;
+using WinOldRecovery.Integration.Tests.Safety;
 
 namespace WinOldRecovery.Integration.Tests.Scan;
 
@@ -50,6 +51,7 @@ public sealed class FileSystemWalkerFixtureTests
                         fixtureRoot));
 
                 FileSystemWalker walker = new(database);
+                using SourceWatchdog watchdog = new(fixtureRoot);
                 WalkResult result = await walker.WalkAsync(new WalkRequest("session-1", fixtureRoot));
 
                 using SqliteConnection reader = database.OpenReadConnection();
@@ -90,6 +92,7 @@ public sealed class FileSystemWalkerFixtureTests
                 Assert.Equal("Created", manifest.Hazards["legacy-junction"].Status);
                 Assert.Equal(liveWrite, File.GetLastWriteTimeUtc(Path.Combine(liveProfile, "live-only.txt")));
                 Assert.Equal(sourceWrite, File.GetLastWriteTimeUtc(notePath));
+                watchdog.ThrowIfSourceChanged();
             }
             finally
             {
