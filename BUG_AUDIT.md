@@ -131,9 +131,11 @@ destination junction is deleted). That mutation was applied, observed red, then 
 
 - L2 hashing is skipped for files larger than 64 MB; keep-both matching uses
   size+mtime, not a hash, so identical size/time collisions remain possible.
-- `PurgeToken` is still minted from `PurgeAuthorization` with caller-supplied
-  booleans; the shell now *also* reads SQLite, but any other caller can still
-  pass `true`. Defaults for journal/verify-store are now false.
+- `PurgeToken` is minted only when `PurgeAuthorization.Evaluate` sees a settled
+  journal and verify store on `SessionDb` for that session id. Caller-supplied
+  `true` flags no longer authorize those two gates. `PurgeToken`'s constructor
+  stays `internal` (Core tests can still construct one for executor/source-guard
+  fixtures).
 - `RegistryCleanupSage` cannot be proven on this Medium IL console (no HKLM
   write). Real `cleanmgr` on a setup-created `Windows.old` is still pending.
 - No kill-process storm during copy; resume tests simulate journal states.

@@ -1,3 +1,5 @@
+using WinOldRecovery.Core.Persistence;
+
 namespace WinOldRecovery.Core.Purge;
 
 public sealed record PurgeGateRequest(
@@ -11,9 +13,7 @@ public sealed record PurgeGateRequest(
     string? RunningExecutablePath,
     string? SessionRoot,
     IReadOnlyList<string> DestinationPaths,
-    bool CustomRootConfirmed,
-    bool RestoreJournalSettled = false,
-    bool StoredVerifyAllOk = false);
+    bool CustomRootConfirmed);
 
 public sealed record PurgeGateResult(
     bool Authorized,
@@ -22,21 +22,28 @@ public sealed record PurgeGateResult(
 
 public sealed class PurgeAuthorization
 {
-    public static PurgeGateResult Evaluate(PurgeGateRequest request)
+    public static PurgeGateResult Evaluate(
+        PurgeGateRequest request,
+        SessionDb sessionDb,
+        string sessionId)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(sessionDb);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
         List<string> blocked = [];
         if (!request.VerifyAllOk)
         {
             blocked.Add("verify");
         }
 
-        if (!request.StoredVerifyAllOk)
+        bool storedVerify = sessionDb.LastVerifyJobsSettled(sessionId) ||
+            sessionDb.ListPlanItems(sessionId).Count == 0;
+        if (!storedVerify)
         {
             blocked.Add("verify-store");
         }
 
-        if (!request.RestoreJournalSettled)
+        if (!sessionDb.RestoreJournalSettled(sessionId))
         {
             blocked.Add("journal");
         }

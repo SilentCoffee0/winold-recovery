@@ -2371,13 +2371,9 @@ public sealed class ShellViewModel : ObservableObject
             root => root.Equals(
                 PathCanonicalizer.Canonicalize(SourceRoot),
                 StringComparison.OrdinalIgnoreCase)) ?? PathCanonicalizer.Canonicalize(SourceRoot);
-        IReadOnlyList<PlanItem> planItems = lastPlan?.Items ?? sessionDb.ListPlanItems(workspace.SessionId);
-        bool journalSettled = sessionDb.RestoreJournalSettled(workspace.SessionId);
-        bool storedVerify = sessionDb.LastVerifyJobsSettled(workspace.SessionId) ||
-            (planItems.Count == 0 && verifyCompleted);
         PurgeGateResult gate = PurgeAuthorization.Evaluate(
             new PurgeGateRequest(
-                verifyCompleted && storedVerify,
+                verifyCompleted,
                 filesChecked,
                 undecidedAcknowledged,
                 RestoreJobActive: IsScanning || isRestoring,
@@ -2387,9 +2383,9 @@ public sealed class ShellViewModel : ObservableObject
                 Environment.ProcessPath,
                 workspace.RootPath,
                 lastPlan is null ? [destinationRoot] : lastPlan.Items.Select(static item => item.DestinationPath).ToArray(),
-                customRootConfirmed,
-                journalSettled,
-                storedVerify));
+                customRootConfirmed),
+            sessionDb,
+            workspace.SessionId);
         if (!gate.Authorized || gate.Token is null)
         {
             ScanStatus = "Purge blocked: " + string.Join(", ", gate.BlockedGates);

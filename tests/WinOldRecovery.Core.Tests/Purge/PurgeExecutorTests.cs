@@ -37,27 +37,12 @@ public sealed class PurgeExecutorTests : IDisposable
     public async Task ManualDelete_RemovesSourceWithoutFollowingJunctionsAndRecordsCleanmgrWhenPreferred()
     {
         string canonical = guard.RegisterSourceRoot(sourceRoot);
-        PurgeGateResult gate = PurgeAuthorization.Evaluate(
-            new PurgeGateRequest(
-                true,
-                true,
-                true,
-                false,
-                "Windows.old",
-                "Windows.old",
-                canonical,
-                Environment.ProcessPath,
-                sessionRoot,
-                [Path.Combine(testRoot, "dest")],
-                false,
-                RestoreJournalSettled: true,
-                StoredVerifyAllOk: true));
-        Assert.True(gate.Authorized);
+        PurgeToken token = new(canonical);
         RecordingRunner runner = new();
         PurgeExecuteResult result = await new PurgeExecutor().ExecuteAsync(
             new PurgeExecuteRequest(
                 canonical,
-                gate.Token!,
+                token,
                 safeFs,
                 guard,
                 runner,
@@ -83,26 +68,12 @@ public sealed class PurgeExecutorTests : IDisposable
     public async Task Cleanmgr_IsNotInvokedWhenPreviousInstallationsFlagCannotBeArmed()
     {
         string canonical = guard.RegisterSourceRoot(sourceRoot);
-        PurgeGateResult gate = PurgeAuthorization.Evaluate(
-            new PurgeGateRequest(
-                true,
-                true,
-                true,
-                false,
-                "Windows.old",
-                "Windows.old",
-                canonical,
-                Environment.ProcessPath,
-                sessionRoot,
-                [Path.Combine(testRoot, "dest")],
-                false,
-                RestoreJournalSettled: true,
-                StoredVerifyAllOk: true));
+        PurgeToken token = new(canonical);
         RecordingRunner runner = new();
         PurgeExecuteResult result = await new PurgeExecutor().ExecuteAsync(
             new PurgeExecuteRequest(
                 canonical,
-                gate.Token!,
+                token,
                 safeFs,
                 guard,
                 runner,
