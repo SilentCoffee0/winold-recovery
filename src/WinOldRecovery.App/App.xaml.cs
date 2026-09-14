@@ -6,6 +6,7 @@ using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Logging;
 using WinOldRecovery.Core.Persistence;
 using WinOldRecovery.Core.Processes;
+using WinOldRecovery.Core.Restore;
 using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Core.Scan;
 using WinOldRecovery.Core.Sessions;
@@ -32,19 +33,25 @@ public partial class App : Application
             SourceGuard sourceGuard = new();
             SafeFs safeFs = new(sourceGuard);
             DateTimeOffset startedAt = DateTimeOffset.Now;
-            SessionWorkspace workspace = SessionWorkspace.Create(safeFs, now: startedAt);
+            InterruptedRestoreReport? interrupted = InterruptedRestore.FindLatest(safeFs);
+            SessionWorkspace workspace = interrupted is null
+                ? SessionWorkspace.Create(safeFs, now: startedAt)
+                : SessionWorkspace.Open(interrupted.WorkspaceRoot, interrupted.SessionId);
             sessionLogPath = workspace.LogPath;
             sessionDatabase = SessionDb.OpenAsync(workspace.DatabasePath, safeFs)
                 .GetAwaiter()
                 .GetResult();
-            sessionDatabase.CreateSessionAsync(
-                    new SessionRecord(
-                        workspace.SessionId,
-                        startedAt,
-                        "Created",
-                        typeof(App).Assembly.GetName().Version?.ToString() ?? "0.1.0"))
-                .GetAwaiter()
-                .GetResult();
+            if (interrupted is null)
+            {
+                sessionDatabase.CreateSessionAsync(
+                        new SessionRecord(
+                            workspace.SessionId,
+                            startedAt,
+                            "Created",
+                            typeof(App).Assembly.GetName().Version?.ToString() ?? "0.1.0"))
+                    .GetAwaiter()
+                    .GetResult();
+            }
 
             RollingFileLoggerProvider fileProvider = new(
                 workspace.LogPath,
@@ -73,6 +80,10 @@ public partial class App : Application
                 RecipeCatalog.All,
                 folderPicker: new WpfFolderPicker());
             viewModel.LoadSourcesAsync().GetAwaiter().GetResult();
+            if (interrupted is not null)
+            {
+                viewModel.OfferInterruptedRestore(interrupted);
+            }
 
             MainWindow window = new(viewModel);
             window.Show();

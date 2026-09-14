@@ -82,6 +82,8 @@ public sealed class ShellViewModel : ObservableObject
         "Recovered");
     private bool helpVisible;
     private bool firstRunVisible;
+    private bool interruptedVisible;
+    private string interruptedText = string.Empty;
     private HelpTopic? selectedHelpTopic;
     private string helpText = string.Empty;
     private bool logVisible;
@@ -184,6 +186,8 @@ public sealed class ShellViewModel : ObservableObject
         ShowLogCommand = new RelayCommand(OpenLog);
         CloseLogCommand = new RelayCommand(() => LogVisible = false);
         DismissFirstRunCommand = new RelayCommand(DismissFirstRun);
+        ResumeInterruptedCommand = new AsyncRelayCommand(ResumeInterruptedAsync, () => lastPlan is not null && !isRestoring);
+        DismissInterruptedCommand = new RelayCommand(DismissInterrupted);
     }
 
     public IAsyncRelayCommand ScanCommand { get; }
@@ -216,6 +220,8 @@ public sealed class ShellViewModel : ObservableObject
     public IRelayCommand ShowLogCommand { get; }
     public IRelayCommand CloseLogCommand { get; }
     public IRelayCommand DismissFirstRunCommand { get; }
+    public IAsyncRelayCommand ResumeInterruptedCommand { get; }
+    public IRelayCommand DismissInterruptedCommand { get; }
 
     public IReadOnlyList<HelpTopic> HelpTopics => LocalHelp.Catalog;
 
@@ -391,6 +397,18 @@ public sealed class ShellViewModel : ObservableObject
     {
         get => firstRunVisible;
         private set => SetProperty(ref firstRunVisible, value);
+    }
+
+    public bool InterruptedRestoreVisible
+    {
+        get => interruptedVisible;
+        private set => SetProperty(ref interruptedVisible, value);
+    }
+
+    public string InterruptedRestoreText
+    {
+        get => interruptedText;
+        private set => SetProperty(ref interruptedText, value);
     }
 
     public HelpTopic? SelectedHelpTopic
@@ -892,6 +910,50 @@ public sealed class ShellViewModel : ObservableObject
         FirstRunVisible = false;
     }
 
+    public void OfferInterruptedRestore(InterruptedRestoreReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        lastPlan = report.Plan;
+        if (report.SourceRoot is not null)
+        {
+            SourceRoot = report.SourceRoot;
+            sourceGuard.RegisterSourceRoot(report.SourceRoot);
+        }
+
+        if (report.DestinationRoot is not null)
+        {
+            DestinationRoot = report.DestinationRoot;
+        }
+
+        scanCompleted = true;
+        ApplyPreflight();
+        OnPropertyChanged(nameof(SourceRoot));
+        OnPropertyChanged(nameof(ScanCompleted));
+        ExecuteRestoreCommand.NotifyCanExecuteChanged();
+        ResumeInterruptedCommand.NotifyCanExecuteChanged();
+        PreparePreviewCommand.NotifyCanExecuteChanged();
+        InterruptedRestoreText =
+            "A restore was interrupted on " +
+            report.InterruptedAt.ToLocalTime().ToString("d MMM yyyy 'at' HH:mm", CultureInfo.InvariantCulture) +
+            ". " + report.IncompleteItems + " items were left unfinished; " +
+            report.CompletedItems + " already finished. Resume?";
+        InterruptedRestoreVisible = true;
+        CurrentStep = WorkflowStep.Restore;
+        OnPropertyChanged(nameof(ScanCompleted));
+        OnPropertyChanged(nameof(WindowTitle));
+    }
+
+    private async Task ResumeInterruptedAsync()
+    {
+        InterruptedRestoreVisible = false;
+        await ExecuteRestoreAsync().ConfigureAwait(true);
+    }
+
+    private void DismissInterrupted()
+    {
+        InterruptedRestoreVisible = false;
+    }
+
     private async Task ScanAsync()
     {
         if (SelectedSourcePath is null)
@@ -1305,6 +1367,29 @@ public sealed class ShellViewModel : ObservableObject
                     recipe.RecipeId));
         }
 
+        if (recipeHost is not null)
+        {
+            HashSet<string> found = lastRecipeCards
+                .Select(static card => card.RecipeId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach ((string id, string title) in RecipeCatalog.AbsentLabels)
+            {
+                if (found.Contains(id))
+                {
+                    continue;
+                }
+
+                Cards.Add(
+                    new OverviewCard(
+                        title + ": none found in this profile",
+                        string.Empty,
+                        string.Empty,
+                        "Looked",
+                        NodeId: null,
+                        "Absent"));
+            }
+        }
+
         OnPropertyChanged(nameof(Cards));
     }
 
@@ -1487,6 +1572,10 @@ public sealed class ShellViewModel : ObservableObject
         PlanBuilder builder = new(sessionDb);
         lastPlan = await builder.BuildAsync(
                 new PlanRequest(workspace.SessionId, SourceRoot, DestinationRoot, ConflictPolicy: selectedConflictPolicy))
+            .ConfigureAwait(true);
+        await sessionDb.SetKvAsync(workspace.SessionId, InterruptedRestore.SourceRootKey, SourceRoot)
+            .ConfigureAwait(true);
+        await sessionDb.SetKvAsync(workspace.SessionId, InterruptedRestore.DestinationRootKey, DestinationRoot)
             .ConfigureAwait(true);
         ApplyPreflight();
         Conflicts.Clear();

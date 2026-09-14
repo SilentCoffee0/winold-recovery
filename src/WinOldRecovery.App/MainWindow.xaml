@@ -173,9 +173,48 @@
                                 <DataTemplate>
                                     <StackPanel Margin="0,0,0,8">
                                         <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
-                                        <TextBlock Text="{Binding Summary}" />
-                                        <TextBlock Text="{Binding Facts}" Foreground="Gray" />
-                                        <TextBlock Text="{Binding DecisionLabel}" />
+                                        <TextBlock Text="{Binding Summary}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Absent">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding Facts}" Foreground="Gray">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Absent">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding DecisionLabel}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Absent">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Kind}" Value="Absent">
+                                                        <Setter Property="Margin" Value="0,0,0,2" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
@@ -413,6 +452,25 @@
                         Command="{Binding DismissFirstRunCommand}"
                         AutomationProperties.Name="Dismiss first run"
                         AutomationProperties.AutomationId="DismissFirstRunButton" />
+            </StackPanel>
+        </Border>
+        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+                Panel.ZIndex="3"
+                Visibility="{Binding InterruptedRestoreVisible, Converter={StaticResource VisibleWhenTrue}}">
+            <StackPanel Margin="48" MaxWidth="640" VerticalAlignment="Center">
+                <TextBlock FontWeight="SemiBold" Text="Resume interrupted restore?" />
+                <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" Text="{Binding InterruptedRestoreText}"
+                           AutomationProperties.Name="Interrupted restore explanation" />
+                <StackPanel Margin="0,24,0,0" Orientation="Horizontal">
+                    <Button Content="Resume"
+                            Command="{Binding ResumeInterruptedCommand}"
+                            AutomationProperties.Name="Resume interrupted restore"
+                            AutomationProperties.AutomationId="ResumeInterruptedButton" />
+                    <Button Margin="12,0,0,0" Content="Not now"
+                            Command="{Binding DismissInterruptedCommand}"
+                            AutomationProperties.Name="Dismiss interrupted restore"
+                            AutomationProperties.AutomationId="DismissInterruptedButton" />
+                </StackPanel>
             </StackPanel>
         </Border>
     </Grid>

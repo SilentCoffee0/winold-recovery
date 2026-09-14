@@ -53,3 +53,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Decide shortcuts ignore typing in text boxes; Restore/Leave Behind keep the expanded tree; overwrite ticks update the button; glob search is case-insensitive; Recent uses the same UTC timestamp format as scan inserts.
 - A new Scan clears the previous tree and relocks Purge (I10); Cancel discards the in-flight scan, Pause still resumes.
 - Decide Files shows mixed subtrees, Restore/Leave Behind apply to the extended selection, and the context menu can restore except regeneratable or only files inside the Recent window.
+- Next launch reopens an interrupted restore session (journal Started/Paused/Failed) with a Resume overlay; Decide Cards collapse apps that were looked for and not found.

@@ -7,10 +7,14 @@ using WinOldRecovery.Core.Browse;
 using WinOldRecovery.Core.Decisions;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Persistence;
+using WinOldRecovery.Core.Planning;
 using WinOldRecovery.Core.Processes;
+using WinOldRecovery.Core.Recipes;
+using WinOldRecovery.Core.Restore;
 using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Core.Scan;
 using WinOldRecovery.Core.Sessions;
+using WinOldRecovery.Recipes;
 
 namespace WinOldRecovery.App.Tests;
 
@@ -41,6 +45,65 @@ public sealed class ShellViewModelTests
         Assert.Contains(context.ViewModel.Cards, card => card.Title == "Alice");
         Assert.Contains(context.ViewModel.Cards, card => card.Title == "Desktop");
         Assert.Equal("Windows.old untouched", context.ViewModel.SourceIntegrityText);
+    }
+
+    [Fact]
+    public async Task Scan_AddsCollapsedCardsForAppsThatWereLookedForAndMissing()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync(RecipeCatalog.All);
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        Assert.Contains(
+            context.ViewModel.Cards,
+            card => card.Kind == "Absent" && card.Title.Contains("SSH keys", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            context.ViewModel.Cards,
+            card => card.Kind == "Absent" && card.Title.Contains("Alice", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task OfferInterruptedRestore_ShowsResumeOverlayForTheReopenedPlan()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        string destination = Path.Combine(context.Root, "Recovered");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(destination);
+        string from = Path.Combine(source, "note.txt");
+        await File.WriteAllTextAsync(from, "keep");
+        PlanItem item = new(
+            context.SessionId,
+            1,
+            PlanOperation.CopyFile,
+            from,
+            Path.Combine(destination, "note.txt"),
+            1,
+            ConflictPolicy.KeepBoth,
+            OverwriteApproved: false,
+            RecipeId: null);
+        IReadOnlyList<PlanItem> stored = await context.Database.ReplacePlanItemsAsync(context.SessionId, [item]);
+        await context.Database.AppendJournalAsync(stored[0].Id!.Value, "Started");
+        InterruptedRestoreReport? report = InterruptedRestore.Describe(
+            context.Database,
+            context.SessionId,
+            context.WorkspaceRoot);
+
+        Assert.NotNull(report);
+        context.ViewModel.OfferInterruptedRestore(report);
+
+        Assert.True(context.ViewModel.InterruptedRestoreVisible);
+        Assert.Contains("unfinished", context.ViewModel.InterruptedRestoreText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(WorkflowStep.Restore, context.ViewModel.CurrentStep);
+        Assert.True(context.ViewModel.ResumeInterruptedCommand.CanExecute(null));
+
+        context.ViewModel.DismissInterruptedCommand.Execute(null);
+        Assert.False(context.ViewModel.InterruptedRestoreVisible);
     }
 
     [Fact]
@@ -385,13 +448,15 @@ public sealed class ShellViewModelTests
             SessionDb database,
             RecordingProcessRunner runner,
             ShellViewModel viewModel,
-            StubFolderPicker picker)
+            StubFolderPicker picker,
+            SessionWorkspace workspace)
         {
             Root = root;
             Database = database;
             Runner = runner;
             ViewModel = viewModel;
             Picker = picker;
+            Workspace = workspace;
         }
 
         public string Root { get; }
@@ -399,8 +464,11 @@ public sealed class ShellViewModelTests
         public RecordingProcessRunner Runner { get; }
         public ShellViewModel ViewModel { get; }
         public StubFolderPicker Picker { get; }
+        public SessionWorkspace Workspace { get; }
+        public string SessionId => Workspace.SessionId;
+        public string WorkspaceRoot => Workspace.RootPath;
 
-        public static async Task<ShellTestContext> CreateAsync()
+        public static async Task<ShellTestContext> CreateAsync(IReadOnlyList<IRecipe>? recipes = null)
         {
             string root = Path.Combine(
                 Path.GetTempPath(),
@@ -431,11 +499,11 @@ public sealed class ShellViewModelTests
                 runner,
                 sharedFs,
                 sourceGuard,
-                recipes: null,
+                recipes: recipes,
                 firstRunState: null,
                 localHelp: new LocalHelp(helpRoot),
                 folderPicker: picker);
-            return new ShellTestContext(root, database, runner, viewModel, picker);
+            return new ShellTestContext(root, database, runner, viewModel, picker, workspace);
         }
 
         public async ValueTask DisposeAsync()

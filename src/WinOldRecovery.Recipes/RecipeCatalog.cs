@@ -22,4 +22,23 @@ public static class RecipeCatalog
         new TerminalRecipe(),
         new ObsidianRecipe(),
     ];
+
+    public static IReadOnlyList<(string Id, string AbsentTitle)> AbsentLabels { get; } =
+    [
+        ("ssh", "SSH keys"),
+        ("chrome", "Google Chrome"),
+        ("edge", "Microsoft Edge"),
+        ("firefox", "Firefox"),
+        ("git", "Git"),
+        ("syncthing", "Syncthing"),
+        ("anki", "Anki"),
+        ("wsl", "WSL"),
+        ("gpg", "GPG"),
+        ("keepass", "KeePass"),
+        ("outlook", "Outlook"),
+        ("thunderbird", "Thunderbird"),
+        ("vscode", "VS Code"),
+        ("windows-terminal", "Windows Terminal"),
+        ("obsidian", "Obsidian"),
+    ];
 }
