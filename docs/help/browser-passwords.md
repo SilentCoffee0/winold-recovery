@@ -4,4 +4,4 @@ Chrome and Edge store passwords, cookies, and payment cards in files that are en
 
 Sign in to the same Google account (Chrome) or Microsoft account (Edge) if sync was enabled on the old PC.
 
-Firefox is different: `logins.json` and `key4.db` are restored together into a new profile. If you set a Primary Password, Firefox will ask for it. The tool never exports those passwords as text.
+Firefox is different: `logins.json` and `key4.db` are restored together into a new profile. The card reports whether a Primary Password is set, not set, or could not be determined from `key4.db` metadata. If one is set, Firefox will ask for it after restore. The tool never exports those passwords as text.

@@ -66,6 +66,10 @@ public sealed class FirefoxRecipe : IRecipe
             string bookmarksHtml = string.Empty;
             string historyCsv = "url,title\n";
             int bookmarkCount = 0;
+            string firefoxTemp = Path.Combine(
+                context.SessionTemporaryDirectory,
+                "firefox",
+                Path.GetFileName(profile));
             if (hasPlaces)
             {
                 try
@@ -73,7 +77,7 @@ public sealed class FirefoxRecipe : IRecipe
                     string copy = ReadOnlySqlite.CopyToTemp(
                         context.SafeFs,
                         Path.Combine(profile, "places.sqlite"),
-                        Path.Combine(context.SessionTemporaryDirectory, "firefox", Path.GetFileName(profile)),
+                        firefoxTemp,
                         "places.sqlite");
                     (bookmarkCount, bookmarksHtml) = SqliteExports.FirefoxBookmarks(copy);
                     historyCsv = SqliteExports.FirefoxHistoryCsv(copy);
@@ -83,13 +87,21 @@ public sealed class FirefoxRecipe : IRecipe
                 }
             }
 
+            string primaryPassword = present.Contains("key4.db")
+                ? Key4PrimaryPassword.Detect(
+                    context.SafeFs,
+                    Path.Combine(profile, "key4.db"),
+                    firefoxTemp)
+                : Key4PrimaryPassword.Missing;
+
             cards.Add(
                 new RecipeCard(
                     Id,
                     "Firefox — " + Path.GetFileName(profile),
                     "Everything Firefox knows: bookmarks, history, open tabs, saved passwords, cookies, add-ons and settings.",
                     "Firefox does not tie passwords to the Windows account, so they can come back.",
-                    "Copied as a new profile so nothing in your current Firefox is touched. Passwords stay behind your Primary Password if you set one.",
+                    "Copied as a new profile so nothing in your current Firefox is touched. " +
+                    PrimaryPasswordRestoreCopy(primaryPassword),
                     "Firefox Account sync, if it was enabled.",
                     "Caches regenerate. The profile does not.",
                     "You keep the current Firefox profile and lose the old bookmarks, passwords and tabs.",
@@ -127,6 +139,7 @@ public sealed class FirefoxRecipe : IRecipe
                         ["folder"] = Path.GetFileName(profile),
                         ["bookmarksHtml"] = bookmarksHtml,
                         ["historyCsv"] = historyCsv,
+                        ["primaryPassword"] = primaryPassword,
                     }));
         }
 
@@ -223,6 +236,26 @@ public sealed class FirefoxRecipe : IRecipe
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite("firefox", "Firefox must be closed before the profile is transplanted.")];
+
+    private static string PrimaryPasswordRestoreCopy(string primaryPassword)
+    {
+        if (primaryPassword == Key4PrimaryPassword.Set)
+        {
+            return "A Primary Password is set; Firefox will ask for it. The tool cannot bypass it.";
+        }
+
+        if (primaryPassword == Key4PrimaryPassword.NotSet)
+        {
+            return "No Primary Password was detected.";
+        }
+
+        if (primaryPassword == Key4PrimaryPassword.Missing)
+        {
+            return "No key4.db was found, so saved passwords are not in this profile.";
+        }
+
+        return "Could not determine whether a Primary Password is set.";
+    }
 
     private static string BuildProfilesIni(DestinationContext destination, string recoveredFolder)
     {

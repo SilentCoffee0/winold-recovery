@@ -737,6 +737,72 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public void Key4PrimaryPassword_EmptyMasterIsNotSet()
+    {
+        WithTempKey4(path =>
+        {
+            Key4Fixture.WritePbes2(path, password: string.Empty);
+            Assert.Equal(Key4PrimaryPassword.NotSet, Key4PrimaryPassword.DetectFromCopy(path));
+        });
+    }
+
+    [Fact]
+    public void Key4PrimaryPassword_NonEmptyMasterIsSet()
+    {
+        WithTempKey4(path =>
+        {
+            Key4Fixture.WritePbes2(path, password: "x");
+            Assert.Equal(Key4PrimaryPassword.Set, Key4PrimaryPassword.DetectFromCopy(path));
+        });
+    }
+
+    [Fact]
+    public void Key4PrimaryPassword_3DesEmptyMasterIsNotSet()
+    {
+        WithTempKey4(path =>
+        {
+            Key4Fixture.Write3Des(path, password: string.Empty);
+            Assert.Equal(Key4PrimaryPassword.NotSet, Key4PrimaryPassword.DetectFromCopy(path));
+        });
+    }
+
+    [Fact]
+    public void Key4PrimaryPassword_GarbageFileIsUnknown()
+    {
+        WithTempKey4(path =>
+        {
+            File.WriteAllText(path, "k");
+            Assert.Equal(Key4PrimaryPassword.Unknown, Key4PrimaryPassword.DetectFromCopy(path));
+        });
+    }
+
+    [Fact]
+    public async Task Firefox_Detect_RecordsPrimaryPasswordFromKey4()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string profile = Path.Combine(alice, "AppData", "Roaming", "Mozilla", "Firefox", "Profiles", "pp.default");
+        Directory.CreateDirectory(profile);
+        await File.WriteAllTextAsync(Path.Combine(profile, "logins.json"), """{"logins":[]}""");
+        Key4Fixture.WritePbes2(Path.Combine(profile, "key4.db"), password: string.Empty);
+
+        FirefoxRecipe recipe = new();
+        DetectResult detected = recipe.Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        RecipeCard card = Assert.Single(detected.Cards);
+        Assert.Equal(Key4PrimaryPassword.NotSet, card.Facts["primaryPassword"]);
+        Assert.Contains("No Primary Password", card.WhatIsRestored, StringComparison.Ordinal);
+        Assert.DoesNotContain(Canary, string.Join(';', card.Facts.Values), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SnssReader_ExtractsNavigationUrls()
     {
         byte[] session = SnssReader.CreateSessionFile(
@@ -1272,6 +1338,23 @@ public sealed class RecipeTests
         return files;
     }
 
+    private static void WithTempKey4(Action<string> use)
+    {
+        string path = Path.Combine(Path.GetTempPath(), "WinOldRecovery-key4-" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            use(path);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
     private static void WriteSqlite(string path, string sql)
     {
         using SqliteConnection connection = new(new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString);
@@ -1279,6 +1362,192 @@ public sealed class RecipeTests
         using SqliteCommand command = connection.CreateCommand();
         command.CommandText = sql;
         command.ExecuteNonQuery();
+    }
+
+    private static class Key4Fixture
+    {
+        public static void WritePbes2(string path, string password)
+        {
+            byte[] globalSalt = Enumerable.Repeat((byte)0x11, 16).ToArray();
+            byte[] entrySalt = Enumerable.Repeat((byte)0x22, 32).ToArray();
+            byte[] iv = Enumerable.Repeat((byte)0x33, 16).ToArray();
+            byte[] hp = PasswordHash(globalSalt, password);
+            byte[] key = System.Security.Cryptography.Rfc2898DeriveBytes.Pbkdf2(
+                hp,
+                entrySalt,
+                1,
+                System.Security.Cryptography.HashAlgorithmName.SHA256,
+                32);
+            byte[] cipher = EncryptAes(key, iv, PasswordCheckPadded(16));
+            byte[] item2 = Der.Seq(
+                Der.Seq(
+                    Der.Oid("1.2.840.113549.1.5.13"),
+                    Der.Seq(
+                        Der.Seq(
+                            Der.Oid("1.2.840.113549.1.5.12"),
+                            Der.Seq(
+                                Der.Octet(entrySalt),
+                                Der.Int(1),
+                                Der.Int(32),
+                                Der.Seq(Der.Oid("1.2.840.113549.2.9")))),
+                        Der.Seq(Der.Oid("2.16.840.1.101.3.4.1.42"), Der.Octet(iv)))),
+                Der.Octet(cipher));
+            Write(path, globalSalt, item2);
+        }
+
+        public static void Write3Des(string path, string password)
+        {
+            byte[] globalSalt = Enumerable.Repeat((byte)0x11, 16).ToArray();
+            byte[] entrySalt = Enumerable.Repeat((byte)0x44, 20).ToArray();
+            byte[] hp = PasswordHash(globalSalt, password);
+            byte[] pes = new byte[20];
+            entrySalt.CopyTo(pes, 0);
+#pragma warning disable CA5350
+            byte[] chp = System.Security.Cryptography.SHA1.HashData([.. hp, .. entrySalt]);
+            byte[] k1 = System.Security.Cryptography.HMACSHA1.HashData(
+                (ReadOnlySpan<byte>)chp,
+                (ReadOnlySpan<byte>)[.. pes, .. entrySalt]);
+            byte[] tk = System.Security.Cryptography.HMACSHA1.HashData((ReadOnlySpan<byte>)chp, (ReadOnlySpan<byte>)pes);
+            byte[] k2 = System.Security.Cryptography.HMACSHA1.HashData(
+                (ReadOnlySpan<byte>)chp,
+                (ReadOnlySpan<byte>)[.. tk, .. entrySalt]);
+#pragma warning restore CA5350
+            byte[] material = [.. k1, .. k2];
+            byte[] cipher = Encrypt3Des(material[..24], material[^8..], PasswordCheckPadded(8));
+            byte[] item2 = Der.Seq(
+                Der.Seq(Der.Oid("1.2.840.113549.3.7"), Der.Seq(Der.Octet(entrySalt))),
+                Der.Octet(cipher));
+            Write(path, globalSalt, item2);
+        }
+
+        private static byte[] PasswordHash(byte[] globalSalt, string password)
+        {
+            byte[] secret = string.IsNullOrEmpty(password)
+                ? globalSalt
+                : [.. globalSalt, .. System.Text.Encoding.UTF8.GetBytes(password)];
+#pragma warning disable CA5350
+            return System.Security.Cryptography.SHA1.HashData(secret);
+#pragma warning restore CA5350
+        }
+
+        private static byte[] PasswordCheckPadded(int blockSize)
+        {
+            byte[] plain = "password-check\0"u8.ToArray();
+            int pad = blockSize - (plain.Length % blockSize);
+            byte[] padded = new byte[plain.Length + pad];
+            plain.CopyTo(padded, 0);
+            Array.Fill(padded, (byte)pad, plain.Length, pad);
+            return padded;
+        }
+
+        private static byte[] EncryptAes(byte[] key, byte[] iv, byte[] padded)
+        {
+            using System.Security.Cryptography.Aes aes = System.Security.Cryptography.Aes.Create();
+            aes.Mode = System.Security.Cryptography.CipherMode.CBC;
+            aes.Padding = System.Security.Cryptography.PaddingMode.None;
+            aes.Key = key;
+            aes.IV = iv;
+            using System.Security.Cryptography.ICryptoTransform transform = aes.CreateEncryptor();
+            return transform.TransformFinalBlock(padded, 0, padded.Length);
+        }
+
+        private static byte[] Encrypt3Des(byte[] key, byte[] iv, byte[] padded)
+        {
+#pragma warning disable SYSLIB0021
+            using System.Security.Cryptography.TripleDES des = System.Security.Cryptography.TripleDES.Create();
+#pragma warning restore SYSLIB0021
+            des.Mode = System.Security.Cryptography.CipherMode.CBC;
+            des.Padding = System.Security.Cryptography.PaddingMode.None;
+            des.Key = key;
+            des.IV = iv;
+            using System.Security.Cryptography.ICryptoTransform transform = des.CreateEncryptor();
+            return transform.TransformFinalBlock(padded, 0, padded.Length);
+        }
+
+        private static void Write(string path, byte[] globalSalt, byte[] item2)
+        {
+            string? directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            using SqliteConnection connection = new(
+                new SqliteConnectionStringBuilder { DataSource = path }.ConnectionString);
+            connection.Open();
+            using SqliteCommand create = connection.CreateCommand();
+            create.CommandText = "CREATE TABLE metaData (id PRIMARY KEY UNIQUE ON CONFLICT REPLACE, item1, item2);";
+            create.ExecuteNonQuery();
+            using SqliteCommand insert = connection.CreateCommand();
+            insert.CommandText = "INSERT INTO metaData (id, item1, item2) VALUES ('password', $s, $i);";
+            insert.Parameters.AddWithValue("$s", globalSalt);
+            insert.Parameters.AddWithValue("$i", item2);
+            insert.ExecuteNonQuery();
+        }
+
+        private static class Der
+        {
+            public static byte[] Seq(params byte[][] parts)
+            {
+                return Tlv(0x30, parts.SelectMany(static part => part).ToArray());
+            }
+
+            public static byte[] Octet(byte[] value) => Tlv(0x04, value);
+
+            public static byte[] Int(int value)
+            {
+                byte[] raw = BitConverter.GetBytes(value);
+                if (BitConverter.IsLittleEndian)
+                {
+                    Array.Reverse(raw);
+                }
+
+                int start = 0;
+                while (start < raw.Length - 1 && raw[start] == 0)
+                {
+                    start++;
+                }
+
+                return raw[start] >= 0x80
+                    ? Tlv(0x02, [0, .. raw[start..]])
+                    : Tlv(0x02, raw[start..]);
+            }
+
+            public static byte[] Oid(string oid)
+            {
+                int[] numbers = oid.Split('.').Select(int.Parse).ToArray();
+                List<byte> body = [(byte)(40 * numbers[0] + numbers[1])];
+                for (int i = 2; i < numbers.Length; i++)
+                {
+                    int value = numbers[i];
+                    Stack<byte> encoded = new();
+                    encoded.Push((byte)(value & 0x7F));
+                    value >>= 7;
+                    while (value > 0)
+                    {
+                        encoded.Push((byte)(0x80 | (value & 0x7F)));
+                        value >>= 7;
+                    }
+
+                    while (encoded.Count > 0)
+                    {
+                        body.Add(encoded.Pop());
+                    }
+                }
+
+                return Tlv(0x06, [.. body]);
+            }
+
+            private static byte[] Tlv(byte tag, byte[] body)
+            {
+                byte[] length = body.Length < 128
+                    ? [(byte)body.Length]
+                    : body.Length < 256
+                        ? [0x81, (byte)body.Length]
+                        : [0x82, (byte)(body.Length >> 8), (byte)body.Length];
+                return [tag, .. length, .. body];
+            }
+        }
     }
 
     private sealed class RecipeContext : IAsyncDisposable
