@@ -677,6 +677,34 @@ public sealed class SessionDb : IAsyncDisposable
             GetKv(sessionId, VerifyAcknowledgement.KvKey(reportId)));
     }
 
+    public DateTimeOffset? LastVerifyRecordedAtUtc(string sessionId)
+    {
+        string? reportId = LastVerifyReportId(sessionId);
+        if (reportId is null)
+        {
+            return null;
+        }
+
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT recorded_at_utc
+            FROM verify_results
+            WHERE report_id = $reportId
+            ORDER BY recorded_at_utc DESC, id DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$reportId", reportId);
+        if (command.ExecuteScalar() is not string text ||
+            !DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTimeOffset at))
+        {
+            return null;
+        }
+
+        return at;
+    }
+
     public IReadOnlyList<string> LastVerifyFailureDetails(string sessionId)
     {
         string? reportId = LastVerifyReportId(sessionId);

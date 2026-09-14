@@ -74,3 +74,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Space expands or collapses the focused tree folder; Ctrl+F focuses Search. Inspect shows oldest/newest modification and the matching classification Why.
 - Folder-scoped tree queries (Largest/Recent/Search under a node, Inspect mtime range) match descendants: the LIKE prefix now treats `\` as a literal before the `%` wildcard.
 - Purge tokens are minted only after `SessionDb` shows a settled journal and verify store for that session; caller-supplied verify/journal flags cannot authorize those gates.
+- Purge step lists verified job count, remaining Undecided items, estimated free space after delete, and the session folder (UX 7).

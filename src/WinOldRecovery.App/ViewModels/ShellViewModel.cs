@@ -95,6 +95,7 @@ public sealed class ShellViewModel : ObservableObject
     private string diskFullText = string.Empty;
     private Dictionary<string, string> destinationByRelPath = new(StringComparer.OrdinalIgnoreCase);
     private string previewSummary = string.Empty;
+    private string purgeSummary = string.Empty;
     private string restoreProgress = string.Empty;
     private SubfolderPolicy subfolderPolicy = SubfolderPolicy.RecoveredFolder;
     private CancellationTokenSource? restoreCancellation;
@@ -348,6 +349,10 @@ public sealed class ShellViewModel : ObservableObject
 
             SetProperty(ref currentStep, value);
             OnPropertyChanged(nameof(WindowTitle));
+            if (value == WorkflowStep.Purge)
+            {
+                RefreshPurgeSummary();
+            }
         }
     }
 
@@ -497,6 +502,12 @@ public sealed class ShellViewModel : ObservableObject
     {
         get => previewSummary;
         private set => SetProperty(ref previewSummary, value);
+    }
+
+    public string PurgeSummaryText
+    {
+        get => purgeSummary;
+        private set => SetProperty(ref purgeSummary, value);
     }
 
     public string RestoreProgress
@@ -1531,6 +1542,7 @@ public sealed class ShellViewModel : ObservableObject
         destinationByRelPath.Clear();
         DiskFullVisible = false;
         PreviewSummaryText = string.Empty;
+        PurgeSummaryText = string.Empty;
         RestoreProgress = string.Empty;
         ApplyRestoreSkips(null);
         runningApps = [];
@@ -2570,6 +2582,41 @@ public sealed class ShellViewModel : ObservableObject
         RestoreWarningsExpanded = false;
         RestoreWarningSummary = RestoreSkipFormat.Summary(counts);
         OnPropertyChanged(nameof(RestoreWarningDetail));
+    }
+
+    private void RefreshPurgeSummary()
+    {
+        if (SourceRoot is null)
+        {
+            PurgeSummaryText = string.Empty;
+            return;
+        }
+
+        int jobs = sessionDb.ListPlanItems(workspace.SessionId).Count;
+        bool settled = sessionDb.LastVerifyJobsSettled(workspace.SessionId) || jobs == 0;
+        long sourceBytes = 0;
+        foreach (TreeNodeRow row in nodeBrowser.GetChildren(null).Rows)
+        {
+            sourceBytes += row.AggSize;
+        }
+
+        long free = 0;
+        try
+        {
+            free = new Win32FreeSpaceProvider().GetFreeBytes(SourceRoot);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+        }
+
+        PurgeSummaryText = PurgeSummary.Format(
+            jobs,
+            settled,
+            sessionDb.LastVerifyRecordedAtUtc(workspace.SessionId),
+            sessionDb.GetPreviewInventory(workspace.SessionId),
+            sourceBytes,
+            free,
+            workspace.RootPath);
     }
 
     private void CreateSupportBundle()

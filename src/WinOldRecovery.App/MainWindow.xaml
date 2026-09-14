@@ -464,9 +464,15 @@
                                 </Style.Triggers>
                             </Style>
                         </StackPanel.Style>
-                        <TextBlock TextWrapping="Wrap" Text="Purge deletes Windows.old after a successful verify. Type the folder name. Leave Behind never deletes; only this step does." />
+                        <TextBlock TextWrapping="Wrap"
+                                   Text="{Binding PurgeSummaryText}"
+                                   AutomationProperties.Name="Purge checklist" />
+                        <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="Purge deletes Windows.old after a successful verify. Type the folder name. Leave Behind never deletes; only this step does." />
                         <CheckBox Margin="0,8,0,0" Content="I have checked my restored files" IsChecked="{Binding FilesChecked}" />
                         <CheckBox Content="I acknowledge remaining Undecided items" IsChecked="{Binding UndecidedAcknowledged}" />
+                        <Button Margin="0,4,0,0" Content="Review undecided" Command="{Binding ReviewUndecidedCommand}"
+                                HorizontalAlignment="Left"
+                                AutomationProperties.Name="Review undecided items before purge" />
                         <CheckBox Content="This is a custom source root (not named Windows.old)" IsChecked="{Binding CustomRootConfirmed}" />
                         <CheckBox Content="Prefer Windows Disk Cleanup (Previous Installations)" IsChecked="{Binding PreferCleanupHandler}" />
                         <TextBox Margin="0,8,0,0" Text="{Binding PurgeTypedFolderName, UpdateSourceTrigger=PropertyChanged}"

@@ -294,6 +294,29 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task PurgeStep_ShowsUndecidedWarningAndSessionFolder()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "Desktop", "notes.txt"),
+            "keep");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        context.ViewModel.UnlockPurgeForTests();
+        context.ViewModel.CurrentStep = WorkflowStep.Purge;
+
+        Assert.Contains("Undecided", context.ViewModel.PurgeSummaryText, StringComparison.Ordinal);
+        Assert.Contains("deleted with Windows.old", context.ViewModel.PurgeSummaryText, StringComparison.Ordinal);
+        Assert.Contains("Free space after purge", context.ViewModel.PurgeSummaryText, StringComparison.Ordinal);
+        Assert.Contains(context.WorkspaceRoot, context.ViewModel.PurgeSummaryText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task PurgedSession_BecomesReadOnlyAndBlocksScan()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();
