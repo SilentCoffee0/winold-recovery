@@ -318,6 +318,9 @@
                         <Button Content="Cancel restore" Command="{Binding CancelRestoreCommand}" Margin="0,0,8,0"
                                 AutomationProperties.Name="Cancel restore"
                                 AutomationProperties.AutomationId="CancelRestoreButton" />
+                        <Button Content="Pause restore" Command="{Binding PauseRestoreCommand}" Margin="0,0,8,0"
+                                AutomationProperties.Name="Pause restore"
+                                AutomationProperties.AutomationId="PauseRestoreButton" />
                         <Button Content="Verify" Command="{Binding ExecuteVerifyCommand}" Margin="0,0,8,0"
                                 AutomationProperties.Name="Run verify" />
                         <Button Content="Expand" Command="{Binding ExpandCommand}" CommandParameter="{Binding SelectedNode}"
@@ -387,6 +390,14 @@
                         <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
                                    Text="{Binding RestoreProgress}"
                                    AutomationProperties.Name="Restore progress" />
+                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Content="Pause — keeps what is already copied"
+                                    Command="{Binding PauseRestoreCommand}" Margin="0,0,8,0"
+                                    AutomationProperties.Name="Pause restore" />
+                            <Button Content="Cancel — keeps what is already copied"
+                                    Command="{Binding CancelRestoreCommand}"
+                                    AutomationProperties.Name="Cancel restore" />
+                        </StackPanel>
                         <ListBox MaxHeight="140" ItemsSource="{Binding RestoreJobs}"
                                  DisplayMemberPath="Display"
                                  AutomationProperties.Name="Restore jobs"
@@ -420,6 +431,10 @@
                                     Command="{Binding AcknowledgeVerifyCommand}"
                                     AutomationProperties.Name="Acknowledge verify failures"
                                     AutomationProperties.AutomationId="AcknowledgeVerifyButton" />
+                            <Button Margin="8,0,0,0" Content="Go to Purge"
+                                    Command="{Binding GoToPurgeCommand}"
+                                    AutomationProperties.Name="Go to purge"
+                                    AutomationProperties.AutomationId="GoToPurgeButton" />
                         </StackPanel>
                     </DockPanel>
                     <StackPanel Grid.Row="6" Margin="0,8,0,0">

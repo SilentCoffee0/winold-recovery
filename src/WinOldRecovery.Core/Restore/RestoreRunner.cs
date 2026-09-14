@@ -22,7 +22,8 @@ public sealed class RestoreRunner
     public async Task<RestoreResult> RunAsync(
         RestorePlan plan,
         CancellationToken cancellationToken = default,
-        IProgress<RestoreProgress>? progress = null)
+        IProgress<RestoreProgress>? progress = null,
+        CancellationToken pauseToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
         RestorePlan toCheck = sessionDb is null ? plan : PlanProgress.Pending(sessionDb, plan);
@@ -48,16 +49,21 @@ public sealed class RestoreRunner
                     Path.GetFileName(item.SourcePath)));
             try
             {
-                RestoreItemResult result = await copyEngine.CopyAsync(item, cancellationToken).ConfigureAwait(false);
+                RestoreItemResult result = await copyEngine.CopyAsync(item, cancellationToken, pauseToken)
+                    .ConfigureAwait(false);
                 results.Add(result);
                 if (result.State is "Completed" or "Skipped")
                 {
                     completedBytes += item.Bytes;
                 }
             }
-            catch (RestorePausedException)
+            catch (RestorePausedException paused)
             {
-                return new RestoreResult(false, true, results);
+                return new RestoreResult(
+                    false,
+                    paused.IsDiskFull,
+                    results,
+                    paused.IsUserPause);
             }
 
             index++;

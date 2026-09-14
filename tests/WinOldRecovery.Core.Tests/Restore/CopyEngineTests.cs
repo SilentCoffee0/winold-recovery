@@ -127,9 +127,112 @@ public sealed class CopyEngineTests
             .RunAsync(new RestorePlan(context.SessionId, context.Source, context.Destination, [item], 1));
 
         Assert.True(result.PausedDiskFull);
+        Assert.False(result.PausedByUser);
         Assert.False(result.Completed);
         Assert.Equal("keep", await File.ReadAllTextAsync(destFile));
         Assert.False(Directory.EnumerateFiles(context.Destination, "*" + CopyEngine.PartialSuffix).Any());
+    }
+
+    [Fact]
+    public async Task UserPause_StopsBeforeLaterPlanItems_AndResumeCopiesTheRest()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string firstSource = Path.Combine(context.Source, "one.txt");
+        string secondSource = Path.Combine(context.Source, "two.txt");
+        await File.WriteAllTextAsync(firstSource, "first");
+        await File.WriteAllTextAsync(secondSource, "second");
+        string firstDest = Path.Combine(context.Destination, "one.txt");
+        string secondDest = Path.Combine(context.Destination, "two.txt");
+        IReadOnlyList<PlanItem> stored = await context.Database.ReplacePlanItemsAsync(
+            context.SessionId,
+            [
+                new PlanItem(
+                    context.SessionId,
+                    1,
+                    PlanOperation.CopyFile,
+                    firstSource,
+                    firstDest,
+                    5,
+                    ConflictPolicy.KeepBoth,
+                    OverwriteApproved: false,
+                    RecipeId: null),
+                new PlanItem(
+                    context.SessionId,
+                    2,
+                    PlanOperation.CopyFile,
+                    secondSource,
+                    secondDest,
+                    6,
+                    ConflictPolicy.KeepBoth,
+                    OverwriteApproved: false,
+                    RecipeId: null),
+            ]);
+        RestorePlan plan = new(context.SessionId, context.Source, context.Destination, stored, 11);
+        using CancellationTokenSource pause = new();
+        Progress<RestoreProgress> progress = new(report =>
+        {
+            if (report.CompletedItems >= 1)
+            {
+                pause.Cancel();
+            }
+        });
+        RestoreRunner runner = new(new CopyEngine(context.Database, context.SafeFs), context.Database);
+
+        RestoreResult paused = await runner.RunAsync(
+            plan,
+            CancellationToken.None,
+            progress,
+            pause.Token);
+
+        Assert.True(paused.PausedByUser);
+        Assert.False(paused.PausedDiskFull);
+        Assert.False(paused.Completed);
+        Assert.Equal("first", await File.ReadAllTextAsync(firstDest));
+        Assert.False(File.Exists(secondDest));
+        Assert.Equal("Completed", context.Database.GetLatestJournalState(stored[0].Id!.Value));
+        Assert.Equal("Paused", context.Database.GetLatestJournalState(stored[1].Id!.Value));
+        Assert.Equal("first", await File.ReadAllTextAsync(firstSource));
+
+        RestoreResult resumed = await runner.RunAsync(plan);
+
+        Assert.True(resumed.Completed);
+        Assert.Equal("second", await File.ReadAllTextAsync(secondDest));
+        Assert.False(Directory.EnumerateFiles(context.Destination, "*" + CopyEngine.PartialSuffix).Any());
+        Assert.DoesNotContain(
+            Directory.EnumerateFiles(context.Destination),
+            path => path.Contains("from Windows.old", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Resume_CopyTree_AfterPaused_DoesNotKeepBothAlreadyCopiedFiles()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string tree = Path.Combine(context.Source, "docs");
+        Directory.CreateDirectory(tree);
+        string firstSource = Path.Combine(tree, "a.txt");
+        string secondSource = Path.Combine(tree, "b.txt");
+        await File.WriteAllTextAsync(firstSource, "alpha");
+        await File.WriteAllTextAsync(secondSource, "beta");
+        DateTime stamp = new(2024, 5, 6, 7, 8, 9, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(firstSource, stamp);
+        string destTree = Path.Combine(context.Destination, "docs");
+        Directory.CreateDirectory(destTree);
+        string firstDest = Path.Combine(destTree, "a.txt");
+        await File.WriteAllTextAsync(firstDest, "alpha");
+        File.SetLastWriteTimeUtc(firstDest, stamp);
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyTree,
+            tree,
+            destTree,
+            ConflictPolicy.KeepBoth);
+        await context.Database.AppendJournalAsync(item.Id!.Value, "Paused", RestorePausedException.UserReason);
+
+        RestoreItemResult result = await new CopyEngine(context.Database, context.SafeFs).CopyAsync(item);
+
+        Assert.Equal("Completed", result.State);
+        Assert.Equal("alpha", await File.ReadAllTextAsync(firstDest));
+        Assert.Equal("beta", await File.ReadAllTextAsync(Path.Combine(destTree, "b.txt")));
+        Assert.False(File.Exists(Path.Combine(destTree, "a (from Windows.old).txt")));
     }
 
     [Fact]

@@ -110,6 +110,29 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task PauseRestore_IsArmedOnlyWhileARestoreIsRunning()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        Assert.False(context.ViewModel.PauseRestoreCommand.CanExecute(null));
+        context.ViewModel.ArmRestorePauseForTests();
+        Assert.True(context.ViewModel.PauseRestoreCommand.CanExecute(null));
+        context.ViewModel.PauseRestoreCommand.Execute(null);
+        Assert.False(context.ViewModel.PauseRestoreCommand.CanExecute(null));
+        context.ViewModel.SetRestoringForTests(false);
+    }
+
+    [Fact]
+    public async Task GoToPurge_OpensPurgeAfterVerify()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        Assert.False(context.ViewModel.GoToPurgeCommand.CanExecute(null));
+        context.ViewModel.UnlockPurgeForTests();
+        Assert.True(context.ViewModel.GoToPurgeCommand.CanExecute(null));
+        context.ViewModel.GoToPurgeCommand.Execute(null);
+        Assert.Equal(WorkflowStep.Purge, context.ViewModel.CurrentStep);
+    }
+
+    [Fact]
     public async Task PlannedDestination_FollowsAFolderOverrideOntoChildren()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();

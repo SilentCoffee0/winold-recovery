@@ -113,6 +113,15 @@ This document does **not** authorize tagging `v0.1.0` or `v0.1.0-m0`.
 - `CopyEngineTests.SageFlagName_PadsToFourDigits`
 - `PurgeAuthorizationTests` omitted journal/verify-store defaults fail closed
 - Preview summary tests from the in-flight M7 tenth slice (still present)
+- `CopyEngineTests.UserPause_StopsBeforeLaterPlanItems_AndResumeCopiesTheRest`
+- `CopyEngineTests.Resume_CopyTree_AfterPaused_DoesNotKeepBothAlreadyCopiedFiles`
+
+### P1 — resume after `Paused` treated the tree as a first run
+
+- **Location:** `CopyEngine.CopyAsync` set `resume` only when the latest journal was `Started`.
+- **Reproduction:** Disk-full or user Pause journals `Paused`. Resume copied already-written tree files as Keep Both.
+- **Fix:** Treat `Started` and `Paused` as resume; delete leftover `.winold-partial` for both.
+- **Test:** `Resume_CopyTree_AfterPaused_DoesNotKeepBothAlreadyCopiedFiles`.
 
 Deliberate breakage: restoring `Directory.EnumerateFiles(..., SearchOption.AllDirectories)` in
 `DeletePartial` makes `DeletePartial_DoesNotFollowDestinationJunctions` fail (trap file under a

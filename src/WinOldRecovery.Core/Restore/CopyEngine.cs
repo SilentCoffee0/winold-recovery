@@ -7,6 +7,9 @@ namespace WinOldRecovery.Core.Restore;
 
 public sealed class RestorePausedException : Exception
 {
+    public const string DiskFullReason = "DiskFull";
+    public const string UserReason = "User";
+
     public RestorePausedException(string reason)
         : base(reason)
     {
@@ -14,6 +17,12 @@ public sealed class RestorePausedException : Exception
     }
 
     public string Reason { get; }
+
+    public bool IsDiskFull =>
+        string.Equals(Reason, DiskFullReason, StringComparison.Ordinal);
+
+    public bool IsUserPause =>
+        string.Equals(Reason, UserReason, StringComparison.Ordinal);
 }
 
 public sealed record RestoreItemResult(long PlanItemId, string State, string? DestinationPath);
@@ -21,7 +30,8 @@ public sealed record RestoreItemResult(long PlanItemId, string State, string? De
 public sealed record RestoreResult(
     bool Completed,
     bool PausedDiskFull,
-    IReadOnlyList<RestoreItemResult> Items);
+    IReadOnlyList<RestoreItemResult> Items,
+    bool PausedByUser = false);
 
 public sealed class CopyEngine
 {
@@ -39,7 +49,8 @@ public sealed class CopyEngine
 
     public async Task<RestoreItemResult> CopyAsync(
         PlanItem item,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        CancellationToken pauseToken = default)
     {
         ArgumentNullException.ThrowIfNull(item);
         if (item.Id is not long planItemId)
@@ -53,7 +64,18 @@ public sealed class CopyEngine
             return new RestoreItemResult(planItemId, latest, item.DestinationPath);
         }
 
-        if (latest == "Started")
+        if (pauseToken.IsCancellationRequested)
+        {
+            await sessionDb.AppendJournalAsync(
+                    planItemId,
+                    "Paused",
+                    RestorePausedException.UserReason,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            throw new RestorePausedException(RestorePausedException.UserReason);
+        }
+
+        if (latest is "Started" or "Paused")
         {
             DeletePartial(item.DestinationPath);
         }
@@ -63,23 +85,23 @@ public sealed class CopyEngine
 
         try
         {
-            bool resume = latest == "Started";
+            bool resume = latest is "Started" or "Paused";
             if (item.Operation == PlanOperation.CopyTree)
             {
-                CopyTree(item, resume, cancellationToken);
+                CopyTree(item, resume, cancellationToken, pauseToken);
             }
             else
             {
-                CopyOneFile(item.SourcePath, item.DestinationPath, item, resume, cancellationToken);
+                CopyOneFile(item.SourcePath, item.DestinationPath, item, resume, cancellationToken, pauseToken);
             }
 
             await sessionDb.AppendJournalAsync(planItemId, "Completed", cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
             return new RestoreItemResult(planItemId, "Completed", item.DestinationPath);
         }
-        catch (RestorePausedException)
+        catch (RestorePausedException paused)
         {
-            await sessionDb.AppendJournalAsync(planItemId, "Paused", "DiskFull", cancellationToken)
+            await sessionDb.AppendJournalAsync(planItemId, "Paused", paused.Reason, cancellationToken)
                 .ConfigureAwait(false);
             throw;
         }
@@ -87,9 +109,13 @@ public sealed class CopyEngine
         {
             if (IsDiskFull(exception))
             {
-                await sessionDb.AppendJournalAsync(planItemId, "Paused", "DiskFull", cancellationToken)
+                await sessionDb.AppendJournalAsync(
+                        planItemId,
+                        "Paused",
+                        RestorePausedException.DiskFullReason,
+                        cancellationToken)
                     .ConfigureAwait(false);
-                throw new RestorePausedException("DiskFull");
+                throw new RestorePausedException(RestorePausedException.DiskFullReason);
             }
 
             await sessionDb.AppendJournalAsync(
@@ -177,14 +203,19 @@ public sealed class CopyEngine
         return null;
     }
 
-    private void CopyTree(PlanItem item, bool resume, CancellationToken cancellationToken)
+    private void CopyTree(
+        PlanItem item,
+        bool resume,
+        CancellationToken cancellationToken,
+        CancellationToken pauseToken)
     {
         foreach (string sourceFile in EnumerateSourceFiles(item.SourcePath))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            ThrowIfUserPaused(pauseToken);
             string relative = Path.GetRelativePath(item.SourcePath, sourceFile);
             string destinationFile = Path.Combine(item.DestinationPath, relative);
-            CopyOneFile(sourceFile, destinationFile, item, resume, cancellationToken);
+            CopyOneFile(sourceFile, destinationFile, item, resume, cancellationToken, pauseToken);
         }
     }
 
@@ -193,7 +224,8 @@ public sealed class CopyEngine
         string destinationPath,
         PlanItem item,
         bool resume,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        CancellationToken pauseToken)
     {
         FileAttributes attributes = File.GetAttributes(sourcePath);
         if (IsUnrestorable(attributes))
@@ -253,6 +285,7 @@ public sealed class CopyEngine
                 while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    ThrowIfUserPaused(pauseToken);
                     destination.Write(buffer, 0, read);
                 }
             }
@@ -274,7 +307,7 @@ public sealed class CopyEngine
                 }
             }
 
-            throw new RestorePausedException("DiskFull");
+            throw new RestorePausedException(RestorePausedException.DiskFullReason);
         }
     }
 
@@ -382,13 +415,21 @@ public sealed class CopyEngine
         return (attributes & (FileAttributes.ReparsePoint | FileAttributes.Offline | FileAttributes.Encrypted)) != 0;
     }
 
+    private static void ThrowIfUserPaused(CancellationToken pauseToken)
+    {
+        if (pauseToken.IsCancellationRequested)
+        {
+            throw new RestorePausedException(RestorePausedException.UserReason);
+        }
+    }
+
     private static bool IsDiskFull(Exception exception)
     {
         const int errorDiskFull = 112;
         const int errorHandleDiskFull = 39;
         if (exception is RestorePausedException)
         {
-            return true;
+            return false;
         }
 
         if (exception is Win32Exception win32 &&

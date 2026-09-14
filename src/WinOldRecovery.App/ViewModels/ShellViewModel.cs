@@ -97,6 +97,7 @@ public sealed class ShellViewModel : ObservableObject
     private string restoreProgress = string.Empty;
     private SubfolderPolicy subfolderPolicy = SubfolderPolicy.RecoveredFolder;
     private CancellationTokenSource? restoreCancellation;
+    private CancellationTokenSource? restorePause;
     private IReadOnlyList<string> runningApps = [];
     private HelpTopic? selectedHelpTopic;
     private string helpText = string.Empty;
@@ -226,6 +227,12 @@ public sealed class ShellViewModel : ObservableObject
             () => CanWriteSession && lastPlan is not null && diskFullVisible && !isRestoring);
         CancelDiskFullCommand = new RelayCommand(CancelDiskFull);
         CancelRestoreCommand = new RelayCommand(CancelRestore, () => isRestoring);
+        PauseRestoreCommand = new RelayCommand(
+            PauseRestore,
+            () => isRestoring && restorePause is { IsCancellationRequested: false });
+        GoToPurgeCommand = new RelayCommand(
+            () => CurrentStep = WorkflowStep.Purge,
+            () => CanGoTo(WorkflowStep.Purge));
         ReviewUndecidedCommand = new RelayCommand(ReviewUndecided, () => scanCompleted);
         destinationByRelPath = DestinationMap.Parse(sessionDb.GetKv(workspace.SessionId, DestinationMap.KvKey));
         ApplySessionLockFromStore();
@@ -268,6 +275,8 @@ public sealed class ShellViewModel : ObservableObject
     public IAsyncRelayCommand ResumeDiskFullCommand { get; }
     public IRelayCommand CancelDiskFullCommand { get; }
     public IRelayCommand CancelRestoreCommand { get; }
+    public IRelayCommand PauseRestoreCommand { get; }
+    public IRelayCommand GoToPurgeCommand { get; }
     public IRelayCommand ReviewUndecidedCommand { get; }
     public IAsyncRelayCommand AcknowledgeVerifyCommand { get; }
 
@@ -1185,6 +1194,12 @@ public sealed class ShellViewModel : ObservableObject
         restoreCancellation?.Cancel();
     }
 
+    private void PauseRestore()
+    {
+        restorePause?.Cancel();
+        PauseRestoreCommand.NotifyCanExecuteChanged();
+    }
+
     private void ReviewUndecided()
     {
         CurrentStep = WorkflowStep.Decide;
@@ -1909,11 +1924,19 @@ public sealed class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(CanWriteSession));
         NotifyWriteCommands();
         CancelRestoreCommand.NotifyCanExecuteChanged();
+        PauseRestoreCommand.NotifyCanExecuteChanged();
+        GoToPurgeCommand.NotifyCanExecuteChanged();
     }
 
     internal void SetRestoringForTests(bool restoring)
     {
         SetRestoring(restoring);
+    }
+
+    internal void ArmRestorePauseForTests()
+    {
+        restorePause = new CancellationTokenSource();
+        SetRestoring(true);
     }
 
     internal void UnlockPurgeForTests()
@@ -2085,6 +2108,8 @@ public sealed class ShellViewModel : ObservableObject
         {
         SetRestoring(true);
         restoreCancellation = new CancellationTokenSource();
+        restorePause = new CancellationTokenSource();
+        PauseRestoreCommand.NotifyCanExecuteChanged();
         RebuildRestoreJobs(lastPlan);
         Progress<RestoreProgress> progress = new(report =>
         {
@@ -2101,7 +2126,11 @@ public sealed class ShellViewModel : ObservableObject
             RefreshRestoreJobStatuses(report.CompletedItems, report.CurrentName);
         });
         RestoreRunner runner = new(new CopyEngine(sessionDb, safeFs), sessionDb);
-        RestoreResult result = await runner.RunAsync(lastPlan, restoreCancellation.Token, progress)
+        RestoreResult result = await runner.RunAsync(
+                lastPlan,
+                restoreCancellation.Token,
+                progress,
+                restorePause.Token)
             .ConfigureAwait(true);
         if (result.Completed && recipeHost is not null)
         {
@@ -2139,6 +2168,15 @@ public sealed class ShellViewModel : ObservableObject
             ScanStatus = DiskFullText + " Nothing was deleted to make room. A redacted log is at " +
                 workspace.LogPath + ".";
         }
+        else if (result.PausedByUser)
+        {
+            DiskFullVisible = false;
+            InterruptedRestoreText =
+                "Restore paused. Already copied files were kept. Windows.old was not changed. Resume?";
+            InterruptedRestoreVisible = true;
+            ResumeInterruptedCommand.NotifyCanExecuteChanged();
+            ScanStatus = InterruptedRestoreText + " A redacted log is at " + workspace.LogPath + ".";
+        }
         else
         {
             DiskFullVisible = false;
@@ -2164,6 +2202,8 @@ public sealed class ShellViewModel : ObservableObject
         {
             restoreCancellation?.Dispose();
             restoreCancellation = null;
+            restorePause?.Dispose();
+            restorePause = null;
             SetRestoring(false);
         }
     }
@@ -2329,6 +2369,7 @@ public sealed class ShellViewModel : ObservableObject
         ResumeInterruptedCommand.NotifyCanExecuteChanged();
         ResumeDiskFullCommand.NotifyCanExecuteChanged();
         BrowseDestinationCommand.NotifyCanExecuteChanged();
+        GoToPurgeCommand.NotifyCanExecuteChanged();
     }
 
     private bool CanAcknowledgeVerify()
