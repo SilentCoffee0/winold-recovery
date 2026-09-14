@@ -1,7 +1,10 @@
+using System.Globalization;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Processes;
 
 namespace WinOldRecovery.Core.Scan;
+
+public sealed record CleanupTaskStatus(bool Present, DateTimeOffset? NextRunAt);
 
 public sealed class SourceDiscovery
 {
@@ -28,7 +31,7 @@ public sealed class SourceDiscovery
     public async Task<IReadOnlyList<SourceCandidate>> DiscoverAsync(
         CancellationToken cancellationToken = default)
     {
-        bool cleanupTaskPresent = await IsCleanupTaskPresentAsync(cancellationToken)
+        CleanupTaskStatus cleanupTask = await QueryCleanupTaskAsync(cancellationToken)
             .ConfigureAwait(false);
 
         List<SourceCandidate> candidates = [];
@@ -46,14 +49,14 @@ public sealed class SourceDiscovery
             {
                 if (seen.Add(windowsOld))
                 {
-                    candidates.Add(Inspect(windowsOld, SourceCandidateKind.WindowsOld, cleanupTaskPresent));
+                    candidates.Add(Inspect(windowsOld, SourceCandidateKind.WindowsOld, cleanupTask));
                 }
             }
 
             if (LooksLikeOldSystemVolume(volumeRoot) && seen.Add(volumeRoot))
             {
                 candidates.Add(
-                    Inspect(volumeRoot, SourceCandidateKind.OldSystemVolume, cleanupTaskPresent));
+                    Inspect(volumeRoot, SourceCandidateKind.OldSystemVolume, cleanupTask));
             }
         }
 
@@ -65,17 +68,30 @@ public sealed class SourceDiscovery
 
     public SourceCandidate InspectBrowsedPath(string path, bool cleanupTaskPresent)
     {
+        return InspectBrowsedPath(path, new CleanupTaskStatus(cleanupTaskPresent, null));
+    }
+
+    public SourceCandidate InspectBrowsedPath(string path, CleanupTaskStatus cleanupTask)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentNullException.ThrowIfNull(cleanupTask);
         string normalized = PathCanonicalizer.NormalizeLexically(path);
         if (!Directory.Exists(normalized))
         {
             throw new DirectoryNotFoundException($"The chosen folder does not exist: '{path}'.");
         }
 
-        return Inspect(normalized, SourceCandidateKind.BrowsedFolder, cleanupTaskPresent);
+        return Inspect(normalized, SourceCandidateKind.BrowsedFolder, cleanupTask);
     }
 
     public async Task<bool> IsCleanupTaskPresentAsync(
+        CancellationToken cancellationToken = default)
+    {
+        CleanupTaskStatus status = await QueryCleanupTaskAsync(cancellationToken).ConfigureAwait(false);
+        return status.Present;
+    }
+
+    public async Task<CleanupTaskStatus> QueryCleanupTaskAsync(
         CancellationToken cancellationToken = default)
     {
         ProcessResult result = await processRunner.RunAsync(
@@ -86,7 +102,61 @@ public sealed class SourceDiscovery
                 cancellationToken)
             .ConfigureAwait(false);
 
-        return result.ExitCode == 0;
+        if (result.ExitCode != 0)
+        {
+            return new CleanupTaskStatus(false, null);
+        }
+
+        return new CleanupTaskStatus(true, ParseNextRunTime(result.StandardOutput));
+    }
+
+    public static DateTimeOffset? ParseNextRunTime(string? standardOutput)
+    {
+        if (string.IsNullOrWhiteSpace(standardOutput))
+        {
+            return null;
+        }
+
+        foreach (string raw in standardOutput.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            string line = raw.Trim();
+            int colon = line.IndexOf(':');
+            if (colon < 0)
+            {
+                continue;
+            }
+
+            string name = line[..colon].Trim();
+            if (!name.Contains("Next Run", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string value = line[(colon + 1)..].Trim();
+            if (value.Length == 0 ||
+                value.Equals("N/A", StringComparison.OrdinalIgnoreCase) ||
+                value.Equals("Disabled", StringComparison.OrdinalIgnoreCase) ||
+                value.Equals("Never", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            if (DateTime.TryParse(
+                    value,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeLocal,
+                    out DateTime parsed) ||
+                DateTime.TryParse(
+                    value,
+                    CultureInfo.CurrentCulture,
+                    DateTimeStyles.AssumeLocal,
+                    out parsed))
+            {
+                return new DateTimeOffset(parsed);
+            }
+        }
+
+        return null;
     }
 
     public static bool HasUsersFolder(string path)
@@ -137,13 +207,14 @@ public sealed class SourceDiscovery
     private SourceCandidate Inspect(
         string path,
         SourceCandidateKind kind,
-        bool cleanupTaskPresent)
+        CleanupTaskStatus cleanupTask)
     {
         string normalized = PathCanonicalizer.NormalizeLexically(path);
         DateTimeOffset createdAt = Directory.GetCreationTime(normalized);
         DateTimeOffset? estimatedDelete = kind == SourceCandidateKind.WindowsOld
             ? createdAt + AutomaticCleanupWindow
             : null;
+        bool taskPresent = cleanupTask.Present && kind == SourceCandidateKind.WindowsOld;
 
         return new SourceCandidate(
             normalized,
@@ -152,6 +223,7 @@ public sealed class SourceDiscovery
             estimatedDelete,
             LooksLikeWindowsInstallation(normalized),
             HasUsersFolder(normalized),
-            cleanupTaskPresent && kind == SourceCandidateKind.WindowsOld);
+            taskPresent,
+            taskPresent ? cleanupTask.NextRunAt : null);
     }
 }

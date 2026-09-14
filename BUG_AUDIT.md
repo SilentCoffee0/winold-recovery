@@ -113,10 +113,6 @@ destination junction is deleted). That mutation was applied, observed red, then 
 
 ## Unresolved risks (not claimed fixed)
 
-- CopyTree still journals `Completed` if source files are Offline/EFS (skipped in
-  `CopyOneFile`) while `EnumerateSourceFiles` still lists them; Verify then fails
-  L0. Safer than fake success, but the UI can say restore finished then verify
-  failed.
 - L2 hashing is skipped for files larger than 64 MB; keep-both matching uses
   size+mtime, not a hash, so identical size/time collisions remain possible.
 - `PurgeToken` is still minted from `PurgeAuthorization` with caller-supplied

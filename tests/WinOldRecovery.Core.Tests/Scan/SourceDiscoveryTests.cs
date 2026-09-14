@@ -35,6 +35,11 @@ public sealed class SourceDiscoveryTests : IDisposable
         Assert.Contains(candidates, candidate => candidate.Path.EndsWith(@"\Windows.old.000", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(candidates, candidate => candidate.Path.EndsWith(@"\Windows.old.link", StringComparison.OrdinalIgnoreCase));
         Assert.All(candidates, candidate => Assert.True(candidate.CleanupTaskPresent));
+        Assert.All(
+            candidates,
+            candidate => Assert.Equal(new DateTime(2026, 9, 22, 3, 0, 0), candidate.CleanupTaskNextRunAt?.DateTime));
+        Assert.Contains("Setup Cleanup task is present", candidates[0].DeletionWarning, StringComparison.Ordinal);
+        Assert.Contains("22 Sep 2026", candidates[0].DeletionWarning, StringComparison.Ordinal);
         Assert.All(candidates, candidate => Assert.NotNull(candidate.EstimatedAutoDeleteAt));
         Assert.Contains("estimated deletion", candidates[0].DisplayLabel, StringComparison.OrdinalIgnoreCase);
     }
@@ -114,6 +119,43 @@ public sealed class SourceDiscoveryTests : IDisposable
         Assert.DoesNotContain("/Delete", request.Arguments, StringComparer.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void ParseNextRunTime_ReadsSchtasksListOutputAndIgnoresNa()
+    {
+        DateTimeOffset? next = SourceDiscovery.ParseNextRunTime(
+            """
+            Folder: \Microsoft\Windows\Setup
+            HostName: DESKTOP
+            TaskName: \Microsoft\Windows\Setup\SetupCleanupTask
+            Next Run Time: 9/22/2026 3:00:00 AM
+            Status: Ready
+            """);
+        Assert.Equal(new DateTime(2026, 9, 22, 3, 0, 0), next?.DateTime);
+        Assert.Null(SourceDiscovery.ParseNextRunTime("Next Run Time: N/A"));
+        Assert.Null(SourceDiscovery.ParseNextRunTime(string.Empty));
+    }
+
+    [Fact]
+    public void DeletionWarning_SaysTaskWasNotFoundWhenAbsent()
+    {
+        string folder = Path.Combine(testRoot, "Windows.old");
+        CreateWindowsOld(folder, createdDaysAgo: 1);
+        SourceDiscovery discovery = CreateDiscovery([], cleanupTaskPresent: false);
+        SourceCandidate candidate = discovery.InspectBrowsedPath(folder, cleanupTaskPresent: false);
+        Assert.Equal(string.Empty, candidate.DeletionWarning);
+
+        SourceCandidate windowsOld = new(
+            folder,
+            SourceCandidateKind.WindowsOld,
+            DateTimeOffset.Now.AddDays(-1),
+            DateTimeOffset.Now.AddDays(9),
+            true,
+            true,
+            false);
+        Assert.Contains("Setup Cleanup task was not found", windowsOld.DeletionWarning, StringComparison.Ordinal);
+        Assert.Contains("Finish recovery before then", windowsOld.DeletionWarning, StringComparison.Ordinal);
+    }
+
     public void Dispose()
     {
         string reparse = Path.Combine(testRoot, "C", "Windows.old.link");
@@ -133,9 +175,16 @@ public sealed class SourceDiscoveryTests : IDisposable
         IReadOnlyList<string> volumes,
         bool cleanupTaskPresent)
     {
+        string stdout = cleanupTaskPresent
+            ? """
+              TaskName: \Microsoft\Windows\Setup\SetupCleanupTask
+              Next Run Time: 9/22/2026 3:00:00 AM
+              Status: Ready
+              """
+            : string.Empty;
         return new SourceDiscovery(
             new StubVolumeRootProvider(volumes),
-            new RecordingProcessRunner(cleanupTaskPresent ? 0 : 1));
+            new RecordingProcessRunner(cleanupTaskPresent ? 0 : 1, stdout));
     }
 
     private static void CreateWindowsOld(string path, int createdDaysAgo)
@@ -175,7 +224,7 @@ public sealed class SourceDiscoveryTests : IDisposable
         public IReadOnlyList<string> GetFixedVolumeRoots() => roots;
     }
 
-    private sealed class RecordingProcessRunner(int exitCode) : IProcessRunner
+    private sealed class RecordingProcessRunner(int exitCode, string stdout = "") : IProcessRunner
     {
         public List<ProcessRequest> Requests { get; } = [];
 
@@ -184,7 +233,7 @@ public sealed class SourceDiscoveryTests : IDisposable
             CancellationToken cancellationToken = default)
         {
             Requests.Add(request);
-            return Task.FromResult(new ProcessResult(exitCode, string.Empty, string.Empty));
+            return Task.FromResult(new ProcessResult(exitCode, stdout, string.Empty));
         }
     }
 }

@@ -151,7 +151,7 @@ public sealed class ShellViewModel : ObservableObject
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => !IsScanning && !isRestoring && SelectedSourcePath is not null);
         CancelScanCommand = new RelayCommand(AbortScan, () => IsScanning);
         PauseScanCommand = new RelayCommand(PauseScan, () => IsScanning);
-        BrowseSourceCommand = new RelayCommand(BrowseSource);
+        BrowseSourceCommand = new AsyncRelayCommand(BrowseSourceAsync);
         RestoreCommand = new AsyncRelayCommand(() => ApplyDecisionAsync(Decision.Restore), CanMutateSelection);
         LeaveBehindCommand = new AsyncRelayCommand(() => ApplyDecisionAsync(Decision.LeaveBehind), CanMutateSelection);
         UndecidedCommand = new AsyncRelayCommand(ClearDecisionAsync, CanMutateSelection);
@@ -218,7 +218,7 @@ public sealed class ShellViewModel : ObservableObject
     public IAsyncRelayCommand ScanCommand { get; }
     public IRelayCommand CancelScanCommand { get; }
     public IRelayCommand PauseScanCommand { get; }
-    public IRelayCommand BrowseSourceCommand { get; }
+    public IAsyncRelayCommand BrowseSourceCommand { get; }
     public IAsyncRelayCommand RestoreCommand { get; }
     public IAsyncRelayCommand LeaveBehindCommand { get; }
     public IAsyncRelayCommand UndecidedCommand { get; }
@@ -1287,7 +1287,7 @@ public sealed class ShellViewModel : ObservableObject
         }
     }
 
-    private void BrowseSource()
+    private async Task BrowseSourceAsync()
     {
         string? path = folderPicker.PickFolder();
         if (string.IsNullOrWhiteSpace(path))
@@ -1297,7 +1297,9 @@ public sealed class ShellViewModel : ObservableObject
 
         try
         {
-            SourceCandidate candidate = sourceDiscovery.InspectBrowsedPath(path, cleanupTaskPresent: true);
+            CleanupTaskStatus cleanupTask = await sourceDiscovery.QueryCleanupTaskAsync()
+                .ConfigureAwait(true);
+            SourceCandidate candidate = sourceDiscovery.InspectBrowsedPath(path, cleanupTask);
             if (!Sources.Any(existing => existing.Path.Equals(candidate.Path, StringComparison.OrdinalIgnoreCase)))
             {
                 Sources.Add(candidate);
@@ -1324,12 +1326,7 @@ public sealed class ShellViewModel : ObservableObject
         string users = selected.HasUsersFolder
             ? string.Empty
             : "This folder does not contain Users. Scan can continue, but it may not be a Windows installation. ";
-        string deletion = selected.EstimatedAutoDeleteAt is DateTimeOffset estimated
-            ? "Windows automatically deletes Windows.old about 10 days after setup. Estimated deletion: " +
-              estimated.ToString("d MMM yyyy", CultureInfo.InvariantCulture) +
-              ". Finish recovery before then."
-            : string.Empty;
-        SourceHint = users + deletion;
+        SourceHint = users + selected.DeletionWarning;
     }
 
     private void PauseScan()

@@ -196,7 +196,7 @@ public sealed class CopyEngine
         CancellationToken cancellationToken)
     {
         FileAttributes attributes = File.GetAttributes(sourcePath);
-        if ((attributes & (FileAttributes.ReparsePoint | FileAttributes.Offline | FileAttributes.Encrypted)) != 0)
+        if (IsUnrestorable(attributes))
         {
             return;
         }
@@ -295,7 +295,7 @@ public sealed class CopyEngine
             foreach (string entry in Directory.EnumerateFileSystemEntries(directory, "*", options))
             {
                 FileAttributes attributes = File.GetAttributes(entry);
-                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                if (IsUnrestorable(attributes))
                 {
                     continue;
                 }
@@ -375,6 +375,11 @@ public sealed class CopyEngine
                 }
             }
         }
+    }
+
+    internal static bool IsUnrestorable(FileAttributes attributes)
+    {
+        return (attributes & (FileAttributes.ReparsePoint | FileAttributes.Offline | FileAttributes.Encrypted)) != 0;
     }
 
     private static bool IsDiskFull(Exception exception)

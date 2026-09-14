@@ -206,6 +206,34 @@ public sealed class CopyEngineTests
     }
 
     [Fact]
+    public async Task CopyTree_SkipsOfflineFilesAndVerifyStillPasses()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string tree = Path.Combine(context.Source, "Desktop");
+        Directory.CreateDirectory(tree);
+        await File.WriteAllTextAsync(Path.Combine(tree, "keep.txt"), "ok");
+        File.SetLastWriteTimeUtc(Path.Combine(tree, "keep.txt"), new DateTime(2024, 3, 4, 5, 6, 7, DateTimeKind.Utc));
+        string offline = Path.Combine(tree, "cloud.txt");
+        await File.WriteAllTextAsync(offline, "placeholder");
+        File.SetAttributes(offline, File.GetAttributes(offline) | FileAttributes.Offline);
+        PlanItem item = await context.StoreAsync(
+            PlanOperation.CopyTree,
+            tree,
+            Path.Combine(context.Destination, "Desktop"),
+            ConflictPolicy.KeepBoth);
+
+        RestoreItemResult copy = await new CopyEngine(context.Database, context.SafeFs).CopyAsync(item);
+        VerifyReport report = await new Verifier(context.Database, context.SafeFs).VerifyAsync(
+            new RestorePlan(context.SessionId, context.Source, context.Destination, [item], 2));
+
+        Assert.Equal("Completed", copy.State);
+        Assert.True(File.Exists(Path.Combine(context.Destination, "Desktop", "keep.txt")));
+        Assert.False(File.Exists(Path.Combine(context.Destination, "Desktop", "cloud.txt")));
+        Assert.True(report.AllOk, string.Join(';', report.Rows.Select(row => row.Level + ":" + row.Ok + ":" + row.Detail)));
+        Assert.True(context.Database.LastVerifyReportAllOk(context.SessionId));
+    }
+
+    [Fact]
     public async Task Resume_SkipsCompletedItems()
     {
         await using CopyContext context = await CopyContext.CreateAsync();

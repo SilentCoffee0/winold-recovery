@@ -475,7 +475,7 @@ public sealed class ShellViewModelTests
         Directory.CreateDirectory(browsed);
         context.Picker.Folder = browsed;
 
-        context.ViewModel.BrowseSourceCommand.Execute(null);
+        await context.ViewModel.BrowseSourceCommand.ExecuteAsync(null);
 
         Assert.Contains("not-windows-old", context.ViewModel.SelectedSourcePath, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("does not contain Users", context.ViewModel.SourceHint, StringComparison.OrdinalIgnoreCase);
