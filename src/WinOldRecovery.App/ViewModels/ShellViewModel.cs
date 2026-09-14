@@ -2131,18 +2131,10 @@ public sealed class ShellViewModel : ObservableObject
         restorePause = new CancellationTokenSource();
         PauseRestoreCommand.NotifyCanExecuteChanged();
         RebuildRestoreJobs(lastPlan);
+        DateTimeOffset restoreStartedAt = DateTimeOffset.UtcNow;
         Progress<RestoreProgress> progress = new(report =>
         {
-            RestoreProgress =
-                "Restoring… " +
-                report.CompletedItems +
-                " of " +
-                report.TotalItems +
-                "  " +
-                QuantityFormat.Bytes(report.CompletedBytes) +
-                " of " +
-                QuantityFormat.Bytes(report.TotalBytes) +
-                (string.IsNullOrEmpty(report.CurrentName) ? string.Empty : "  " + report.CurrentName);
+            RestoreProgress = RestoreProgressFormat.Line(report, DateTimeOffset.UtcNow - restoreStartedAt);
             RefreshRestoreJobStatuses(report.CompletedItems, report.CurrentName);
         });
         RestoreRunner runner = new(new CopyEngine(sessionDb, safeFs), sessionDb);
@@ -2261,10 +2253,12 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         VerifyFailureText = FormatVerifyFailures(recipeLines);
+        string counts = VerifyReportFormat.Counts(report);
         ScanStatus = verifyCompleted
-            ? "Verify report: every checked item passed existence, size/time, and hash samples." +
+            ? "Verify report:" + Environment.NewLine + counts +
               (recipeLines.Count == 0 ? string.Empty : Environment.NewLine + string.Join(Environment.NewLine, recipeLines))
-            : "Verify report: at least one item failed. Purge stays locked until you re-restore, re-verify, or acknowledge with a reason. A redacted log is at " +
+            : "Verify report: at least one item failed. " + counts +
+              " Purge stays locked until you re-restore, re-verify, or acknowledge with a reason. A redacted log is at " +
               workspace.LogPath + ".";
         ExecutePurgeCommand.NotifyCanExecuteChanged();
         CreateSupportBundleCommand.NotifyCanExecuteChanged();

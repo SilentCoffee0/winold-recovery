@@ -28,6 +28,10 @@ public sealed class Verifier
         string reportId = Guid.NewGuid().ToString("N");
         DateTimeOffset now = DateTimeOffset.UtcNow;
         List<VerifyResultRow> rows = [];
+        int sizeTimeFiles = 0;
+        int sizeTimeOk = 0;
+        int hashFiles = 0;
+        int hashOk = 0;
 
         foreach (PlanItem item in plan.Items)
         {
@@ -62,6 +66,7 @@ public sealed class Verifier
             bool l2 = l0;
             foreach ((string source, string destination) in files)
             {
+                sizeTimeFiles++;
                 string? dest = CopyEngine.FindRestoredPath(source, destination);
                 if (dest is null)
                 {
@@ -78,14 +83,23 @@ public sealed class Verifier
                 {
                     l1 = false;
                 }
+                else
+                {
+                    sizeTimeOk++;
+                }
 
                 if (sourceInfo.Length > 0 && sourceInfo.Length <= FileHashingPass.MaxFileBytes)
                 {
+                    hashFiles++;
                     byte[] sourceHash = await HashAsync(source, cancellationToken).ConfigureAwait(false);
                     byte[] destHash = await HashAsync(dest, cancellationToken).ConfigureAwait(false);
                     if (!sourceHash.AsSpan().SequenceEqual(destHash))
                     {
                         l2 = false;
+                    }
+                    else
+                    {
+                        hashOk++;
                     }
                 }
             }
@@ -95,7 +109,14 @@ public sealed class Verifier
         }
 
         await sessionDb.InsertVerifyResultsAsync(rows, cancellationToken).ConfigureAwait(false);
-        return new VerifyReport(reportId, rows.All(static row => row.Ok), rows);
+        return new VerifyReport(
+            reportId,
+            rows.All(static row => row.Ok),
+            rows,
+            sizeTimeFiles,
+            sizeTimeOk,
+            hashFiles,
+            hashOk);
     }
 
     private async Task<byte[]> HashAsync(string path, CancellationToken cancellationToken)

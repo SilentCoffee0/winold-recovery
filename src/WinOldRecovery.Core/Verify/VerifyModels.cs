@@ -11,4 +11,8 @@ public sealed record VerifyResultRow(
 public sealed record VerifyReport(
     string ReportId,
     bool AllOk,
-    IReadOnlyList<VerifyResultRow> Rows);
+    IReadOnlyList<VerifyResultRow> Rows,
+    int SizeTimeFiles = 0,
+    int SizeTimeOk = 0,
+    int HashFiles = 0,
+    int HashOk = 0);

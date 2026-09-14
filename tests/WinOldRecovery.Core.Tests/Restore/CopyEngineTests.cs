@@ -306,6 +306,10 @@ public sealed class CopyEngineTests
         VerifyReport report = await new Verifier(context.Database, context.SafeFs).VerifyAsync(plan);
         Assert.True(report.AllOk);
         Assert.Contains(report.Rows, row => row.Level == 2 && row.Ok);
+        Assert.Equal(1, report.SizeTimeFiles);
+        Assert.Equal(1, report.SizeTimeOk);
+        Assert.Equal(1, report.HashFiles);
+        Assert.Equal(1, report.HashOk);
     }
 
     [Fact]
@@ -334,6 +338,10 @@ public sealed class CopyEngineTests
         Assert.False(File.Exists(Path.Combine(context.Destination, "Desktop", "cloud.txt")));
         Assert.True(report.AllOk, string.Join(';', report.Rows.Select(row => row.Level + ":" + row.Ok + ":" + row.Detail)));
         Assert.True(context.Database.LastVerifyReportAllOk(context.SessionId));
+        Assert.Equal(1, report.SizeTimeFiles);
+        Assert.Equal(1, report.SizeTimeOk);
+        Assert.Equal(1, report.HashFiles);
+        Assert.Equal(1, report.HashOk);
     }
 
     [Fact]
@@ -500,6 +508,10 @@ public sealed class CopyEngineTests
 
         Assert.False(report.AllOk);
         Assert.Contains(report.Rows, row => row.Level == 0 && !row.Ok);
+        Assert.Equal(1, report.SizeTimeFiles);
+        Assert.Equal(0, report.SizeTimeOk);
+        Assert.Equal(1, report.HashFiles);
+        Assert.Equal(0, report.HashOk);
         Assert.False(context.Database.LastVerifyReportAllOk(context.SessionId));
         Assert.False(context.Database.LastVerifyJobsSettled(context.SessionId));
 
