@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Processes;
 
 namespace WinOldRecovery.Recipes;
@@ -16,12 +17,13 @@ public static class GitAnalyze
     ];
 
     public static IReadOnlyList<ProcessRequest> CreateRequests(
-        string repositoryPath,
+        string gitDir,
+        string workTree,
         string destinationHome,
         string? gitExecutable = null)
     {
         (string fileName, string[] prefix, Dictionary<string, string?> environment, TimeSpan timeout) =
-            Invocation(repositoryPath, destinationHome, gitExecutable);
+            Invocation(destinationHome, gitExecutable, gitDir: gitDir, workTree: workTree);
         return
         [
             Request(fileName, [.. prefix, .. StatusArguments], environment, timeout),
@@ -38,7 +40,7 @@ public static class GitAnalyze
         string? gitExecutable = null)
     {
         (string fileName, string[] prefix, Dictionary<string, string?> environment, TimeSpan timeout) =
-            Invocation(repositoryPath, destinationHome, gitExecutable);
+            Invocation(destinationHome, gitExecutable, repositoryPath: repositoryPath);
         return
         [
             Request(fileName, [.. prefix, "rev-parse", "HEAD"], environment, timeout),
@@ -61,11 +63,30 @@ public static class GitAnalyze
 
     public static async Task<GitAnalyzeResult> AnalyzeAsync(
         IProcessRunner processRunner,
+        SafeFs safeFs,
         string repositoryPath,
         string destinationHome,
+        string sessionTemporaryDirectory,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(processRunner);
+        ArgumentNullException.ThrowIfNull(safeFs);
+        ArgumentException.ThrowIfNullOrWhiteSpace(repositoryPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationHome);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionTemporaryDirectory);
+
+        string gitDirCopy;
+        try
+        {
+            gitDirCopy = CopyGitDirectory(safeFs, repositoryPath, sessionTemporaryDirectory);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return GitAnalyzeResult.Unknown;
+        }
+
         IReadOnlyList<ProcessRequest> requests = CreateRequests(
+            gitDirCopy,
             repositoryPath,
             destinationHome,
             ResolveGitExecutable());
@@ -253,8 +274,103 @@ public static class GitAnalyze
         return text.Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
     }
 
+    public static string CopyGitDirectory(SafeFs safeFs, string workTree, string sessionTemporaryDirectory)
+    {
+        ArgumentNullException.ThrowIfNull(safeFs);
+        ArgumentException.ThrowIfNullOrWhiteSpace(workTree);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionTemporaryDirectory);
+
+        string? gitDir = ResolveGitDir(safeFs, workTree);
+        if (gitDir is null)
+        {
+            throw new DirectoryNotFoundException("Git directory was not found.");
+        }
+
+        string destination = Path.Combine(
+            sessionTemporaryDirectory,
+            "git-analyze",
+            Guid.NewGuid().ToString("N"));
+        CopyTree(safeFs, gitDir, destination);
+        return destination;
+    }
+
+    private static string? ResolveGitDir(SafeFs safeFs, string workTree)
+    {
+        string git = Path.Combine(workTree, ".git");
+        if (safeFs.DirectoryExists(git))
+        {
+            return git;
+        }
+
+        if (!safeFs.FileExists(git))
+        {
+            return null;
+        }
+
+        foreach (string line in safeFs.ReadAllText(git).Split('\n'))
+        {
+            string trimmed = line.Trim();
+            if (!trimmed.StartsWith("gitdir:", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string target = trimmed["gitdir:".Length..].Trim();
+            return Path.IsPathRooted(target)
+                ? target
+                : Path.GetFullPath(Path.Combine(workTree, target));
+        }
+
+        return null;
+    }
+
+    private static void CopyTree(SafeFs safeFs, string source, string destination)
+    {
+        if (DetectorWalk.IsReparse(source))
+        {
+            return;
+        }
+
+        if (safeFs.FileExists(source))
+        {
+            safeFs.CopyReadToWrite(source, destination);
+            return;
+        }
+
+        if (!safeFs.DirectoryExists(source))
+        {
+            return;
+        }
+
+        safeFs.CreateDirectory(destination);
+        IReadOnlyList<string> entries;
+        try
+        {
+            entries = safeFs.EnumerateFileSystemEntries(source);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        foreach (string entry in entries)
+        {
+            if (DetectorWalk.IsReparse(entry))
+            {
+                continue;
+            }
+
+            CopyTree(safeFs, entry, Path.Combine(destination, Path.GetFileName(entry)));
+        }
+    }
+
     private static (string FileName, string[] Prefix, Dictionary<string, string?> Environment, TimeSpan Timeout)
-        Invocation(string repositoryPath, string destinationHome, string? gitExecutable)
+        Invocation(
+            string destinationHome,
+            string? gitExecutable,
+            string? repositoryPath = null,
+            string? gitDir = null,
+            string? workTree = null)
     {
         Dictionary<string, string?> environment = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -262,15 +378,26 @@ public static class GitAnalyze
             ["GIT_TERMINAL_PROMPT"] = "0",
             ["HOME"] = destinationHome,
         };
-        string[] prefix =
-        [
-            "--no-optional-locks",
-            "-c", "safe.directory=*",
-            "-c", "core.fsmonitor=false",
-            "-c", "gc.auto=0",
-            "-c", "maintenance.auto=false",
-            "-C", repositoryPath,
-        ];
+        string[] prefix = gitDir is not null && workTree is not null
+            ?
+            [
+                "--no-optional-locks",
+                "--git-dir", gitDir,
+                "--work-tree", workTree,
+                "-c", "safe.directory=*",
+                "-c", "core.fsmonitor=false",
+                "-c", "gc.auto=0",
+                "-c", "maintenance.auto=false",
+            ]
+            :
+            [
+                "--no-optional-locks",
+                "-c", "safe.directory=*",
+                "-c", "core.fsmonitor=false",
+                "-c", "gc.auto=0",
+                "-c", "maintenance.auto=false",
+                "-C", repositoryPath ?? string.Empty,
+            ];
         string fileName = string.IsNullOrWhiteSpace(gitExecutable) ? "git.exe" : gitExecutable;
         return (fileName, prefix, environment, TimeSpan.FromSeconds(60));
     }

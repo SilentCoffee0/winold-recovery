@@ -100,3 +100,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Git L3 verify compares restored `HEAD` text always, and when git.exe is present runs `rev-parse HEAD` plus porcelain status through `IProcessRunner` against the source. Missing Git still passes if the files (including `HEAD`) are present. Tests never launch a real `git.exe`.
 - Git offline analysis parses `HEAD`, `refs/heads`, packed-refs, remotes (credentials stripped), stash, reflog time, and index mtime. Uncommitted/unpushed stay `unknown (install Git to analyze)`; reftable repos skip the ref walk. Tests never launch a real `git.exe`.
 - Firefox cards report Primary Password as set / not set / unknown from a temp copy of `key4.db` metadata (empty-password check only). Logins are never decrypted.
+- Git Analyze copies `.git` into the session temp folder and runs git.exe with `--git-dir` on that copy and `--work-tree` on the source, so index refresh cannot write under Windows.old.

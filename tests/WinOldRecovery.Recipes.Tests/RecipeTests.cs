@@ -237,24 +237,81 @@ public sealed class RecipeTests
     public async Task GitAnalyze_UsesExactFlagsAndNeverInvokesMissingGitFromThisTest()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
+        string repo = Path.Combine(context.Source, "repo");
+        string gitDir = Path.Combine(repo, ".git");
+        Directory.CreateDirectory(gitDir);
+        await File.WriteAllTextAsync(Path.Combine(gitDir, "HEAD"), "ref: refs/heads/main\n");
         IReadOnlyList<ProcessRequest> requests = GitAnalyze.CreateRequests(
-            Path.Combine(context.Source, "repo"),
+            gitDir,
+            repo,
             context.Destination);
         Assert.Equal(5, requests.Count);
         Assert.All(requests, request =>
         {
             Assert.Equal("git.exe", request.FileName);
             Assert.Contains("--no-optional-locks", request.Arguments);
+            Assert.Contains("--git-dir", request.Arguments);
+            Assert.Contains(gitDir, request.Arguments);
+            Assert.Contains("--work-tree", request.Arguments);
+            Assert.Contains(repo, request.Arguments);
+            Assert.DoesNotContain("-C", request.Arguments);
             Assert.Contains("safe.directory=*", request.Arguments);
             Assert.Equal("0", request.Environment!["GIT_OPTIONAL_LOCKS"]);
             Assert.Equal(context.Destination, request.Environment["HOME"]);
         });
-        await GitAnalyze.AnalyzeAsync(context.Runner, Path.Combine(context.Source, "repo"), context.Destination);
+        await GitAnalyze.AnalyzeAsync(
+            context.Runner,
+            context.SafeFs,
+            repo,
+            context.Destination,
+            context.Temp);
         Assert.Equal(5, context.Runner.Requests.Count);
         Assert.All(
             context.Runner.Requests,
-            request => Assert.EndsWith("git.exe", request.FileName, StringComparison.OrdinalIgnoreCase));
+            request =>
+            {
+                Assert.EndsWith("git.exe", request.FileName, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("--git-dir", request.Arguments);
+                Assert.Contains("--work-tree", request.Arguments);
+                Assert.Contains(repo, request.Arguments);
+                Assert.DoesNotContain("-C", request.Arguments);
+            });
+        Assert.Contains(
+            context.Runner.Requests,
+            request => request.Arguments.Any(static argument =>
+                argument.Contains("git-analyze", StringComparison.OrdinalIgnoreCase)));
         Assert.Contains(context.Runner.Requests, request => request.Arguments.Contains("status"));
+    }
+
+    [Fact]
+    public async Task GitAnalyze_CopiesGitDirAndLeavesSourceHeadUntouched()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string repo = Path.Combine(context.Source, "repo");
+        string head = Path.Combine(repo, ".git", "HEAD");
+        Directory.CreateDirectory(Path.Combine(repo, ".git"));
+        await File.WriteAllTextAsync(head, "ref: refs/heads/main\n");
+        await GitAnalyze.AnalyzeAsync(
+            context.Runner,
+            context.SafeFs,
+            repo,
+            context.Destination,
+            context.Temp);
+        Assert.Equal("ref: refs/heads/main\n", await File.ReadAllTextAsync(head));
+        Assert.DoesNotContain(
+            context.Runner.Requests,
+            request =>
+            {
+                int index = request.Arguments.ToList().IndexOf("--git-dir");
+                return index >= 0 &&
+                    index + 1 < request.Arguments.Count &&
+                    request.Arguments[index + 1].Equals(
+                        Path.Combine(repo, ".git"),
+                        StringComparison.OrdinalIgnoreCase);
+            });
+        string copiedHead = Directory.GetFiles(context.Temp, "HEAD", SearchOption.AllDirectories).Single();
+        Assert.Contains("git-analyze", copiedHead, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("ref: refs/heads/main\n", await File.ReadAllTextAsync(copiedHead));
     }
 
     [Fact]

@@ -1870,8 +1870,10 @@ public sealed class ShellViewModel : ObservableObject
 
             GitAnalyzeResult result = await GitAnalyze.AnalyzeAsync(
                     processRunner,
+                    safeFs,
                     source,
-                    LiveProfileRoot)
+                    LiveProfileRoot,
+                    workspace.TemporaryPath)
                 .ConfigureAwait(true);
             Dictionary<string, string> facts = new(card.Facts, StringComparer.Ordinal);
             facts["risk"] = result.Badge;

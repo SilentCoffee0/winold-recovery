@@ -941,12 +941,19 @@ public sealed class ShellViewModelTests
             {
                 Assert.EndsWith("git.exe", request.FileName, StringComparison.OrdinalIgnoreCase);
                 Assert.Contains("--no-optional-locks", request.Arguments);
+                Assert.Contains("--git-dir", request.Arguments);
+                Assert.Contains("--work-tree", request.Arguments);
+                Assert.DoesNotContain("-C", request.Arguments);
                 Assert.Equal("0", request.Environment!["GIT_OPTIONAL_LOCKS"]);
                 Assert.Equal(
                     Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                     request.Environment["HOME"]);
             });
         Assert.Contains(context.Runner.Requests, request => request.Arguments.Contains("status"));
+        Assert.Contains(
+            context.Runner.Requests,
+            request => request.Arguments.Any(static argument =>
+                argument.Contains("git-analyze", StringComparison.OrdinalIgnoreCase)));
         Assert.Equal("Git: no remote", context.ViewModel.SelectedRecipeCard!.Facts["risk"]);
         Assert.Contains("Risk: Git: no remote", context.ViewModel.DetailText, StringComparison.Ordinal);
 
