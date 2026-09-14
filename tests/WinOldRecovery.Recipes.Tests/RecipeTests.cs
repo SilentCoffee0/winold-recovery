@@ -132,6 +132,9 @@ public sealed class RecipeTests
         await File.WriteAllTextAsync(
             Path.Combine(alice, "Projects", "local-repository", ".git", "HEAD"),
             "ref: refs/heads/main\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, "Projects", "local-repository", ".git", "config"),
+            "[remote \"origin\"]\n\turl = https://user:" + Canary + "@example.invalid/repo.git\n");
         await File.WriteAllTextAsync(Path.Combine(alice, "Projects", "local-repository", "README.md"), "local work");
         await File.WriteAllTextAsync(Path.Combine(alice, ".gitconfig"), "[user]\n\tname = Alice\n[credential]\n\thelper = store\n");
 
@@ -314,6 +317,143 @@ public sealed class RecipeTests
         Assert.True(result.Untracked);
         Assert.True(result.Stash);
         Assert.Equal("Git: local-only work", result.Badge);
+    }
+
+    [Fact]
+    public void GitOffline_StripRemoteUrl_RemovesUserInfo()
+    {
+        Assert.Equal(
+            "https://example.invalid/repo.git",
+            GitOffline.StripRemoteUrl("https://user:secret@example.invalid/repo.git"));
+        Assert.Equal(
+            "https://example.invalid/repo.git",
+            GitOffline.StripRemoteUrl("https://example.invalid/repo.git"));
+    }
+
+    [Fact]
+    public async Task GitOffline_Analyze_PackedRefsRemoteAndLocalOnlyBranch()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string gitDir = Path.Combine(context.Source, "packed.git");
+        Directory.CreateDirectory(gitDir);
+        await File.WriteAllTextAsync(Path.Combine(gitDir, "HEAD"), "ref: refs/heads/main\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(gitDir, "config"),
+            """
+            [remote "origin"]
+            	url = https://example.invalid/repo.git
+            [branch "main"]
+            	remote = origin
+            	merge = refs/heads/main
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(gitDir, "packed-refs"),
+            """
+            # pack-refs with: peeled
+            1111111111111111111111111111111111111111 refs/heads/main
+            2222222222222222222222222222222222222222 refs/heads/wip
+            3333333333333333333333333333333333333333 refs/remotes/origin/main
+            4444444444444444444444444444444444444444 refs/stash
+            """);
+
+        GitOfflineResult result = GitOffline.Analyze(context.SafeFs, gitDir);
+        Assert.Equal("main", result.CurrentBranch);
+        Assert.Contains("main", result.Branches);
+        Assert.Contains("wip", result.Branches);
+        Assert.True(result.HasRemote);
+        Assert.True(result.LocalOnlyBranch);
+        Assert.True(result.Stash);
+        Assert.Equal("Git: local-only work", result.Badge);
+        Assert.Equal("origin", result.Remotes.Single().Name);
+        Assert.Equal("https://example.invalid/repo.git", result.Remotes.Single().Url);
+    }
+
+    [Fact]
+    public async Task GitOffline_Analyze_StripsRemoteCredentialsAndRecordsUnknownWork()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string gitDir = Path.Combine(context.Source, "secret.git");
+        Directory.CreateDirectory(Path.Combine(gitDir, "refs", "heads"));
+        Directory.CreateDirectory(Path.Combine(gitDir, "logs"));
+        await File.WriteAllTextAsync(Path.Combine(gitDir, "HEAD"), "ref: refs/heads/main\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(gitDir, "refs", "heads", "main"),
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(gitDir, "config"),
+            "[remote \"origin\"]\n\turl = https://user:" + Canary + "@example.invalid/repo.git\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(gitDir, "logs", "HEAD"),
+            "0000000000000000000000000000000000000000 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa Alice <a@b.com> 1700000000 +0000\tcommit: init\n");
+        await File.WriteAllTextAsync(Path.Combine(gitDir, "index"), "DIRC");
+
+        GitOfflineResult result = GitOffline.Analyze(context.SafeFs, gitDir);
+        Assert.DoesNotContain(Canary, result.Remotes.Single().Url, StringComparison.Ordinal);
+        Assert.Equal("https://example.invalid/repo.git", result.Remotes.Single().Url);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1700000000), result.LastActivity);
+        Assert.NotNull(result.IndexMtime);
+        Assert.False(result.Reftable);
+    }
+
+    [Fact]
+    public async Task GitOffline_Analyze_ReftableSkipsLooseHeads()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string gitDir = Path.Combine(context.Source, "reftable.git");
+        Directory.CreateDirectory(Path.Combine(gitDir, "refs", "heads"));
+        Directory.CreateDirectory(Path.Combine(gitDir, "reftable"));
+        await File.WriteAllTextAsync(Path.Combine(gitDir, "HEAD"), "ref: refs/heads/main\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(gitDir, "refs", "heads", "main"),
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(gitDir, "config"),
+            "[remote \"origin\"]\n\turl = https://example.invalid/repo.git\n");
+
+        GitOfflineResult result = GitOffline.Analyze(context.SafeFs, gitDir);
+        Assert.True(result.Reftable);
+        Assert.Empty(result.Branches);
+        Assert.False(result.LocalOnlyBranch);
+        Assert.True(result.HasRemote);
+        Assert.Equal("Git: local-only work", result.Badge);
+    }
+
+    [Fact]
+    public async Task Git_Detect_UnknownUncommittedUntilGitIsInstalled()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string notes = Path.Combine(alice, "Documents", "notes");
+        Directory.CreateDirectory(Path.Combine(notes, ".git", "refs", "heads"));
+        await File.WriteAllTextAsync(Path.Combine(notes, ".git", "HEAD"), "ref: refs/heads/main\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(notes, ".git", "refs", "heads", "main"),
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(notes, ".git", "config"),
+            "[remote \"origin\"]\n\turl = https://user:" + Canary + "@example.invalid/notes.git\n");
+
+        GitRecipe recipe = new();
+        DetectResult detected = recipe.Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        RecipeCard card = detected.Cards.Single(item => item.Facts.GetValueOrDefault("kind") == "repo");
+        Assert.Equal(GitOffline.UnknownUntilGit, card.Facts["uncommitted"]);
+        Assert.Equal(GitOffline.UnknownUntilGit, card.Facts["unpushed"]);
+        Assert.Equal("Git: local-only work", card.Facts["risk"]);
+        Assert.Equal("main", card.Facts["branch"]);
+        Assert.Contains("origin=https://example.invalid/notes.git", card.Facts["remotes"], StringComparison.Ordinal);
+        Assert.DoesNotContain(Canary, string.Join(';', card.Facts.Values), StringComparison.Ordinal);
+        Assert.Contains(
+            detected.Badges,
+            badge => badge.Kind == "Git" &&
+                badge.Detail.Contains("local-only work", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

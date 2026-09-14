@@ -45,21 +45,47 @@ public sealed class GitRecipe : IRecipe
         foreach (string entry in DetectorWalk.OutermostDirectories(trees))
         {
             string? gitDir = ResolveGitDir(context.SafeFs, entry);
-            string headPath = gitDir is null ? Path.Combine(entry, ".git", "HEAD") : Path.Combine(gitDir, "HEAD");
-            string head = context.SafeFs.FileExists(headPath)
-                ? context.SafeFs.ReadAllText(headPath).Trim()
-                : "unknown";
+            GitOfflineResult offline = GitOffline.Analyze(context.SafeFs, gitDir);
             string relative = DetectorWalk.RelativeUnder(context.OldProfileRoot, entry);
-            bool hasRemote = gitDir is not null && HasRemote(context.SafeFs, gitDir);
-            string risk = hasRemote ? "Git: local-only work" : "Git: no remote";
-            badges.Add((relative, "Git", risk));
+            badges.Add((relative, "Git", offline.Badge));
+            Dictionary<string, string> facts = new(StringComparer.Ordinal)
+            {
+                ["source"] = entry,
+                ["head"] = string.IsNullOrEmpty(offline.Head) ? "unknown" : offline.Head,
+                ["kind"] = "repo",
+                ["risk"] = offline.Badge,
+                ["branch"] = offline.CurrentBranch,
+                ["branches"] = string.Join(", ", offline.Branches),
+                ["remotes"] = string.Join(
+                    "; ",
+                    offline.Remotes.Select(static remote => remote.Name + "=" + remote.Url)),
+                ["stash"] = offline.Stash ? "1" : "0",
+                ["localOnly"] = offline.LocalOnlyBranch ? "1" : "0",
+                ["uncommitted"] = GitOffline.UnknownUntilGit,
+                ["unpushed"] = GitOffline.UnknownUntilGit,
+            };
+            if (offline.Reftable)
+            {
+                facts["reftable"] = "1";
+            }
+
+            if (offline.LastActivity is DateTimeOffset activity)
+            {
+                facts["lastActivity"] = activity.ToString("O");
+            }
+
+            if (offline.IndexMtime is DateTimeOffset indexMtime)
+            {
+                facts["indexMtime"] = indexMtime.ToString("O");
+            }
+
             cards.Add(
                 new RecipeCard(
                     Id,
                     "Git repository — " + Path.GetFileName(entry),
                     "A Git repository found in the old profile.",
                     "Unpushed commits and uncommitted work cannot be cloned from a remote.",
-                    "The whole working tree including .git. Offline analysis cannot see uncommitted changes until Git is installed.",
+                    "The whole working tree including .git. Offline analysis cannot see uncommitted or unpushed work until Git is installed.",
                     "Re-clone if a remote exists and there is no local-only work.",
                     "node_modules and build folders may regenerate.",
                     "Local-only work is gone.",
@@ -67,20 +93,14 @@ public sealed class GitRecipe : IRecipe
                         new RecipeComponent(
                             "repo",
                             "Restore repository",
-                            head,
+                            offline.CurrentBranch,
                             Decision.Restore,
                             false,
                             null,
                             false),
                     ],
                     context.ProfileName + ":" + relative,
-                    new Dictionary<string, string>
-                    {
-                        ["source"] = entry,
-                        ["head"] = head,
-                        ["kind"] = "repo",
-                        ["risk"] = risk,
-                    }));
+                    facts));
         }
 
         return new DetectResult(cards, badges);
@@ -365,16 +385,5 @@ public sealed class GitRecipe : IRecipe
         }
 
         return true;
-    }
-
-    private static bool HasRemote(SafeFs safeFs, string gitDir)
-    {
-        string config = Path.Combine(gitDir, "config");
-        if (!safeFs.FileExists(config))
-        {
-            return false;
-        }
-
-        return safeFs.ReadAllText(config).Contains("[remote ", StringComparison.OrdinalIgnoreCase);
     }
 }
