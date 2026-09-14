@@ -617,7 +617,7 @@ public sealed class SessionDb : IAsyncDisposable
         return true;
     }
 
-    public bool LastVerifyReportAllOk(string sessionId)
+    public string? LastVerifyReportId(string sessionId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
         using SqliteConnection connection = OpenReadConnection();
@@ -632,11 +632,18 @@ public sealed class SessionDb : IAsyncDisposable
             LIMIT 1;
             """;
         latest.Parameters.AddWithValue("$sessionId", sessionId);
-        if (latest.ExecuteScalar() is not string reportId)
+        return latest.ExecuteScalar() as string;
+    }
+
+    public bool LastVerifyReportAllOk(string sessionId)
+    {
+        string? reportId = LastVerifyReportId(sessionId);
+        if (reportId is null)
         {
             return false;
         }
 
+        using SqliteConnection connection = OpenReadConnection();
         using SqliteCommand failed = connection.CreateCommand();
         failed.CommandText =
             """
@@ -651,6 +658,51 @@ public sealed class SessionDb : IAsyncDisposable
         counted.Parameters.AddWithValue("$reportId", reportId);
         long count = Convert.ToInt64(counted.ExecuteScalar(), CultureInfo.InvariantCulture);
         return failures == 0 && count > 0;
+    }
+
+    public bool LastVerifyJobsSettled(string sessionId)
+    {
+        if (LastVerifyReportAllOk(sessionId))
+        {
+            return true;
+        }
+
+        string? reportId = LastVerifyReportId(sessionId);
+        if (string.IsNullOrWhiteSpace(reportId))
+        {
+            return false;
+        }
+
+        return VerifyAcknowledgement.IsValidReason(
+            GetKv(sessionId, VerifyAcknowledgement.KvKey(reportId)));
+    }
+
+    public IReadOnlyList<string> LastVerifyFailureDetails(string sessionId)
+    {
+        string? reportId = LastVerifyReportId(sessionId);
+        if (reportId is null)
+        {
+            return [];
+        }
+
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT detail
+            FROM verify_results
+            WHERE report_id = $reportId AND ok = 0
+            ORDER BY id;
+            """;
+        command.Parameters.AddWithValue("$reportId", reportId);
+        List<string> details = [];
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            details.Add(reader.GetString(0));
+        }
+
+        return details;
     }
 
     public Task InsertVerifyResultsAsync(

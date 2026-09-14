@@ -14,6 +14,7 @@ using WinOldRecovery.Core.Restore;
 using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Core.Scan;
 using WinOldRecovery.Core.Sessions;
+using WinOldRecovery.Core.Verify;
 using WinOldRecovery.Recipes;
 
 namespace WinOldRecovery.App.Tests;
@@ -101,6 +102,8 @@ public sealed class ShellViewModelTests
         Assert.Contains("unfinished", context.ViewModel.InterruptedRestoreText, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(WorkflowStep.Restore, context.ViewModel.CurrentStep);
         Assert.True(context.ViewModel.ResumeInterruptedCommand.CanExecute(null));
+        Assert.Single(context.ViewModel.RestoreJobs);
+        Assert.Equal("running", context.ViewModel.RestoreJobs[0].Status);
 
         context.ViewModel.DismissInterruptedCommand.Execute(null);
         Assert.False(context.ViewModel.InterruptedRestoreVisible);
@@ -184,6 +187,77 @@ public sealed class ShellViewModelTests
         Assert.False(context.ViewModel.CanGoTo(WorkflowStep.Purge));
         Assert.False(context.ViewModel.VerifyCompleted);
         Assert.Equal("Windows.old untouched", context.ViewModel.SourceIntegrityText);
+    }
+
+    [Fact]
+    public async Task PurgedSession_BecomesReadOnlyAndBlocksScan()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        Assert.True(context.ViewModel.PreparePreviewCommand.CanExecute(null));
+        await context.Database.SetKvAsync(
+            context.SessionId,
+            SessionLock.PurgedKvKey,
+            SessionLock.PurgedValue);
+
+        context.ViewModel.RefreshSessionLockForTests();
+
+        Assert.True(context.ViewModel.SessionReadOnly);
+        Assert.Equal("Windows.old removed", context.ViewModel.SourceIntegrityText);
+        Assert.False(context.ViewModel.ScanCommand.CanExecute(null));
+        Assert.False(context.ViewModel.PreparePreviewCommand.CanExecute(null));
+        context.ViewModel.UnlockPurgeForTests();
+        Assert.False(context.ViewModel.ExecutePurgeCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task AcknowledgeVerify_WithTypedReason_SettlesFailedJobs()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        string destination = Path.Combine(context.Root, "Recovered");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(destination);
+        string from = Path.Combine(source, "note.txt");
+        await File.WriteAllTextAsync(from, "keep");
+        PlanItem item = new(
+            context.SessionId,
+            1,
+            PlanOperation.CopyFile,
+            from,
+            Path.Combine(destination, "note.txt"),
+            1,
+            ConflictPolicy.KeepBoth,
+            OverwriteApproved: false,
+            RecipeId: null);
+        IReadOnlyList<PlanItem> stored = await context.Database.ReplacePlanItemsAsync(context.SessionId, [item]);
+        await context.Database.InsertVerifyResultsAsync(
+        [
+            new VerifyResultRow(
+                stored[0].Id!.Value,
+                "report-fail",
+                0,
+                false,
+                "missing",
+                DateTimeOffset.UtcNow),
+        ]);
+        context.ViewModel.MarkRestoreCompletedForTests();
+        context.ViewModel.VerifyAckReason = "short";
+        Assert.False(context.ViewModel.AcknowledgeVerifyCommand.CanExecute(null));
+
+        context.ViewModel.VerifyAckReason = "checked restored copies";
+        Assert.True(context.ViewModel.AcknowledgeVerifyCommand.CanExecute(null));
+        await context.ViewModel.AcknowledgeVerifyCommand.ExecuteAsync(null);
+
+        Assert.True(context.ViewModel.VerifyCompleted);
+        Assert.True(context.Database.LastVerifyJobsSettled(context.SessionId));
+        Assert.False(context.Database.LastVerifyReportAllOk(context.SessionId));
     }
 
     [Fact]

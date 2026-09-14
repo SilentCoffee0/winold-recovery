@@ -398,6 +398,23 @@ public sealed class CopyEngineTests
         Assert.False(report.AllOk);
         Assert.Contains(report.Rows, row => row.Level == 0 && !row.Ok);
         Assert.False(context.Database.LastVerifyReportAllOk(context.SessionId));
+        Assert.False(context.Database.LastVerifyJobsSettled(context.SessionId));
+
+        await context.Database.SetKvAsync(
+            context.SessionId,
+            VerifyAcknowledgement.KvKey(report.ReportId),
+            "no");
+        Assert.False(context.Database.LastVerifyJobsSettled(context.SessionId));
+
+        await context.Database.SetKvAsync(
+            context.SessionId,
+            VerifyAcknowledgement.KvKey(report.ReportId),
+            "checked restored copies");
+        Assert.True(context.Database.LastVerifyJobsSettled(context.SessionId));
+
+        VerifyReport again = await new Verifier(context.Database, context.SafeFs).VerifyAsync(plan);
+        Assert.False(again.AllOk);
+        Assert.False(context.Database.LastVerifyJobsSettled(context.SessionId));
     }
 
     [Fact]

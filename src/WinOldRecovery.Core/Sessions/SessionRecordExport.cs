@@ -18,12 +18,16 @@ public static class SessionRecordExport
         int planCount = sessionDb.ListPlanItems(workspace.SessionId).Count;
         bool journalSettled = sessionDb.RestoreJournalSettled(workspace.SessionId);
         bool verifyOk = sessionDb.LastVerifyReportAllOk(workspace.SessionId);
+        bool verifySettled = sessionDb.LastVerifyJobsSettled(workspace.SessionId);
+        bool purged = SessionLock.IsPurged(sessionDb.GetKv(workspace.SessionId, SessionLock.PurgedKvKey));
         string body =
             "sessionId=" + workspace.SessionId + Environment.NewLine +
             "exportedUtc=" + DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture) + Environment.NewLine +
             "planItems=" + planCount.ToString(CultureInfo.InvariantCulture) + Environment.NewLine +
             "journalSettled=" + journalSettled + Environment.NewLine +
-            "verifyAllOk=" + verifyOk + Environment.NewLine;
+            "verifyAllOk=" + verifyOk + Environment.NewLine +
+            "verifySettled=" + verifySettled + Environment.NewLine +
+            "purged=" + purged + Environment.NewLine;
         safeFs.WriteAllText(path, body);
         return path;
     }

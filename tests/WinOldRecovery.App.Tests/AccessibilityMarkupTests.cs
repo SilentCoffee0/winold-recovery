@@ -23,6 +23,9 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("ScanButtonLabel", xaml, StringComparison.Ordinal);
         Assert.Contains("DisplayLabel", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"UndoDecisionButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"RestoreJobsList\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"RerunVerifyButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"AcknowledgeVerifyButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"LogButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SessionLogView", xaml, StringComparison.Ordinal);
         Assert.Contains("CompactLayout", xaml, StringComparison.Ordinal);

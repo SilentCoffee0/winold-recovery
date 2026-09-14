@@ -76,6 +76,8 @@ public sealed class SessionWorkspaceTests
             Assert.Contains("sessionId=" + workspace.SessionId, text, StringComparison.Ordinal);
             Assert.Contains("planItems=0", text, StringComparison.Ordinal);
             Assert.Contains("verifyAllOk=False", text, StringComparison.Ordinal);
+            Assert.Contains("verifySettled=False", text, StringComparison.Ordinal);
+            Assert.Contains("purged=False", text, StringComparison.Ordinal);
             await database.DisposeAsync();
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         }
