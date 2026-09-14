@@ -702,6 +702,33 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task Inspect_OnARecipeCard_ShowsTheSixQuestionPane()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync(RecipeCatalog.All);
+        string source = Path.Combine(context.Root, "Windows.old");
+        string ssh = Path.Combine(source, "Users", "Alice", ".ssh");
+        Directory.CreateDirectory(ssh);
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(Path.Combine(ssh, "id_ed25519.pub"), "ssh-ed25519 FIXTURE");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        context.ViewModel.SelectedCard = context.ViewModel.Cards.First(
+            card => card.Kind == "ssh");
+
+        Assert.True(context.ViewModel.RecipeCardSelected);
+        context.ViewModel.ShowInspectCommand.Execute(null);
+
+        Assert.True(context.ViewModel.CompactInspect);
+        Assert.NotNull(context.ViewModel.SelectedRecipeCard);
+        Assert.False(string.IsNullOrWhiteSpace(context.ViewModel.SelectedRecipeCard.What));
+        Assert.False(string.IsNullOrWhiteSpace(context.ViewModel.SelectedRecipeCard.WhyItMatters));
+        Assert.False(string.IsNullOrWhiteSpace(context.ViewModel.SelectedRecipeCard.WhatIsRestored));
+        Assert.False(string.IsNullOrWhiteSpace(context.ViewModel.SelectedRecipeCard.IfLeftBehind));
+    }
+
+    [Fact]
     public async Task Scan_MissingFolder_SurfacesRedactedExplanationAndLogPath()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();
