@@ -88,6 +88,7 @@ public sealed class ShellViewModel : ObservableObject
     private bool isPurging;
     private ConflictPolicy selectedConflictPolicy = ConflictPolicy.KeepBoth;
     private string spaceBudgetText = "Selected: — of destination free space";
+    private SpaceBudgetLevel spaceBudgetLevel = SpaceBudgetLevel.Idle;
     private string destinationRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         "Recovered");
@@ -447,7 +448,21 @@ public sealed class ShellViewModel : ObservableObject
     public string SourceIntegrityText
     {
         get => sourceIntegrityText;
-        private set => SetProperty(ref sourceIntegrityText, value);
+        private set
+        {
+            if (SetProperty(ref sourceIntegrityText, value))
+            {
+                OnPropertyChanged(nameof(SourceIntegrityLevel));
+            }
+        }
+    }
+
+    public SourceIntegrityLevel SourceIntegrityLevel => StatusStrip.IntegrityLevel(sourceIntegrityText);
+
+    public SpaceBudgetLevel SpaceBudgetLevel
+    {
+        get => spaceBudgetLevel;
+        private set => SetProperty(ref spaceBudgetLevel, value);
     }
 
     public IReadOnlyList<int> RecentDayChoices { get; } = [7, 30, 90];
@@ -1538,21 +1553,15 @@ public sealed class ShellViewModel : ObservableObject
                 .ConfigureAwait(true);
             SourceRoot = result.SourceRoot;
             scanCompleted = true;
+            int? hashed = null;
             if (HashDuringScan)
             {
                 FileHashingPass hasher = new(sessionDb, safeFs);
-                int hashed = await hasher.HashSessionFilesAsync(
+                hashed = await hasher.HashSessionFilesAsync(
                         workspace.SessionId,
                         result.SourceRoot,
                         scanCancellation.Token)
                     .ConfigureAwait(true);
-                ScanStatus =
-                    $"Windows.old holds {QuantityFormat.Count(result.Walk.NodesVisited)} entries ({QuantityFormat.Bytes(result.Walk.BytesSeen)}) across {result.Profiles.Count} profiles. Hashed {hashed} files under 64 MB. Nothing has been changed.";
-            }
-            else
-            {
-                ScanStatus =
-                    $"Windows.old holds {QuantityFormat.Count(result.Walk.NodesVisited)} entries ({QuantityFormat.Bytes(result.Walk.BytesSeen)}) across {result.Profiles.Count} profiles. Nothing has been changed.";
             }
 
             lastProfiles = result.Profiles;
@@ -1568,8 +1577,15 @@ public sealed class ShellViewModel : ObservableObject
                         workspace.ExportsPath,
                         scanCancellation.Token)
                     .ConfigureAwait(true);
-                ScanStatus += $" Found {lastRecipeCards.Count} app cards and {lastClassification?.HighValueCount ?? 0} high-value items.";
             }
+
+            ScanStatus = StatusStrip.FormatScanSummary(
+                result.Walk.NodesVisited,
+                result.Walk.BytesSeen,
+                result.Profiles.Count,
+                lastRecipeCards.Count,
+                lastClassification?.HighValueCount ?? 0,
+                hashed);
 
             RebuildCards(lastProfiles);
             CurrentStep = WorkflowStep.Decide;
@@ -1689,6 +1705,8 @@ public sealed class ShellViewModel : ObservableObject
         ApplyRestoreSkips(null);
         runningApps = [];
         SourceIntegrityText = "Windows.old untouched";
+        SpaceBudgetText = "Selected: — of destination free space";
+        SpaceBudgetLevel = SpaceBudgetLevel.Idle;
         ExecuteRestoreCommand.NotifyCanExecuteChanged();
         ExecuteVerifyCommand.NotifyCanExecuteChanged();
         ExecutePurgeCommand.NotifyCanExecuteChanged();
@@ -2415,7 +2433,10 @@ public sealed class ShellViewModel : ObservableObject
         runningApps = running;
         PreviewInventory inventory = sessionDb.GetPreviewInventory(workspace.SessionId);
         PreviewSummaryText = PreviewSummary.Format(lastPlan, lastPreflight!, inventory, recipeLines, running);
-        SpaceBudgetText = FormatSpaceBudget(lastPlan.TotalBytes, lastPreflight!.RequiredBytes, lastPreflight.FreeBytes);
+        (SpaceBudgetText, SpaceBudgetLevel) = StatusStrip.FormatSpaceBudget(
+            lastPlan.TotalBytes,
+            lastPreflight!.RequiredBytes,
+            lastPreflight.FreeBytes);
         ScanStatus = lastPreflight.CanProceed && running.Count == 0
             ? $"Preview: {lastPlan.Items.Count} copy operations, {Conflicts.Count} conflicts, and {recipeWrites} app writes. Windows.old has not been changed."
             : running.Count > 0
@@ -2921,24 +2942,6 @@ public sealed class ShellViewModel : ObservableObject
         {
             ShowHandledFailure(exception);
         }
-    }
-
-    private static string FormatSpaceBudget(long selectedBytes, long requiredBytes, long freeBytes)
-    {
-        string core =
-            $"Selected: {selectedBytes} bytes of {freeBytes} free (need {requiredBytes} with margin)";
-        if (requiredBytes > freeBytes)
-        {
-            return core + " Will not fit.";
-        }
-
-        long amberAt = (long)(0.9 * Math.Max(0, freeBytes - PreflightChecker.AbsoluteMarginBytes));
-        if (selectedBytes >= amberAt)
-        {
-            return core + " Approaching the free-space limit.";
-        }
-
-        return core;
     }
 
     private void ShowHandledFailure(Exception exception)

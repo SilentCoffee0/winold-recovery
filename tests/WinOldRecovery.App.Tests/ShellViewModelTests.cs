@@ -627,6 +627,11 @@ public sealed class ShellViewModelTests
         await context.ViewModel.ScanCommand.ExecuteAsync(null);
 
         Assert.Contains("Hashed", context.ViewModel.ScanStatus, StringComparison.Ordinal);
+        Assert.Contains("known apps", context.ViewModel.ScanStatus, StringComparison.Ordinal);
+        Assert.Contains("high-value items", context.ViewModel.ScanStatus, StringComparison.Ordinal);
+        Assert.Contains("Nothing has been changed", context.ViewModel.ScanStatus, StringComparison.Ordinal);
+        Assert.Equal(SourceIntegrityLevel.Untouched, context.ViewModel.SourceIntegrityLevel);
+        Assert.Equal(SpaceBudgetLevel.Idle, context.ViewModel.SpaceBudgetLevel);
         Assert.Contains(
             context.ViewModel.TreeRows,
             row => row.Name.Length > 0);

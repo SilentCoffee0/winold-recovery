@@ -25,6 +25,9 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("IsGroupHeader", xaml, StringComparison.Ordinal);
         Assert.Contains("ProblemLabel", xaml, StringComparison.Ordinal);
         Assert.Contains("GrayTextBrushKey", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Foreground=\"Gray\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SpaceBudgetLevel", xaml, StringComparison.Ordinal);
+        Assert.Contains("SourceIntegrityLevel", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"FilesViewTree\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"FilesViewLargest\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"FilesViewRecent\"", xaml, StringComparison.Ordinal);

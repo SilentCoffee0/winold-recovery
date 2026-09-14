@@ -84,3 +84,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Decide Cards expose Inspect / Open Folder / Restore / Leave Behind on each overview card (UX 3.1); absent, profile, and summary cards stay one-line.
 - Recent files view inserts a folder-path header above each parent group (UX 3.2); headers cannot be restored.
 - Problems column shows the per-row explanation, not the internal problem enum.
+- Status strip uses system colors for source integrity and space-budget amber/red; hardcoded Gray text is gone. Scan summary always names known apps and high-value items.

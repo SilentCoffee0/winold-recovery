@@ -47,11 +47,44 @@
 
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem>
-                <TextBlock Text="{Binding SourceIntegrityText, StringFormat=● {0}}" />
+                <TextBlock Text="{Binding SourceIntegrityText, StringFormat=● {0}}"
+                           AutomationProperties.Name="Source integrity">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SourceIntegrityLevel}" Value="Deleting">
+                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding SourceIntegrityLevel}" Value="Partial">
+                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding SourceIntegrityLevel}" Value="Removed">
+                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
             </StatusBarItem>
             <Separator />
             <StatusBarItem>
-                <TextBlock Text="{Binding SpaceBudgetText}" />
+                <TextBlock Text="{Binding SpaceBudgetText}"
+                           AutomationProperties.Name="Space budget">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SpaceBudgetLevel}" Value="Approaching">
+                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding SpaceBudgetLevel}" Value="WillNotFit">
+                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
             </StatusBarItem>
             <Separator />
             <StatusBarItem HorizontalAlignment="Right">
@@ -81,7 +114,9 @@
 
                 <StackPanel Grid.Row="0" Margin="0,0,0,8">
                     <TextBlock Text="{Binding ScanStatus}" TextWrapping="Wrap" ToolTip="{Binding SkipHint}" />
-                    <TextBlock Margin="0,4,0,0" Foreground="Gray" Text="{Binding ElevationNote}" TextWrapping="Wrap" />
+                    <TextBlock Margin="0,4,0,0"
+                               Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                               Text="{Binding ElevationNote}" TextWrapping="Wrap" />
                     <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Text="{Binding SourceHint}" />
                     <TextBlock Margin="0,4,0,0" Text="{Binding CurrentPath}"
                                ToolTip="{Binding CurrentPathFull}" />
@@ -202,7 +237,8 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBlock Text="{Binding Facts}" Foreground="Gray">
+                                        <TextBlock Text="{Binding Facts}"
+                                                   Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Style.Triggers>
