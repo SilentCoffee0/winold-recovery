@@ -90,6 +90,12 @@ public sealed class RecipeTests
 
         RecipeCard ssh = cards.Single(card => card.RecipeId == "ssh");
         PlanResult sshPlan = host.PlanCard(new SshRecipe(), ssh, Dest(context));
+        await context.Database.SetKvAsync(
+            "session-1",
+            StoredRecipeDecisions.KvKey(ssh.InstanceKey, "files"),
+            nameof(Decision.LeaveBehind));
+        PlanResult sshLeft = host.PlanCard(new SshRecipe(), ssh, Dest(context), "session-1");
+        Assert.Empty(sshLeft.Writes);
         await host.ExecuteAsync("session-1", new SshRecipe(), sshPlan);
         Assert.True(new SshRecipe().Verify(sshPlan).Ok);
         Assert.True(File.Exists(Path.Combine(context.Destination, ".ssh", "id_ed25519.pub")));

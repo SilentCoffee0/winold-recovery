@@ -89,11 +89,17 @@ public sealed class RecipeHost
         return cards;
     }
 
-    public PlanResult PlanCard(IRecipe recipe, RecipeCard card, DestinationContext destination)
+    public PlanResult PlanCard(
+        IRecipe recipe,
+        RecipeCard card,
+        DestinationContext destination,
+        string? sessionId = null)
     {
-        Dictionary<string, Decision> decisions = card.Components.ToDictionary(
-            static component => component.Key,
-            static component => component.Fixed ? Decision.Undecided : component.SuggestedDefault);
+        Dictionary<string, Decision> decisions = sessionId is null
+            ? card.Components.ToDictionary(
+                static component => component.Key,
+                static component => component.Fixed ? Decision.Undecided : component.SuggestedDefault)
+            : StoredRecipeDecisions.Load(sessionDb, sessionId, card);
         PlanResult planned = recipe.Plan(new CardDecisions(card, decisions), destination);
         return planned with { Destination = destination };
     }

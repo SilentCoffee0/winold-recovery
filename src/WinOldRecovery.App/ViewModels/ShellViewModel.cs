@@ -155,6 +155,7 @@ public sealed class ShellViewModel : ObservableObject
         RestoreCommand = new AsyncRelayCommand(() => ApplyDecisionAsync(Decision.Restore), CanMutateSelection);
         LeaveBehindCommand = new AsyncRelayCommand(() => ApplyDecisionAsync(Decision.LeaveBehind), CanMutateSelection);
         UndecidedCommand = new AsyncRelayCommand(ClearDecisionAsync, CanMutateSelection);
+        UndoDecisionCommand = new AsyncRelayCommand(UndoDecisionAsync, () => scanCompleted && decisionEngine.CanUndo);
         RestoreExceptRegeneratableCommand = new AsyncRelayCommand(RestoreExceptRegeneratableAsync, CanMutateSelection);
         RestoreNewerCommand = new AsyncRelayCommand(RestoreNewerAsync, CanMutateSelection);
         OpenFolderCommand = new AsyncRelayCommand(OpenFolderAsync, () => SelectedNode is not null && SourceRoot is not null);
@@ -222,6 +223,7 @@ public sealed class ShellViewModel : ObservableObject
     public IAsyncRelayCommand RestoreCommand { get; }
     public IAsyncRelayCommand LeaveBehindCommand { get; }
     public IAsyncRelayCommand UndecidedCommand { get; }
+    public IAsyncRelayCommand UndoDecisionCommand { get; }
     public IAsyncRelayCommand RestoreExceptRegeneratableCommand { get; }
     public IAsyncRelayCommand RestoreNewerCommand { get; }
     public IAsyncRelayCommand OpenFolderCommand { get; }
@@ -716,6 +718,10 @@ public sealed class ShellViewModel : ObservableObject
                 OnPropertyChanged(nameof(DetailText));
                 OnPropertyChanged(nameof(SelectedRecipeCard));
                 OnPropertyChanged(nameof(RecipeCardSelected));
+                ReloadRecipeComponents();
+                RestoreCommand.NotifyCanExecuteChanged();
+                LeaveBehindCommand.NotifyCanExecuteChanged();
+                UndecidedCommand.NotifyCanExecuteChanged();
             }
         }
     }
@@ -724,6 +730,8 @@ public sealed class ShellViewModel : ObservableObject
         SourceRoot is null
             ? $"WinOld Recovery — {CurrentStep}"
             : $"WinOld Recovery — {PathDisplay.MiddleEllipsis(SourceRoot, 48)} — {CurrentStep}";
+
+    public ObservableCollection<RecipeComponentChoice> RecipeComponents { get; } = [];
 
     public RecipeCard? SelectedRecipeCard =>
         SelectedCard is null
@@ -1366,7 +1374,8 @@ public sealed class ShellViewModel : ObservableObject
     private bool CanMutateSelection()
     {
         return CurrentStep == WorkflowStep.Decide &&
-            DecisionTargets().Any(static row => row.CanRestore);
+            (SelectedRecipeCard is not null ||
+                DecisionTargets().Any(static row => row.CanRestore));
     }
 
     private IReadOnlyList<TreeNodeRow> DecisionTargets()
@@ -1381,6 +1390,14 @@ public sealed class ShellViewModel : ObservableObject
 
     private async Task ApplyDecisionAsync(Decision decision)
     {
+        if (SelectedRecipeCard is RecipeCard card)
+        {
+            await ApplyRecipeComponentDecisionAsync(card, decision).ConfigureAwait(true);
+            ReloadRecipeComponents();
+            RebuildCards(lastProfiles);
+            return;
+        }
+
         IReadOnlyList<TreeNodeRow> targets = DecisionTargets().Where(static row => row.CanRestore).ToArray();
         if (targets.Count == 0)
         {
@@ -1392,10 +1409,18 @@ public sealed class ShellViewModel : ObservableObject
                 decision)
             .ConfigureAwait(true);
         RefreshAfterDecision();
+        UndoDecisionCommand.NotifyCanExecuteChanged();
     }
 
     private async Task ClearDecisionAsync()
     {
+        if (SelectedRecipeCard is RecipeCard card)
+        {
+            await ApplyRecipeComponentDecisionAsync(card, Decision.Undecided).ConfigureAwait(true);
+            ReloadRecipeComponents();
+            RebuildCards(lastProfiles);
+            return;
+        }
         IReadOnlyList<TreeNodeRow> targets = DecisionTargets();
         if (targets.Count == 0)
         {
@@ -1408,6 +1433,72 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         RefreshAfterDecision();
+        UndoDecisionCommand.NotifyCanExecuteChanged();
+    }
+
+    private async Task UndoDecisionAsync()
+    {
+        if (!decisionEngine.CanUndo)
+        {
+            return;
+        }
+
+        await decisionEngine.UndoAsync().ConfigureAwait(true);
+        RefreshAfterDecision();
+        UndoDecisionCommand.NotifyCanExecuteChanged();
+    }
+
+    private async Task ApplyRecipeComponentDecisionAsync(RecipeCard card, Decision decision)
+    {
+        foreach (RecipeComponent component in card.Components)
+        {
+            if (component.Fixed)
+            {
+                continue;
+            }
+
+            await sessionDb.SetKvAsync(
+                    workspace.SessionId,
+                    StoredRecipeDecisions.KvKey(card.InstanceKey, component.Key),
+                    decision.ToString())
+                .ConfigureAwait(true);
+        }
+    }
+
+    private void ReloadRecipeComponents()
+    {
+        foreach (RecipeComponentChoice row in RecipeComponents)
+        {
+            row.Changed -= OnRecipeComponentChanged;
+        }
+
+        RecipeComponents.Clear();
+        if (SelectedRecipeCard is not RecipeCard card)
+        {
+            return;
+        }
+
+        Dictionary<string, Decision> stored = StoredRecipeDecisions.Load(sessionDb, workspace.SessionId, card);
+        foreach (RecipeComponent component in card.Components)
+        {
+            RecipeComponentChoice choice = new(component, stored[component.Key]);
+            choice.Changed += OnRecipeComponentChanged;
+            RecipeComponents.Add(choice);
+        }
+    }
+
+    private void OnRecipeComponentChanged(object? sender, EventArgs e)
+    {
+        if (sender is not RecipeComponentChoice choice || SelectedRecipeCard is not RecipeCard card)
+        {
+            return;
+        }
+
+        _ = sessionDb.SetKvAsync(
+            workspace.SessionId,
+            StoredRecipeDecisions.KvKey(card.InstanceKey, choice.Key),
+            choice.Decision.ToString());
+        RebuildCards(lastProfiles);
     }
 
     private async Task RestoreExceptRegeneratableAsync()
@@ -1731,6 +1822,7 @@ public sealed class ShellViewModel : ObservableObject
 
         RebuildCards(lastProfiles);
         OnPropertyChanged(nameof(DetailText));
+        UndoDecisionCommand.NotifyCanExecuteChanged();
     }
 
     private void OnConflictApprovedChanged()
@@ -1814,7 +1906,7 @@ public sealed class ShellViewModel : ObservableObject
                     continue;
                 }
 
-                PlanResult recipePlan = recipeHost.PlanCard(recipe, card, destination);
+                PlanResult recipePlan = recipeHost.PlanCard(recipe, card, destination, workspace.SessionId);
                 recipeWrites += recipePlan.Writes.Count;
                 recipeLines.Add(card.Title + ": " + card.WhatIsRestored);
                 foreach (Prerequisite prerequisite in recipe.Prerequisites(recipePlan))
@@ -1933,7 +2025,7 @@ public sealed class ShellViewModel : ObservableObject
                     continue;
                 }
 
-                PlanResult recipePlan = recipeHost.PlanCard(recipe, card, destination);
+                PlanResult recipePlan = recipeHost.PlanCard(recipe, card, destination, workspace.SessionId);
                 if (recipePlan.Writes.Count == 0)
                 {
                     continue;
@@ -2009,7 +2101,7 @@ public sealed class ShellViewModel : ObservableObject
                     continue;
                 }
 
-                RecipeVerifyResult recipeVerify = recipe.Verify(recipeHost.PlanCard(recipe, card, destination));
+                RecipeVerifyResult recipeVerify = recipe.Verify(recipeHost.PlanCard(recipe, card, destination, workspace.SessionId));
                 recipeLines.Add(card.Title + ": " + recipeVerify.Detail + (recipeVerify.Ok ? "  ✔" : "  failed"));
                 if (!recipeVerify.Ok)
                 {
@@ -2073,6 +2165,7 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         SourceIntegrityText = "Deleting…";
+        SessionRecordExport.Write(safeFs, workspace, sessionDb);
         PurgeExecuteResult result = await new PurgeExecutor()
             .ExecuteAsync(
                 new PurgeExecuteRequest(

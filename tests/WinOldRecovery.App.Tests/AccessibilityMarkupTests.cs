@@ -22,7 +22,7 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("Pause scan", xaml, StringComparison.Ordinal);
         Assert.Contains("ScanButtonLabel", xaml, StringComparison.Ordinal);
         Assert.Contains("DisplayLabel", xaml, StringComparison.Ordinal);
-        Assert.Contains("AutomationProperties.AutomationId=\"HelpButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"UndoDecisionButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"LogButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SessionLogView", xaml, StringComparison.Ordinal);
         Assert.Contains("CompactLayout", xaml, StringComparison.Ordinal);

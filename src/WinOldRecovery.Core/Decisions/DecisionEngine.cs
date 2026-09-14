@@ -58,6 +58,8 @@ public sealed class DecisionEngine
             .ConfigureAwait(false);
     }
 
+    public bool CanUndo => ReadUndoStack().Count > 0;
+
     public async Task UndoAsync(CancellationToken cancellationToken = default)
     {
         List<UndoEntry> stack = ReadUndoStack();

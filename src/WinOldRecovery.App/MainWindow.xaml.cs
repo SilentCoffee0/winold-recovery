@@ -68,6 +68,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Z)
+        {
+            if (e.OriginalSource is TextBoxBase or PasswordBox)
+            {
+                return;
+            }
+
+            _ = ViewModel.UndoDecisionCommand.ExecuteAsync(null);
+            e.Handled = true;
+            return;
+        }
+
         if (Keyboard.Modifiers != ModifierKeys.None)
         {
             return;

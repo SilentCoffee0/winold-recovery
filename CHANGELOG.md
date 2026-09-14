@@ -62,3 +62,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Inspect can edit a planned destination per folder (children follow); Preview exposes the restore destination folder; mixed decision cells include a restore/leave/undecided byte bar; a disk-full pause names the volume and offers Resume or Cancel without deleting anything.
 - Preview lists recipes, unrestorable counts, and remaining Undecided items; Start restore stays off while a required app is running; restore shows progress and can be cancelled without touching Windows.old; Verify includes recipe checks.
 - Scan reports Setup Cleanup task presence and next run from a read-only `schtasks /Query` (never `/Change`).
+- Decide Undo (Ctrl+Z), per-component recipe decisions, and a session record export before purge.

@@ -321,6 +321,10 @@ public sealed class ShellViewModelTests
         Assert.Contains(context.ViewModel.TreeRows, row => row.Name == "notes.txt");
         Assert.Equal(Decision.Restore, context.ViewModel.SelectedNode?.EffectiveDecision);
         Assert.Contains("Restore", context.ViewModel.SelectedNode?.DecisionLabel, StringComparison.Ordinal);
+
+        Assert.True(context.ViewModel.UndoDecisionCommand.CanExecute(null));
+        await context.ViewModel.UndoDecisionCommand.ExecuteAsync(null);
+        Assert.Equal(Decision.Undecided, FindRow(context, "notes.txt").EffectiveDecision);
     }
 
     [Fact]
