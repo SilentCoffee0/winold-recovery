@@ -36,6 +36,7 @@ public sealed class SourceDiscoveryTests : IDisposable
         Assert.DoesNotContain(candidates, candidate => candidate.Path.EndsWith(@"\Windows.old.link", StringComparison.OrdinalIgnoreCase));
         Assert.All(candidates, candidate => Assert.True(candidate.CleanupTaskPresent));
         Assert.All(candidates, candidate => Assert.NotNull(candidate.EstimatedAutoDeleteAt));
+        Assert.Contains("estimated deletion", candidates[0].DisplayLabel, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

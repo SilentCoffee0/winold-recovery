@@ -80,8 +80,9 @@
                 </Grid.RowDefinitions>
 
                 <StackPanel Grid.Row="0" Margin="0,0,0,8">
-                    <TextBlock Text="{Binding ScanStatus}" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding ScanStatus}" TextWrapping="Wrap" ToolTip="{Binding SkipHint}" />
                     <TextBlock Margin="0,4,0,0" Foreground="Gray" Text="{Binding ElevationNote}" TextWrapping="Wrap" />
+                    <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Text="{Binding SourceHint}" />
                     <TextBlock Margin="0,4,0,0" Text="{Binding CurrentPath}"
                                ToolTip="{Binding CurrentPathFull}" />
                 </StackPanel>
@@ -97,10 +98,15 @@
 
                     <ListBox Grid.Row="0" MaxHeight="140"
                              ItemsSource="{Binding Sources}"
-                             DisplayMemberPath="Path"
+                             DisplayMemberPath="DisplayLabel"
                              SelectedValuePath="Path"
                              SelectedValue="{Binding SelectedSourcePath}"
                              AutomationProperties.Name="Windows.old sources" />
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                        <Button Content="Browse…" Command="{Binding BrowseSourceCommand}"
+                                AutomationProperties.Name="Browse for Windows.old"
+                                AutomationProperties.AutomationId="BrowseSourceButton" />
+                    </StackPanel>
 
                     <DockPanel Grid.Row="1" Margin="0,8,0,8">
                         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
@@ -193,8 +199,9 @@
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Header="Name" DisplayMemberBinding="{Binding Name}" Width="220" />
-                                <GridViewColumn Header="Size" DisplayMemberBinding="{Binding AggSize}" Width="90" />
-                                <GridViewColumn Header="Files" DisplayMemberBinding="{Binding AggFiles}" Width="70" />
+                                <GridViewColumn Header="Size" DisplayMemberBinding="{Binding SizeLabel}" Width="90" />
+                                <GridViewColumn Header="Files" DisplayMemberBinding="{Binding FilesLabel}" Width="70" />
+                                <GridViewColumn Header="Modified" DisplayMemberBinding="{Binding ModifiedLabel}" Width="110" />
                                 <GridViewColumn Header="Decision" DisplayMemberBinding="{Binding DecisionLabel}" Width="140" />
                                 <GridViewColumn Header="Problem" DisplayMemberBinding="{Binding Problem}" Width="120" />
                                 <GridViewColumn Header="Badges" DisplayMemberBinding="{Binding BadgeText}" Width="160" />
@@ -218,8 +225,10 @@
                     </DockPanel>
 
                     <StackPanel Grid.Row="2" Orientation="Horizontal">
-                        <Button Content="Scan" Command="{Binding ScanCommand}" Margin="0,0,8,0"
+                        <Button Content="{Binding ScanButtonLabel}" Command="{Binding ScanCommand}" Margin="0,0,8,0"
                                 AutomationProperties.Name="Start scan" AutomationProperties.AutomationId="ScanButton" />
+                        <Button Content="Pause" Command="{Binding PauseScanCommand}" Margin="0,0,8,0"
+                                AutomationProperties.Name="Pause scan" />
                         <Button Content="Cancel" Command="{Binding CancelScanCommand}" Margin="0,0,8,0"
                                 AutomationProperties.Name="Cancel scan" />
                         <Button Content="Restore (R)" Command="{Binding RestoreCommand}" Margin="0,0,8,0"

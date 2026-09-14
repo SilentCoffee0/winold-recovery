@@ -70,7 +70,8 @@ public partial class App : Application
                 processRunner,
                 safeFs,
                 sourceGuard,
-                RecipeCatalog.All);
+                RecipeCatalog.All,
+                folderPicker: new WpfFolderPicker());
             viewModel.LoadSourcesAsync().GetAwaiter().GetResult();
 
             MainWindow window = new(viewModel);

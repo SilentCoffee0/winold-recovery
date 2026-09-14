@@ -63,6 +63,8 @@ public sealed class FileSystemWalkerTests
             sourceWrite,
             File.GetLastWriteTimeUtc(Path.Combine(source, "Users", "Alice", "note.txt")));
         Assert.True(File.Exists(Path.Combine(live, "live-only.txt")));
+        Assert.True(result.JunctionsSkipped >= 2, "Junctions should be counted as skipped leaves.");
+        Assert.True(result.CloudSkipped >= 1, "Cloud placeholders should be counted as skipped.");
     }
 
     [Fact]

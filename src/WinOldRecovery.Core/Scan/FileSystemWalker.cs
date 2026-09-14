@@ -112,7 +112,11 @@ public sealed class FileSystemWalker
             counters.NodesVisited,
             counters.BytesSeen,
             completed,
-            Completed: true);
+            Completed: true,
+            counters.JunctionsSkipped,
+            counters.CloudSkipped,
+            counters.EncryptedSkipped,
+            counters.AccessDenied);
     }
 
     private async Task<WalkState> CreateScopeStateAsync(
@@ -243,6 +247,7 @@ public sealed class FileSystemWalker
                 counters.CurrentRelativePath = childRelative;
 
                 NodeClassification classification = Classify(childPath, childRelative, entry);
+                NoteSkip(counters, classification);
                 if (classification.Kind == NodeKind.Directory && !classification.IsLeaf)
                 {
                     long childId = state.NextNodeId++;
@@ -324,6 +329,7 @@ public sealed class FileSystemWalker
         }
         catch (Exception exception) when (IsAccessDenied(exception))
         {
+            counters.AccessDenied++;
             return new DirectoryWalkResult(aggSize, aggFiles, NodeProblem.AccessDenied);
         }
     }
@@ -397,6 +403,24 @@ public sealed class FileSystemWalker
                 SessionDb.SerializeWalkerCheckpoint(state.Checkpoint),
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private static void NoteSkip(WalkCounters counters, NodeClassification classification)
+    {
+        if (classification.Kind is NodeKind.Junction or NodeKind.Symlink or NodeKind.MountPoint)
+        {
+            counters.JunctionsSkipped++;
+        }
+
+        if (classification.Problem == NodeProblem.CloudOnly)
+        {
+            counters.CloudSkipped++;
+        }
+
+        if (classification.Problem == NodeProblem.EfsEncrypted)
+        {
+            counters.EncryptedSkipped++;
+        }
     }
 
     private static NodeClassification Classify(
@@ -664,7 +688,11 @@ public sealed class FileSystemWalker
                 counters.NodesVisited,
                 counters.BytesSeen,
                 counters.CurrentRelativePath,
-                [.. state.CompletedTopLevel]));
+                [.. state.CompletedTopLevel],
+                counters.JunctionsSkipped,
+                counters.CloudSkipped,
+                counters.EncryptedSkipped,
+                counters.AccessDenied));
     }
 
     private sealed class WalkCounters
@@ -672,6 +700,10 @@ public sealed class FileSystemWalker
         public int NodesVisited { get; set; }
         public long BytesSeen { get; set; }
         public string CurrentRelativePath { get; set; } = string.Empty;
+        public int AccessDenied { get; set; }
+        public int JunctionsSkipped { get; set; }
+        public int CloudSkipped { get; set; }
+        public int EncryptedSkipped { get; set; }
         public DateTimeOffset NextProgress { get; set; }
     }
 

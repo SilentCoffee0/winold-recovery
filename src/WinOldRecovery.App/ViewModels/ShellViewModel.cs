@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -83,6 +84,10 @@ public sealed class ShellViewModel : ObservableObject
     private string helpText = string.Empty;
     private bool logVisible;
     private string logText = string.Empty;
+    private bool scanPaused;
+    private string? pausedSourcePath;
+    private string sourceHint = string.Empty;
+    private readonly IFolderPicker folderPicker;
     private bool compactLayout;
     private bool compactInspect;
     private string currentPathFull = string.Empty;
@@ -100,7 +105,8 @@ public sealed class ShellViewModel : ObservableObject
         SourceGuard sourceGuard,
         IReadOnlyList<IRecipe>? recipes = null,
         FirstRunState? firstRunState = null,
-        LocalHelp? localHelp = null)
+        LocalHelp? localHelp = null,
+        IFolderPicker? folderPicker = null)
     {
         this.sessionDb = sessionDb;
         this.workspace = workspace;
@@ -116,6 +122,8 @@ public sealed class ShellViewModel : ObservableObject
         nodeBrowser = new NodeBrowser(sessionDb, workspace.SessionId);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => !IsScanning && SelectedSourcePath is not null);
         CancelScanCommand = new RelayCommand(CancelScan, () => IsScanning);
+        PauseScanCommand = new RelayCommand(CancelScan, () => IsScanning);
+        BrowseSourceCommand = new RelayCommand(BrowseSource);
         RestoreCommand = new AsyncRelayCommand(() => ApplyDecisionAsync(Decision.Restore), CanMutateSelection);
         LeaveBehindCommand = new AsyncRelayCommand(() => ApplyDecisionAsync(Decision.LeaveBehind), CanMutateSelection);
         UndecidedCommand = new AsyncRelayCommand(ClearDecisionAsync, CanMutateSelection);
@@ -155,6 +163,7 @@ public sealed class ShellViewModel : ObservableObject
         CreateSupportBundleCommand = new RelayCommand(CreateSupportBundle, () => verifyCompleted);
         this.firstRun = firstRunState ?? FirstRunState.FromWorkspace(safeFs, workspace);
         this.localHelp = localHelp ?? LocalHelp.FromAppDirectory();
+        this.folderPicker = folderPicker ?? new NullFolderPicker();
         firstRunVisible = !this.firstRun.IsDismissed();
         OpenHelpCommand = new RelayCommand(OpenHelp);
         CloseHelpCommand = new RelayCommand(() => HelpVisible = false);
@@ -165,6 +174,8 @@ public sealed class ShellViewModel : ObservableObject
 
     public IAsyncRelayCommand ScanCommand { get; }
     public IRelayCommand CancelScanCommand { get; }
+    public IRelayCommand PauseScanCommand { get; }
+    public IRelayCommand BrowseSourceCommand { get; }
     public IAsyncRelayCommand RestoreCommand { get; }
     public IAsyncRelayCommand LeaveBehindCommand { get; }
     public IAsyncRelayCommand UndecidedCommand { get; }
@@ -370,6 +381,17 @@ public sealed class ShellViewModel : ObservableObject
         private set => SetProperty(ref currentPathFull, value);
     }
 
+    public string ScanButtonLabel => scanPaused ? "Resume scan" : "Scan";
+
+    public string SourceHint
+    {
+        get => sourceHint;
+        private set => SetProperty(ref sourceHint, value);
+    }
+
+    public string SkipHint { get; } =
+        "Skipped items are listed, not opened: junctions and symlinks, OneDrive cloud placeholders, EFS-encrypted files, and folders Windows would not let the scan read.";
+
     public string ScanStatus
     {
         get => scanStatus;
@@ -396,6 +418,7 @@ public sealed class ShellViewModel : ObservableObject
             if (SetProperty(ref selectedSourcePath, value))
             {
                 ScanCommand.NotifyCanExecuteChanged();
+                RefreshSourceHint();
             }
         }
     }
@@ -724,13 +747,16 @@ public sealed class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(IsScanning));
         ScanCommand.NotifyCanExecuteChanged();
         CancelScanCommand.NotifyCanExecuteChanged();
+        PauseScanCommand.NotifyCanExecuteChanged();
         scanCancellation = new CancellationTokenSource();
         Progress<WalkProgress> progress = new(report =>
         {
             NodesVisited = report.NodesVisited;
             CurrentPathFull = report.CurrentRelativePath;
             CurrentPath = PathDisplay.MiddleEllipsis(report.CurrentRelativePath);
-            ScanStatus = $"Scanning… {report.NodesVisited} entries";
+            ScanStatus =
+                $"Scanning… {QuantityFormat.Count(report.NodesVisited)} entries, {QuantityFormat.Bytes(report.BytesSeen)} so far. " +
+                $"Skipped: {QuantityFormat.Count(report.JunctionsSkipped)} junctions, {QuantityFormat.Count(report.CloudSkipped)} cloud placeholders, {QuantityFormat.Count(report.EncryptedSkipped)} encrypted, {QuantityFormat.Count(report.AccessDenied)} access denied.";
         });
 
         try
@@ -741,11 +767,18 @@ public sealed class ShellViewModel : ObservableObject
                     "The chosen Windows.old folder was not found.");
             }
 
+            bool resume = scanPaused &&
+                string.Equals(pausedSourcePath, SelectedSourcePath, StringComparison.OrdinalIgnoreCase);
+            scanPaused = false;
+            pausedSourcePath = null;
+            OnPropertyChanged(nameof(ScanButtonLabel));
+
             ScanRunResult result = await scanOrchestrator.RunAsync(
                     workspace.SessionId,
                     SelectedSourcePath,
                     workspace.TemporaryPath,
                     progress: progress,
+                    resume: resume,
                     cancellationToken: scanCancellation.Token)
                 .ConfigureAwait(true);
             SourceRoot = result.SourceRoot;
@@ -759,12 +792,12 @@ public sealed class ShellViewModel : ObservableObject
                         scanCancellation.Token)
                     .ConfigureAwait(true);
                 ScanStatus =
-                    $"Windows.old holds {result.Walk.NodesVisited} entries across {result.Profiles.Count} profiles. Hashed {hashed} files under 64 MB. Nothing has been changed.";
+                    $"Windows.old holds {QuantityFormat.Count(result.Walk.NodesVisited)} entries ({QuantityFormat.Bytes(result.Walk.BytesSeen)}) across {result.Profiles.Count} profiles. Hashed {hashed} files under 64 MB. Nothing has been changed.";
             }
             else
             {
                 ScanStatus =
-                    $"Windows.old holds {result.Walk.NodesVisited} entries across {result.Profiles.Count} profiles. Nothing has been changed.";
+                    $"Windows.old holds {QuantityFormat.Count(result.Walk.NodesVisited)} entries ({QuantityFormat.Bytes(result.Walk.BytesSeen)}) across {result.Profiles.Count} profiles. Nothing has been changed.";
             }
 
             lastProfiles = result.Profiles;
@@ -780,7 +813,7 @@ public sealed class ShellViewModel : ObservableObject
                         workspace.ExportsPath,
                         scanCancellation.Token)
                     .ConfigureAwait(true);
-                ScanStatus += $" Found {lastRecipeCards.Count} app cards.";
+                ScanStatus += $" Found {lastRecipeCards.Count} app cards and {lastClassification?.HighValueCount ?? 0} high-value items.";
             }
 
             RebuildCards(lastProfiles);
@@ -793,7 +826,10 @@ public sealed class ShellViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            ScanStatus = "Scan paused. Partial results were kept.";
+            scanPaused = true;
+            pausedSourcePath = SelectedSourcePath;
+            OnPropertyChanged(nameof(ScanButtonLabel));
+            ScanStatus = "Scan paused. Partial results were kept. Choose Resume scan to continue.";
         }
         catch (Exception exception)
         {
@@ -805,7 +841,53 @@ public sealed class ShellViewModel : ObservableObject
             OnPropertyChanged(nameof(IsScanning));
             ScanCommand.NotifyCanExecuteChanged();
             CancelScanCommand.NotifyCanExecuteChanged();
+            PauseScanCommand.NotifyCanExecuteChanged();
         }
+    }
+
+    private void BrowseSource()
+    {
+        string? path = folderPicker.PickFolder();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        try
+        {
+            SourceCandidate candidate = sourceDiscovery.InspectBrowsedPath(path, cleanupTaskPresent: true);
+            if (!Sources.Any(existing => existing.Path.Equals(candidate.Path, StringComparison.OrdinalIgnoreCase)))
+            {
+                Sources.Add(candidate);
+            }
+
+            SelectedSourcePath = candidate.Path;
+        }
+        catch (Exception exception)
+        {
+            ShowHandledFailure(exception);
+        }
+    }
+
+    private void RefreshSourceHint()
+    {
+        SourceCandidate? selected = Sources.FirstOrDefault(
+            candidate => candidate.Path.Equals(SelectedSourcePath, StringComparison.OrdinalIgnoreCase));
+        if (selected is null)
+        {
+            SourceHint = string.Empty;
+            return;
+        }
+
+        string users = selected.HasUsersFolder
+            ? string.Empty
+            : "This folder does not contain Users. Scan can continue, but it may not be a Windows installation. ";
+        string deletion = selected.EstimatedAutoDeleteAt is DateTimeOffset estimated
+            ? "Windows automatically deletes Windows.old about 10 days after setup. Estimated deletion: " +
+              estimated.ToString("d MMM yyyy", CultureInfo.InvariantCulture) +
+              ". Finish recovery before then."
+            : string.Empty;
+        SourceHint = users + deletion;
     }
 
     private void CancelScan()

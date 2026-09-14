@@ -18,7 +18,10 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("MinWidth=\"1024\"", xaml, StringComparison.Ordinal);
         Assert.Contains("MinHeight=\"640\"", xaml, StringComparison.Ordinal);
         Assert.Contains("TextSearch.TextPath=\"Name\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("PromisesText", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"BrowseSourceButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Pause scan", xaml, StringComparison.Ordinal);
+        Assert.Contains("ScanButtonLabel", xaml, StringComparison.Ordinal);
+        Assert.Contains("DisplayLabel", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"HelpButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"LogButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SessionLogView", xaml, StringComparison.Ordinal);

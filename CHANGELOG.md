@@ -47,3 +47,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Handled scan/restore/verify/purge failures show a redacted explanation and the session log path; first-run promises copy; file-list type-ahead; action-button narrator names; NodeBrowser paging truncation test.
 - First-run overlay explaining the six steps and the two promises; in-app Help from bundled local Markdown (F1 / Help); Log opens the session log in Explorer; help files cannot leave the help folder.
 - In-app redacted session log viewer; middle-ellipsis long paths with full path in Inspect; panes collapse to Cards/Files/Inspect tabs below 1200 px; space budget says when a plan will not fit or is near the limit.
+- Scan source picker shows created/estimated-deletion dates, Browse for any folder, Pause/Resume with skipped-item counters, and thousands-separated sizes in the Files list.

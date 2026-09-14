@@ -12,10 +12,18 @@ public sealed record WalkProgress(
     int NodesVisited,
     long BytesSeen,
     string CurrentRelativePath,
-    IReadOnlyList<string> CompletedTopLevelDirectories);
+    IReadOnlyList<string> CompletedTopLevelDirectories,
+    int JunctionsSkipped = 0,
+    int CloudSkipped = 0,
+    int EncryptedSkipped = 0,
+    int AccessDenied = 0);
 
 public sealed record WalkResult(
     int NodesVisited,
     long BytesSeen,
     IReadOnlyList<string> CompletedTopLevelDirectories,
-    bool Completed);
+    bool Completed,
+    int JunctionsSkipped = 0,
+    int CloudSkipped = 0,
+    int EncryptedSkipped = 0,
+    int AccessDenied = 0);

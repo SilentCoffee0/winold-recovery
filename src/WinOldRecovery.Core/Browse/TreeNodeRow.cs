@@ -1,4 +1,6 @@
+using System.Globalization;
 using WinOldRecovery.Core.Decisions;
+using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Scan;
 
 namespace WinOldRecovery.Core.Browse;
@@ -33,6 +35,12 @@ public sealed record TreeNodeRow(
     public bool IsReparse => Kind is NodeKind.Junction or NodeKind.Symlink or NodeKind.MountPoint;
 
     public bool CanRestore => !IsReparse;
+
+    public string SizeLabel => QuantityFormat.Bytes(AggSize);
+
+    public string FilesLabel => QuantityFormat.Count(AggFiles);
+
+    public string ModifiedLabel => ModifiedUtc?.ToString("d MMM yyyy", CultureInfo.InvariantCulture) ?? "—";
 
     public string BadgeText => string.Join(", ", Badges);
 

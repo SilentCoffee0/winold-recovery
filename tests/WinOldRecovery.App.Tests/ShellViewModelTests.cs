@@ -1,4 +1,5 @@
 using System.IO;
+using WinOldRecovery.App;
 using WinOldRecovery.App.Help;
 using WinOldRecovery.App.ViewModels;
 using WinOldRecovery.Core.Browse;
@@ -166,24 +167,42 @@ public sealed class ShellViewModelTests
         Assert.False(context.ViewModel.CompactInspect);
     }
 
+    [Fact]
+    public async Task BrowseSource_AddsInspectedFolderAndWarnsWithoutUsers()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string browsed = Path.Combine(context.Root, "not-windows-old");
+        Directory.CreateDirectory(browsed);
+        context.Picker.Folder = browsed;
+
+        context.ViewModel.BrowseSourceCommand.Execute(null);
+
+        Assert.Contains("not-windows-old", context.ViewModel.SelectedSourcePath, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("does not contain Users", context.ViewModel.SourceHint, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Scan", context.ViewModel.ScanButtonLabel);
+    }
+
     private sealed class ShellTestContext : IAsyncDisposable
     {
         private ShellTestContext(
             string root,
             SessionDb database,
             RecordingProcessRunner runner,
-            ShellViewModel viewModel)
+            ShellViewModel viewModel,
+            StubFolderPicker picker)
         {
             Root = root;
             Database = database;
             Runner = runner;
             ViewModel = viewModel;
+            Picker = picker;
         }
 
         public string Root { get; }
         public SessionDb Database { get; }
         public RecordingProcessRunner Runner { get; }
         public ShellViewModel ViewModel { get; }
+        public StubFolderPicker Picker { get; }
 
         public static async Task<ShellTestContext> CreateAsync()
         {
@@ -207,6 +226,7 @@ public sealed class ShellViewModelTests
                 File.Exists(bundled)
                     ? File.ReadAllText(bundled)
                     : "# Limits\n\nChrome and Edge passwords cannot be recovered.\n");
+            StubFolderPicker picker = new();
             ShellViewModel viewModel = new(
                 database,
                 workspace,
@@ -217,8 +237,9 @@ public sealed class ShellViewModelTests
                 sourceGuard,
                 recipes: null,
                 firstRunState: null,
-                localHelp: new LocalHelp(helpRoot));
-            return new ShellTestContext(root, database, runner, viewModel);
+                localHelp: new LocalHelp(helpRoot),
+                folderPicker: picker);
+            return new ShellTestContext(root, database, runner, viewModel, picker);
         }
 
         public async ValueTask DisposeAsync()
@@ -227,6 +248,13 @@ public sealed class ShellViewModelTests
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             Directory.Delete(Root, recursive: true);
         }
+    }
+
+    private sealed class StubFolderPicker : IFolderPicker
+    {
+        public string? Folder { get; set; }
+
+        public string? PickFolder() => Folder;
     }
 
     private sealed class StubVolumes(IReadOnlyList<string> roots) : IVolumeRootProvider
