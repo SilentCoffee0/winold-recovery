@@ -728,6 +728,70 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task OverviewCardVerbs_InspectOpenRestoreOnPersonalFolderAndRecipe()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync(RecipeCatalog.All);
+        string source = Path.Combine(context.Root, "Windows.old");
+        string ssh = Path.Combine(source, "Users", "Alice", ".ssh");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        Directory.CreateDirectory(ssh);
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(Path.Combine(ssh, "id_ed25519.pub"), "ssh-ed25519 FIXTURE");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        OverviewCard desktop = context.ViewModel.Cards.First(
+            card => card.Kind == "PersonalFolder" && card.Title == "Desktop");
+        OverviewCard absent = context.ViewModel.Cards.First(card => card.Kind == "Absent");
+        OverviewCard sshCard = context.ViewModel.Cards.First(card => card.Kind == "ssh");
+        Assert.True(desktop.ShowVerbs);
+        Assert.False(absent.ShowVerbs);
+        Assert.True(sshCard.ShowVerbs);
+        Assert.False(context.ViewModel.InspectOverviewCardCommand.CanExecute(absent));
+
+        context.ViewModel.SetWindowWidth(1100);
+        context.ViewModel.InspectOverviewCardCommand.Execute(desktop);
+        Assert.Equal("Desktop", context.ViewModel.SelectedCard?.Title);
+        Assert.Equal(DecidePane.Cards, context.ViewModel.DecidePane);
+        Assert.True(context.ViewModel.CompactInspect);
+        Assert.NotNull(context.ViewModel.SelectedNode);
+
+        await context.ViewModel.LeaveOverviewCardCommand.ExecuteAsync(desktop);
+        Assert.Equal(Decision.LeaveBehind, context.ViewModel.SelectedNode?.EffectiveDecision);
+
+        await context.ViewModel.RestoreOverviewCardCommand.ExecuteAsync(desktop);
+        Assert.Equal(Decision.Restore, context.ViewModel.SelectedNode?.EffectiveDecision);
+        Assert.True(context.ViewModel.SelectedNode?.HasOwnUserDecision);
+        Assert.Contains(
+            context.ViewModel.Cards,
+            card => card.Kind == "PersonalFolder" &&
+                card.Title == "Desktop" &&
+                card.DecisionLabel.Contains("Restore", StringComparison.Ordinal));
+        Assert.Contains(
+            context.ViewModel.Cards,
+            card => card.Kind == "PersonalFolder" &&
+                card.Title == "Desktop" &&
+                card.DecisionLabel.Contains("●", StringComparison.Ordinal));
+        OverviewCard kept = context.ViewModel.Cards.First(
+            card => card.Kind == "PersonalFolder" && card.Title == "Desktop");
+        Assert.Same(kept, context.ViewModel.SelectedCard);
+
+        context.Runner.Requests.Clear();
+        await context.ViewModel.OpenOverviewCardCommand.ExecuteAsync(sshCard);
+        Assert.Equal("ssh", context.ViewModel.SelectedCard?.Kind);
+        ProcessRequest request = Assert.Single(context.Runner.Requests);
+        Assert.Equal("explorer.exe", request.FileName);
+        Assert.Contains(".ssh", Assert.Single(request.Arguments), StringComparison.OrdinalIgnoreCase);
+
+        await context.ViewModel.LeaveOverviewCardCommand.ExecuteAsync(sshCard);
+        Assert.Contains(
+            context.ViewModel.RecipeComponents,
+            component => component.Decision == Decision.LeaveBehind);
+    }
+
+    [Fact]
     public async Task Inspect_OnARecipeCard_ShowsTheSixQuestionPane()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync(RecipeCatalog.All);

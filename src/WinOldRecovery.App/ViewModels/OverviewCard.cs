@@ -13,4 +13,8 @@ public sealed record OverviewCard(
     string DecisionLabel,
     long? NodeId,
     string Kind,
-    string DecisionTooltip = "");
+    string DecisionTooltip = "")
+{
+    public bool ShowVerbs =>
+        Kind is not ("Absent" or "Profile" or "HighValue" or "Regeneratable");
+}

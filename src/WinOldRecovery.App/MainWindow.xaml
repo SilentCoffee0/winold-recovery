@@ -225,6 +225,36 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                            <StackPanel.Style>
+                                                <Style TargetType="StackPanel">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding ShowVerbs}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </StackPanel.Style>
+                                            <Button Content="Inspect" Margin="0,0,8,0"
+                                                    Command="{Binding DataContext.InspectOverviewCardCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}"
+                                                    AutomationProperties.Name="Inspect this card" />
+                                            <Button Content="Open Folder" Margin="0,0,8,0"
+                                                    Command="{Binding DataContext.OpenOverviewCardCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}"
+                                                    AutomationProperties.Name="Open this card folder" />
+                                            <Button Content="Restore" Margin="0,0,8,0"
+                                                    Command="{Binding DataContext.RestoreOverviewCardCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}"
+                                                    IsEnabled="{Binding DataContext.CanMutateSession, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    AutomationProperties.Name="Restore this card" />
+                                            <Button Content="Leave Behind"
+                                                    Command="{Binding DataContext.LeaveOverviewCardCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}"
+                                                    IsEnabled="{Binding DataContext.CanMutateSession, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    AutomationProperties.Name="Leave this card behind" />
+                                        </StackPanel>
                                         <StackPanel.Style>
                                             <Style TargetType="StackPanel">
                                                 <Style.Triggers>

@@ -175,6 +175,18 @@ public sealed class ShellViewModel : ObservableObject
         RestoreExceptRegeneratableCommand = new AsyncRelayCommand(RestoreExceptRegeneratableAsync, CanMutateSelection);
         RestoreNewerCommand = new AsyncRelayCommand(RestoreNewerAsync, CanMutateSelection);
         OpenFolderCommand = new AsyncRelayCommand(OpenFolderAsync, CanOpenFolder);
+        InspectOverviewCardCommand = new RelayCommand<OverviewCard>(
+            InspectOverviewCard,
+            static card => card is { ShowVerbs: true });
+        OpenOverviewCardCommand = new AsyncRelayCommand<OverviewCard>(
+            OpenOverviewCardAsync,
+            static card => card is { ShowVerbs: true });
+        RestoreOverviewCardCommand = new AsyncRelayCommand<OverviewCard>(
+            card => DecideOverviewCardAsync(card, Decision.Restore),
+            static card => card is { ShowVerbs: true });
+        LeaveOverviewCardCommand = new AsyncRelayCommand<OverviewCard>(
+            card => DecideOverviewCardAsync(card, Decision.LeaveBehind),
+            static card => card is { ShowVerbs: true });
         ExpandCommand = new RelayCommand<TreeNodeRow>(Expand);
         ShowCardsCommand = new RelayCommand(() =>
         {
@@ -265,6 +277,10 @@ public sealed class ShellViewModel : ObservableObject
     public IAsyncRelayCommand RestoreExceptRegeneratableCommand { get; }
     public IAsyncRelayCommand RestoreNewerCommand { get; }
     public IAsyncRelayCommand OpenFolderCommand { get; }
+    public IRelayCommand<OverviewCard> InspectOverviewCardCommand { get; }
+    public IAsyncRelayCommand<OverviewCard> OpenOverviewCardCommand { get; }
+    public IAsyncRelayCommand<OverviewCard> RestoreOverviewCardCommand { get; }
+    public IAsyncRelayCommand<OverviewCard> LeaveOverviewCardCommand { get; }
     public IRelayCommand<TreeNodeRow> ExpandCommand { get; }
     public IRelayCommand ShowCardsCommand { get; }
     public IRelayCommand ShowFilesCommand { get; }
@@ -1700,6 +1716,70 @@ public sealed class ShellViewModel : ObservableObject
         return SelectedNode is null ? [] : [SelectedNode];
     }
 
+    private void ActivateOverviewCard(OverviewCard? card)
+    {
+        if (card is null)
+        {
+            return;
+        }
+
+        SelectedCard = card;
+        if (SelectedNode is TreeNodeRow node && card.NodeId is not null)
+        {
+            ReplaceSelection([node]);
+        }
+        else if (card.NodeId is null)
+        {
+            ReplaceSelection([]);
+        }
+    }
+
+    private void InspectOverviewCard(OverviewCard? card)
+    {
+        if (card is null || !card.ShowVerbs)
+        {
+            return;
+        }
+
+        ActivateOverviewCard(card);
+        if (CompactLayout)
+        {
+            CompactInspect = true;
+        }
+    }
+
+    private async Task OpenOverviewCardAsync(OverviewCard? card)
+    {
+        if (card is null || !card.ShowVerbs)
+        {
+            return;
+        }
+
+        ActivateOverviewCard(card);
+        if (!CanOpenFolder())
+        {
+            return;
+        }
+
+        await OpenFolderAsync().ConfigureAwait(true);
+    }
+
+    private async Task DecideOverviewCardAsync(OverviewCard? card, Decision decision)
+    {
+        if (card is null || !card.ShowVerbs)
+        {
+            return;
+        }
+
+        ActivateOverviewCard(card);
+        if (!CanMutateSelection())
+        {
+            return;
+        }
+
+        await ApplyDecisionAsync(decision).ConfigureAwait(true);
+    }
+
     private async Task ApplyDecisionAsync(Decision decision)
     {
         if (SelectedRecipeCard is RecipeCard card)
@@ -1921,6 +2001,8 @@ public sealed class ShellViewModel : ObservableObject
 
     private void RebuildCards(IReadOnlyList<DetectedProfile> profiles)
     {
+        string? keepTitle = selectedCard?.Title;
+        string? keepKind = selectedCard?.Kind;
         Cards.Clear();
         foreach (DetectedProfile profile in profiles)
         {
@@ -2013,6 +2095,21 @@ public sealed class ShellViewModel : ObservableObject
                         "Looked",
                         NodeId: null,
                         "Absent"));
+            }
+        }
+
+        if (keepTitle is not null && keepKind is not null)
+        {
+            OverviewCard? match = Cards.FirstOrDefault(card =>
+                string.Equals(card.Title, keepTitle, StringComparison.Ordinal) &&
+                string.Equals(card.Kind, keepKind, StringComparison.Ordinal));
+            if (!Equals(selectedCard, match))
+            {
+                selectedCard = match;
+                OnPropertyChanged(nameof(SelectedCard));
+                OnPropertyChanged(nameof(SelectedRecipeCard));
+                OnPropertyChanged(nameof(RecipeCardSelected));
+                ReloadRecipeComponents();
             }
         }
 
