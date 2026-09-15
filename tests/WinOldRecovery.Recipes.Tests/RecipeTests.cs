@@ -1866,6 +1866,25 @@ public sealed class RecipeTests
         Assert.False(File.Exists(Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "https-key.pem")));
         Assert.False(Directory.Exists(Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "index-v2")));
         Assert.Contains("SUPERSECRETAPIKEY", destConfig, StringComparison.Ordinal);
+        PlanResult withDest = plan with { Destination = Dest(context) };
+        Assert.True((await new SyncthingRecipe().VerifyAsync(withDest)).Ok);
+        Assert.Contains(
+            context.Runner.Requests,
+            request => request.FileName.Equals("syncthing.exe", StringComparison.OrdinalIgnoreCase) &&
+                request.Arguments.Contains("--device-id") &&
+                request.Arguments.Contains("--home"));
+        DestinationContext wrongCli = new(
+            context.Destination,
+            context.Exports,
+            context.SafeFs,
+            new FixedOutputRunner("NOT-A-SYNCTHING-DEVICE-ID"));
+        Assert.False((await new SyncthingRecipe().VerifyAsync(plan with { Destination = wrongCli })).Ok);
+        DestinationContext matchingCli = new(
+            context.Destination,
+            context.Exports,
+            context.SafeFs,
+            new FixedOutputRunner(card.Facts["deviceId"]));
+        Assert.True((await new SyncthingRecipe().VerifyAsync(plan with { Destination = matchingCli })).Ok);
         string destCert = Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "cert.pem");
         await File.WriteAllTextAsync(destCert, staleCert);
         Assert.False(new SyncthingRecipe().Verify(plan).Ok);
@@ -2844,6 +2863,14 @@ public sealed class RecipeTests
             await Database.DisposeAsync();
             SqliteConnection.ClearAllPools();
             Directory.Delete(Root, recursive: true);
+        }
+    }
+
+    private sealed class FixedOutputRunner(string stdout) : IProcessRunner
+    {
+        public Task<ProcessResult> RunAsync(ProcessRequest request, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new ProcessResult(0, stdout, string.Empty));
         }
     }
 

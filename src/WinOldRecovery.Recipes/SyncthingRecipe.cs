@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Xml.Linq;
 using WinOldRecovery.Core.Decisions;
 using WinOldRecovery.Core.IO;
+using WinOldRecovery.Core.Processes;
 using WinOldRecovery.Core.Recipes;
 
 namespace WinOldRecovery.Recipes;
@@ -273,6 +274,56 @@ public sealed class SyncthingRecipe : IRecipe
         }
 
         return new RecipeVerifyResult(true, "Syncthing identity present, folders paused, index omitted");
+    }
+
+    public async Task<RecipeVerifyResult> VerifyAsync(
+        PlanResult plan,
+        CancellationToken cancellationToken = default)
+    {
+        RecipeVerifyResult files = Verify(plan);
+        if (!files.Ok || plan.Destination is null)
+        {
+            return files;
+        }
+
+        RecipeWrite? cert = plan.Writes.FirstOrDefault(static write =>
+            write.DestinationPath.EndsWith("cert.pem", StringComparison.OrdinalIgnoreCase) &&
+            write.ComponentKey == "identity");
+        if (cert is null)
+        {
+            return files;
+        }
+
+        string destHome = Path.GetDirectoryName(cert.DestinationPath) ?? string.Empty;
+        ProcessResult result;
+        try
+        {
+            result = await plan.Destination.ProcessRunner
+                .RunAsync(
+                    new ProcessRequest(
+                        "syncthing.exe",
+                        ["--home", destHome, "--device-id"],
+                        Timeout: TimeSpan.FromSeconds(15)),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException and not StackOverflowException)
+        {
+            return files;
+        }
+
+        string printed = result.StandardOutput.Trim();
+        if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(printed))
+        {
+            return files;
+        }
+
+        if (!printed.Equals(plan.Card.Facts.GetValueOrDefault("deviceId"), StringComparison.Ordinal))
+        {
+            return new RecipeVerifyResult(false, "syncthing --device-id does not match the source");
+        }
+
+        return new RecipeVerifyResult(true, "Syncthing CLI device ID matches");
     }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
