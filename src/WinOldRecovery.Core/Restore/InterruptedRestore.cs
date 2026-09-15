@@ -119,6 +119,16 @@ public static class InterruptedRestore
                 continue;
             }
 
+            if (!TryPeekIncompleteJournal(databasePath, out bool hasIncomplete))
+            {
+                continue;
+            }
+
+            if (!hasIncomplete)
+            {
+                continue;
+            }
+
             SessionDb? database = null;
             try
             {
@@ -162,6 +172,59 @@ public static class InterruptedRestore
         }
 
         return DateTimeOffset.Parse(value, CultureInfo.InvariantCulture);
+    }
+
+    private static bool TryPeekIncompleteJournal(string databasePath, out bool hasIncomplete)
+    {
+        hasIncomplete = false;
+        SQLitePCL.Batteries_V2.Init();
+        try
+        {
+            string connectionString = new SqliteConnectionStringBuilder
+            {
+                DataSource = databasePath,
+                Mode = SqliteOpenMode.ReadOnly,
+                Pooling = false,
+                DefaultTimeout = 1,
+            }.ToString();
+            using SqliteConnection connection = new(connectionString);
+            connection.Open();
+            using (SqliteCommand pragma = connection.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA query_only = ON; PRAGMA busy_timeout = 1000;";
+                pragma.ExecuteNonQuery();
+            }
+
+            using (SqliteCommand table = connection.CreateCommand())
+            {
+                table.CommandText =
+                    """
+                    SELECT 1
+                    FROM sqlite_master
+                    WHERE type = 'table' AND name = 'journal'
+                    LIMIT 1;
+                    """;
+                if (table.ExecuteScalar() is null)
+                {
+                    return true;
+                }
+            }
+
+            using SqliteCommand command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT 1
+                FROM journal
+                WHERE state IN ('Started', 'Paused', 'Failed')
+                LIMIT 1;
+                """;
+            hasIncomplete = command.ExecuteScalar() is not null;
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SqliteException)
+        {
+            return false;
+        }
     }
 
     private static bool IsDatabaseInUse(string databasePath)

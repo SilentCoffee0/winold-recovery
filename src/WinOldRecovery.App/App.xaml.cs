@@ -1,5 +1,7 @@
 ﻿using System.IO;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
 using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
 using WinOldRecovery.App.ViewModels;
@@ -40,118 +42,151 @@ public partial class App : Application
                 out string restoreSource,
                 out string restoreDest,
                 out string restoreReport);
-            InterruptedRestoreReport? interrupted = (publishedScan || publishedRestore)
-                ? null
-                : InterruptedRestore.FindLatest(safeFs);
-            SessionWorkspace workspace;
+
             if (publishedScan || publishedRestore)
             {
-                // Headless --scan/--restore always use a fresh session so they do not
-                // OpenAsync the live 1M-scan database. CopyTree skips dest files that
-                // already match the source (kill-and-resume).
-                (workspace, sessionDatabase) = Task.Run(() =>
-                    {
-                        SessionWorkspace created = SessionWorkspace.Create(safeFs, now: startedAt);
-                        SessionDb database = SessionDb.OpenAsync(created.DatabasePath, safeFs)
-                            .GetAwaiter()
-                            .GetResult();
-                        database.CreateSessionAsync(
-                                new SessionRecord(
-                                    created.SessionId,
-                                    startedAt,
-                                    "Created",
-                                    typeof(App).Assembly.GetName().Version?.ToString() ?? "0.1.0"))
-                            .GetAwaiter()
-                            .GetResult();
-                        return (created, database);
-                    })
-                    .GetAwaiter()
-                    .GetResult();
+                StartHeadless(
+                    safeFs,
+                    sourceGuard,
+                    startedAt,
+                    publishedScan,
+                    scanRoot,
+                    scanReport,
+                    publishedRestore,
+                    restoreSource,
+                    restoreDest,
+                    restoreReport);
+                base.OnStartup(e);
+                return;
             }
-            else
-            {
-                workspace = interrupted is null
-                    ? SessionWorkspace.Create(safeFs, now: startedAt)
-                    : SessionWorkspace.Open(interrupted.WorkspaceRoot, interrupted.SessionId);
-                sessionDatabase = SessionDb.OpenAsync(workspace.DatabasePath, safeFs)
-                    .GetAwaiter()
-                    .GetResult();
-                if (interrupted is null)
+
+            // Show a window before probing leftover session databases. FindLatest
+            // opens SQLite (and can stall under AV on 1M-scan leftovers). A
+            // synchronous probe here would keep the dispatcher from painting.
+            Window startupWindow = CreateStartupWindow();
+            MainWindow = startupWindow;
+            startupWindow.Show();
+            base.OnStartup(e);
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Background,
+                new Action(() => ContinueGuiStartup(startupWindow, safeFs, sourceGuard, startedAt)));
+        }
+        catch (Exception exception)
+        {
+            ShowCrash(exception);
+            Shutdown(exitCode: 1);
+        }
+    }
+
+    private void StartHeadless(
+        SafeFs safeFs,
+        SourceGuard sourceGuard,
+        DateTimeOffset startedAt,
+        bool publishedScan,
+        string scanRoot,
+        string scanReport,
+        bool publishedRestore,
+        string restoreSource,
+        string restoreDest,
+        string restoreReport)
+    {
+        (SessionWorkspace workspace, SessionDb database) = Task.Run(
+                () =>
                 {
-                    sessionDatabase.CreateSessionAsync(
+                    SessionWorkspace created = SessionWorkspace.Create(safeFs, now: startedAt);
+                    SessionDb opened = SessionDb.OpenAsync(created.DatabasePath, safeFs)
+                        .GetAwaiter()
+                        .GetResult();
+                    opened.CreateSessionAsync(
                             new SessionRecord(
-                                workspace.SessionId,
+                                created.SessionId,
                                 startedAt,
                                 "Created",
                                 typeof(App).Assembly.GetName().Version?.ToString() ?? "0.1.0"))
                         .GetAwaiter()
                         .GetResult();
-                }
-            }
+                    return (created, opened);
+                })
+            .GetAwaiter()
+            .GetResult();
+        sessionDatabase = database;
+        InitializeSessionLogging(workspace, safeFs);
 
-            sessionLogPath = workspace.LogPath;
-            RollingFileLoggerProvider fileProvider = new(
-                workspace.LogPath,
-                safeFs,
-                redactor = new SensitiveDataRedactor());
-            loggerFactory = LoggerFactory.Create(
-                builder => builder
-                    .SetMinimumLevel(LogLevel.Information)
-                    .AddProvider(fileProvider));
-            logger = loggerFactory.CreateLogger("WinOldRecovery.App");
-            logger.LogInformation(
-                "Session {SessionId} initialized. Windows.old has not been touched.",
-                workspace.SessionId);
+        if (publishedRestore)
+        {
+            string restoreText = Task.Run(
+                    () => PublishedRestoreProbe.RunAsync(
+                            database,
+                            safeFs,
+                            sourceGuard,
+                            workspace.SessionId,
+                            restoreSource,
+                            restoreDest)
+                        .GetAwaiter()
+                        .GetResult())
+                .GetAwaiter()
+                .GetResult();
+            File.WriteAllText(restoreReport, restoreText);
+            Shutdown(restoreText.Contains("Passed: true", StringComparison.Ordinal) ? 0 : 2);
+            return;
+        }
 
-            if (publishedRestore)
-            {
-                SessionDb restoreDatabase = sessionDatabase
-                    ?? throw new InvalidOperationException("The session database was not opened.");
-                string restoreText = Task.Run(
-                        () => PublishedRestoreProbe.RunAsync(
-                                restoreDatabase,
-                                safeFs,
-                                sourceGuard,
-                                workspace.SessionId,
-                                restoreSource,
-                                restoreDest)
-                            .GetAwaiter()
-                            .GetResult())
+        string report = Task.Run(
+                () => PublishedScanProbe.RunAsync(
+                        database,
+                        safeFs,
+                        sourceGuard,
+                        workspace.SessionId,
+                        scanRoot,
+                        workspace.TemporaryPath)
                     .GetAwaiter()
-                    .GetResult();
-                File.WriteAllText(restoreReport, restoreText);
-                base.OnStartup(e);
-                Shutdown(restoreText.Contains("Passed: true", StringComparison.Ordinal) ? 0 : 2);
-                return;
+                    .GetResult())
+            .GetAwaiter()
+            .GetResult();
+        File.WriteAllText(scanReport, report);
+        Shutdown(report.Contains("Passed: true", StringComparison.Ordinal) ? 0 : 2);
+    }
+
+    private async void ContinueGuiStartup(
+        Window startupWindow,
+        SafeFs safeFs,
+        SourceGuard sourceGuard,
+        DateTimeOffset startedAt)
+    {
+        try
+        {
+            InterruptedRestoreReport? interrupted = await Task.Run(
+                    () => InterruptedRestore.FindLatest(safeFs))
+                .ConfigureAwait(true);
+
+            SessionWorkspace workspace;
+            SessionDb database;
+            if (interrupted is null)
+            {
+                workspace = SessionWorkspace.Create(safeFs, now: startedAt);
+                database = await SessionDb.OpenAsync(workspace.DatabasePath, safeFs).ConfigureAwait(true);
+                await database.CreateSessionAsync(
+                        new SessionRecord(
+                            workspace.SessionId,
+                            startedAt,
+                            "Created",
+                            typeof(App).Assembly.GetName().Version?.ToString() ?? "0.1.0"))
+                    .ConfigureAwait(true);
+            }
+            else
+            {
+                workspace = SessionWorkspace.Open(interrupted.WorkspaceRoot, interrupted.SessionId);
+                database = await SessionDb.OpenAsync(workspace.DatabasePath, safeFs).ConfigureAwait(true);
             }
 
-            if (publishedScan)
-            {
-                SessionDb database = sessionDatabase
-                    ?? throw new InvalidOperationException("The session database was not opened.");
-                string report = Task.Run(
-                        () => PublishedScanProbe.RunAsync(
-                                database,
-                                safeFs,
-                                sourceGuard,
-                                workspace.SessionId,
-                                scanRoot,
-                                workspace.TemporaryPath)
-                            .GetAwaiter()
-                            .GetResult())
-                    .GetAwaiter()
-                    .GetResult();
-                File.WriteAllText(scanReport, report);
-                base.OnStartup(e);
-                Shutdown(report.Contains("Passed: true", StringComparison.Ordinal) ? 0 : 2);
-                return;
-            }
+            sessionDatabase = database;
+            InitializeSessionLogging(workspace, safeFs);
 
             ProcessRunner processRunner = new();
             SourceDiscovery discovery = new(new DriveInfoVolumeRootProvider(), processRunner);
-            ScanOrchestrator orchestrator = new(sessionDatabase, safeFs, sourceGuard);
+            ScanOrchestrator orchestrator = new(database, safeFs, sourceGuard);
             ShellViewModel viewModel = new(
-                sessionDatabase,
+                database,
                 workspace,
                 discovery,
                 orchestrator,
@@ -160,7 +195,7 @@ public partial class App : Application
                 sourceGuard,
                 RecipeCatalog.All,
                 folderPicker: new WpfFolderPicker());
-            viewModel.LoadSourcesAsync().GetAwaiter().GetResult();
+            await viewModel.LoadSourcesAsync().ConfigureAwait(true);
 
             if (interrupted is not null)
             {
@@ -169,15 +204,32 @@ public partial class App : Application
 
             MainWindow window = new(viewModel);
             window.Show();
+            MainWindow = window;
+            startupWindow.Close();
         }
         catch (Exception exception)
         {
+            startupWindow.Close();
             ShowCrash(exception);
             Shutdown(exitCode: 1);
-            return;
         }
+    }
 
-        base.OnStartup(e);
+    private void InitializeSessionLogging(SessionWorkspace workspace, SafeFs safeFs)
+    {
+        sessionLogPath = workspace.LogPath;
+        RollingFileLoggerProvider fileProvider = new(
+            workspace.LogPath,
+            safeFs,
+            redactor = new SensitiveDataRedactor());
+        loggerFactory = LoggerFactory.Create(
+            builder => builder
+                .SetMinimumLevel(LogLevel.Information)
+                .AddProvider(fileProvider));
+        logger = loggerFactory.CreateLogger("WinOldRecovery.App");
+        logger.LogInformation(
+            "Session {SessionId} initialized. Windows.old has not been touched.",
+            workspace.SessionId);
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
@@ -195,6 +247,28 @@ public partial class App : Application
             logger?.LogError(exception, "Domain unhandled exception.");
             ShowCrash(exception);
         }
+    }
+
+    private static Window CreateStartupWindow()
+    {
+        Window window = new()
+        {
+            Title = "WinOld Recovery",
+            Width = 1100,
+            Height = 720,
+            MinWidth = 1024,
+            MinHeight = 640,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Content = new TextBlock
+            {
+                Margin = new Thickness(24),
+                TextWrapping = TextWrapping.Wrap,
+                Text = "WinOld Recovery is starting. Windows.old has not been touched.",
+            },
+        };
+        AutomationProperties.SetName(window, "WinOld Recovery");
+        AutomationProperties.SetAutomationId(window, "WinOldRecoveryMain");
+        return window;
     }
 
     private void ShowCrash(Exception exception)

@@ -142,8 +142,12 @@ destination junction is deleted). That mutation was applied, observed red, then 
   (`tools/RestoreHarness`). Published elevated EXE mid-copy kill-and-resume
   passed 15 Sep 2026 (`tools/run-kill-published-copy.ps1`, 450/2000 then resume
   2000 files, `%TEMP%\WinOldRecovery-kill-copy-e2b2930055f4487dab397a387aef55cc.log`).
-  The WPF Resume overlay still needs FlaUI.
-- FlaUI scan→purge e2e still skipped without `RUN_FLAUI=1` and UAC.
+  The WPF Resume overlay was dismissed by the FlaUI smoke on 15 Sep 2026.
+- FlaUI smoke passed 15 Sep 2026 against the published EXE from an elevated
+  testhost (`%TEMP%\WinOldRecovery-flaui-elevated.txt`). It stays skipped without
+  `RUN_FLAUI=1`, and skips instead of failing when a Medium IL testhost is
+  blocked by UIPI. It exercises overlays, Help, and step navigation, not a real
+  scan or restore.
 - Elevated deny-ACL FixtureGen, the 200 MB VHDX *preflight* disk-full probe, and
   the 1400 MB runtime disk-full pause/resume passed 15 Sep 2026. Published 1M-node
   `--scan` memory passed the same day (`Passed: true`, 103.7 MiB peak, report

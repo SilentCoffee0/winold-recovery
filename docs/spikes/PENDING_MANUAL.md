@@ -6,10 +6,11 @@ they do not substitute for these tests.
 
 The backup-privilege 100k FixtureGen self-check passed 15 Sep 2026 on this
 development machine. The 200 MB VHDX preflight disk-full probe, 1400 MB runtime
-disk-full pause/resume, published 1M `--scan` memory ceiling, and published
-mid-copy kill-and-resume also passed the same day. The remaining rows still need
-a disposable Windows 11 VM, an interactive desktop, or signing credentials. The
-current agent process is not elevated (`S-1-16-8192`).
+disk-full pause/resume, published 1M `--scan` memory ceiling, published
+mid-copy kill-and-resume, and the FlaUI smoke on the published EXE also passed
+the same day. The remaining rows still need a disposable Windows 11 VM or
+signing credentials. The current agent process is not elevated
+(`S-1-16-8192`); the passing runs were launched through UAC `RunAs`.
 
 ## Backup-privilege enumeration and read
 
@@ -90,7 +91,28 @@ Evidence:
 - Resume report: `Passed: true`, `Completed: True`, `DestinationFiles: 2000`, `PartialFiles: 0`
 - Source/dest: `%TEMP%\WinOldRecovery-KillPub-e2b2930055f4487dab397a387aef55cc\`
 
-The WPF Resume overlay on an interactive elevated launch is still pending (FlaUI / desktop). Do not tag.
+The WPF Resume overlay was exercised by the FlaUI smoke below. Do not tag.
+
+## FlaUI smoke on the published EXE
+
+Passed 15 Sep 2026 on this development machine (interactive desktop, elevated testhost). **The FlaUI row is complete.**
+
+The smoke launches the published `requireAdministrator` EXE, attaches with UIA3,
+dismisses the first-run and interrupted-restore overlays, opens and closes Help,
+finds Preview plan, clicks the Scan step, and finds the Purge step. It never
+starts a scan and never touches `C:\Windows.old`.
+
+Evidence:
+
+- Transcript: `%TEMP%\WinOldRecovery-flaui-elevated.txt`
+- EXE: `%TEMP%\wor-publish-flaui\WinOldRecovery.exe` (single-file, self-contained, not ReadyToRun)
+- Result: `Passed! - Failed: 0, Passed: 1, Skipped: 0, Total: 1, Duration: 6 s`
+- The run reopened this machine's existing interrupted session, so `DismissInterruptedButton` was on screen and was invoked.
+
+Two environment facts came out of the failures that preceded the pass:
+
+- A Medium IL testhost cannot `Application.Attach` a `requireAdministrator` EXE (UIPI, `Win32Exception` 5). The test skips rather than fails in that case; the testhost must be elevated.
+- The first launch of a freshly published single-file EXE took 14.1 s to show a window (bundle extraction plus an antimalware scan of ~130 MB); the next launch took 1.0 s. The window wait is now 5 minutes, overridable with `FLAUI_WINDOW_TIMEOUT_SECONDS`. These numbers are **not** the startup measurement below: this is not a clean VM and the caches were already warm.
 
 ## One-million-node scan memory ceiling
 
@@ -123,10 +145,10 @@ Recorded from the development console session. This is not a pass.
 - Integrity: Medium (`S-1-16-8192`). `BUILTIN\Administrators` is present as a deny-only SID. `net session` failed. The agent is **not elevated**.
 - Interactive desktop: console logon for user `VJ` is present, but launching the `requireAdministrator` EXE still needs a UAC consent that this Medium IL process cannot complete by itself. FlaUI smoke uses `ProcessStartInfo.Verb = runas` when `RUN_FLAUI=1`.
 - Explorer long paths: code now selects the nearest ancestor whose path is at most 259 characters (and strips `\\?\`). Clicking the result in Explorer is still pending.
-- Crash-resume overlay: unit tests cover journal detection and the Resume prompt. Integration kills `RestoreHarness` mid-CopyTree of 50k files. Headless published kill-and-resume passed 15 Sep 2026 (450/2000 files killed, resume `Passed: true`). The WPF overlay still needs FlaUI / an interactive desktop.
+- Crash-resume overlay: unit tests cover journal detection and the Resume prompt. Integration kills `RestoreHarness` mid-CopyTree of 50k files. Headless published kill-and-resume passed 15 Sep 2026 (450/2000 files killed, resume `Passed: true`). The WPF overlay was then dismissed by the FlaUI smoke on an elevated interactive desktop the same day.
 - SignPath / Trusted Signing: no signing identity, API token, or `SIGNPATH_ENABLED` variable is configured. Release assets stay unsigned.
 - `cleanmgr` and a setup-created Windows.old were not run. The 1,000,000-node published `--scan` later passed on 15 Sep 2026.
 
-To run the backup-privilege FixtureGen spike, open an elevated PowerShell in the repo and run `tools/run-elevated-m0.ps1`. To run FlaUI, publish the x64 EXE, approve UAC, then:
+To run the backup-privilege FixtureGen spike, open an elevated PowerShell in the repo and run `tools/run-elevated-m0.ps1`. To run FlaUI, publish the x64 EXE, then from an **elevated** PowerShell (a Medium IL testhost cannot attach to the elevated GUI):
 
 `$env:RUN_FLAUI=1; $env:WINOLD_RECOVERY_EXE='<published exe>'; dotnet test tests/WinOldRecovery.App.Tests -c Release --filter FlaUiSmokeTests`
