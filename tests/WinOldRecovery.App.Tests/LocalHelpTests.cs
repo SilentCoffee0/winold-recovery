@@ -13,6 +13,8 @@ public sealed class LocalHelpTests
         Assert.Contains(LocalHelp.Catalog, topic => topic.FileName == "syncthing-identity.md");
         Assert.Contains(LocalHelp.Catalog, topic => topic.FileName == "git-repositories.md");
         Assert.Contains(LocalHelp.Catalog, topic => topic.FileName == "wsl.md");
+        Assert.Contains(LocalHelp.Catalog, topic => topic.FileName == "gpg.md");
+        Assert.Contains(LocalHelp.Catalog, topic => topic.FileName == "outlook.md");
     }
 
     [Fact]

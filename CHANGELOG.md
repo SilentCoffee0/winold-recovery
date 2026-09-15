@@ -72,6 +72,7 @@ All notable changes to WinOld Recovery will be documented here.
 - Chromium bookmark transplant (feature-flagged) creates `Profile N`, writes `Local State.winold-bak`, and registers `info_cache` without copying `os_crypt`.
 - Chromium cards record last-used time from the `History` file mtime.
 - GPG cards set `mergeHint` to `gpg --import` when the destination already has a keyring.
+- In-app help pages for GPG (`gpg --import` into `gnupg.from-windows-old`) and Outlook PST (File → Open Outlook Data File).
 - Gated purge: I10 gates, `PurgeToken` minted only after they pass, preferred `cleanmgr /sagerun:777` via `IProcessRunner`, reparse-aware manual delete, session purge manifest and support bundle.
 - Preview conflict list with per-file overwrite confirmation (I2); copy resume after a leftover `.winold-partial`; runtime disk-full pause that does not delete existing destination files.
 - Chromium autofill CSV from `Web Data` (never `credit_cards`); optional bookmark transplant behind `WINOLD_RECOVERY_CHROMIUM_TRANSPLANT=1`.

@@ -13,6 +13,8 @@ public sealed class LocalHelp
         new("WSL", "wsl.md"),
         new("SSH keys", "ssh-keys.md"),
         new("Anki", "anki.md"),
+        new("GPG keyring", "gpg.md"),
+        new("Outlook PST", "outlook.md"),
     ];
 
     private readonly string helpRoot;
