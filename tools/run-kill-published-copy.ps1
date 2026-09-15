@@ -1,7 +1,7 @@
 # Kill the published EXE mid-copy and resume (PENDING_MANUAL / I15).
 # If this window is not elevated, the EXE is started with RunAs (UAC).
-# Medium IL cannot Stop-Process an elevated EXE; the script records that and
-# still tries a second --restore so resume can be checked if the first copy died.
+# Medium IL cannot Stop-Process an elevated EXE; the script then uses
+# UAC taskkill /PID (never /IM, so a live 1M --scan is not killed).
 #
 # Usage (from repo root):
 #   powershell -File tools/run-kill-published-copy.ps1
@@ -20,15 +20,16 @@ $publish = Join-Path $env:TEMP ("wor-publish-killcopy-" + $stamp)
 New-Item -ItemType Directory -Path $source, $dest | Out-Null
 Start-Transcript -Path $log | Out-Null
 try {
-    Write-Host "Writing 2,000 copy files..."
+    Write-Host "Writing 2,000 x 512 KiB copy files..."
+    $payload = New-Object byte[] (512 * 1024)
     1..20 | ForEach-Object {
         $dir = Join-Path $source ("d" + $_.ToString("D2"))
         New-Item -ItemType Directory -Path $dir | Out-Null
         1..100 | ForEach-Object {
-            $bytes = New-Object byte[] (64 * 1024)
-            [System.IO.File]::WriteAllBytes((Join-Path $dir ("f" + $_.ToString("D3") + ".bin")), $bytes)
+            [System.IO.File]::WriteAllBytes((Join-Path $dir ("f" + $_.ToString("D3") + ".bin")), $payload)
         }
     }
+    $sourceFiles = @(Get-ChildItem $source -Recurse -File).Count
 
     Write-Host "Publishing x64 single-file EXE..."
     $app = Join-Path $root "src\WinOldRecovery.App\WinOldRecovery.App.csproj"
@@ -44,18 +45,39 @@ try {
     if (-not $elevated) { $start.Verb = "RunAs" }
     $p = Start-Process @start
     if (-not $p) { throw "Could not start published EXE." }
-    Start-Sleep -Seconds 8
-    try {
-        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-        if (Get-Process -Id $p.Id -ErrorAction SilentlyContinue) {
-            throw "Process $($p.Id) still running after Stop-Process."
-        }
-        Write-Host "Killed or already exited pid $($p.Id)"
+
+    $deadline = (Get-Date).AddSeconds(60)
+    $copied = 0
+    do {
+        Start-Sleep -Milliseconds 250
+        $copied = @(Get-ChildItem $dest -Recurse -File -ErrorAction SilentlyContinue).Count
+        $alive = [bool](Get-Process -Id $p.Id -ErrorAction SilentlyContinue)
+    } while ($alive -and $copied -eq 0 -and (Get-Date) -lt $deadline)
+
+    if (-not (Get-Process -Id $p.Id -ErrorAction SilentlyContinue)) {
+        throw "Copy process $($p.Id) exited before kill (copied $copied / $sourceFiles). Payload finished too fast."
     }
-    catch {
-        Write-Host "Could not kill pid $($p.Id): $($_.Exception.Message)"
-        Write-Host "End WinOldRecovery.exe in Task Manager, then rerun this script's resume half, or wait for the copy to finish."
+    if ($copied -le 0) {
+        throw "Copy had not written destination files after 60s."
     }
+    if ($copied -ge $sourceFiles) {
+        throw "Copy finished before kill ($copied files). Increase payload."
+    }
+
+    Write-Host "Killing pid $($p.Id) after $copied / $sourceFiles files..."
+    Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 400
+    if (Get-Process -Id $p.Id -ErrorAction SilentlyContinue) {
+        Write-Host "Stop-Process blocked (elevated). Requesting UAC taskkill /PID..."
+        $killer = Start-Process -FilePath "$env:SystemRoot\System32\taskkill.exe" -Verb RunAs -PassThru -ArgumentList @("/F", "/PID", "$($p.Id)")
+        if (-not $killer) { throw "UAC declined for taskkill." }
+        $killer.WaitForExit()
+        if ($killer.ExitCode -ne 0) { throw "taskkill exited $($killer.ExitCode)." }
+    }
+    if (Get-Process -Id $p.Id -ErrorAction SilentlyContinue) {
+        throw "Could not kill pid $($p.Id)."
+    }
+    Write-Host "Killed pid $($p.Id) with dest still incomplete."
 
     Start-Sleep -Seconds 1
     Write-Host "Resuming published --restore..."
@@ -70,7 +92,6 @@ try {
     if (Test-Path $report2) { Get-Content -Raw $report2 }
     $partials = @(Get-ChildItem $dest -Recurse -Filter "*.winold-partial" -ErrorAction SilentlyContinue)
     if ($partials.Count -ne 0) { throw "Leftover partials: $($partials.Count)" }
-    $sourceFiles = @(Get-ChildItem $source -Recurse -File).Count
     $destFiles = @(Get-ChildItem $dest -Recurse -File -ErrorAction SilentlyContinue).Count
     if ($destFiles -ne $sourceFiles) {
         throw "Destination file count $destFiles does not match source $sourceFiles (Keep-Both duplicates?)."
