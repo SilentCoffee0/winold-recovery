@@ -21,6 +21,22 @@ public sealed class SafeFs
         return BackupFile.OpenRead(normalizedPath);
     }
 
+    public bool TryReadSizes(string path, out long fileSize, out long allocatedSize)
+    {
+        fileSize = 0;
+        allocatedSize = 0;
+        try
+        {
+            using FileStream stream = OpenRead(path);
+            (fileSize, allocatedSize) = FileSizes.Read(stream.SafeFileHandle);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Win32Exception)
+        {
+            return false;
+        }
+    }
+
     internal string GetValidatedWritePath(string path, PurgeToken? purgeToken = null)
     {
         return sourceGuard.GetValidatedWritePath(path, purgeToken);

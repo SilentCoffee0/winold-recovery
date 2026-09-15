@@ -18,15 +18,29 @@ public sealed class WslRecipe : IRecipe
             bool docker = disk.Contains("Docker", StringComparison.OrdinalIgnoreCase) ||
                 name.Contains("docker", StringComparison.OrdinalIgnoreCase);
             long size = 0;
+            long allocated = 0;
             string lastModified = string.Empty;
-            try
+            if (context.SafeFs.TryReadSizes(disk, out size, out allocated))
             {
-                FileInfo info = new(disk);
-                size = info.Length;
-                lastModified = info.LastWriteTimeUtc.ToString("O");
+                try
+                {
+                    lastModified = File.GetLastWriteTimeUtc(disk).ToString("O");
+                }
+                catch (IOException)
+                {
+                }
             }
-            catch (IOException)
+            else
             {
+                try
+                {
+                    FileInfo info = new(disk);
+                    size = info.Length;
+                    lastModified = info.LastWriteTimeUtc.ToString("O");
+                }
+                catch (IOException)
+                {
+                }
             }
 
             cards.Add(
@@ -64,6 +78,7 @@ public sealed class WslRecipe : IRecipe
                         ["name"] = name,
                         ["docker"] = docker ? "1" : "0",
                         ["fileSize"] = size.ToString(),
+                        ["allocatedSize"] = allocated.ToString(),
                         ["lastModified"] = lastModified,
                     }));
             DetectorWalk.AddTreeBadge(

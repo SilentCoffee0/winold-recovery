@@ -1902,6 +1902,7 @@ public sealed class RecipeTests
 
         RecipeCard wslCard = Assert.Single(cards, card => card.RecipeId == "wsl");
         Assert.Equal("512", wslCard.Facts["fileSize"]);
+        Assert.True(long.Parse(wslCard.Facts["allocatedSize"]) >= 512);
         Assert.False(string.IsNullOrWhiteSpace(wslCard.Facts["lastModified"]));
         PlanResult wslPlan = host.PlanCard(new WslRecipe(), wslCard, Dest(context));
         await host.ExecuteAsync("session-1", new WslRecipe(), wslPlan);

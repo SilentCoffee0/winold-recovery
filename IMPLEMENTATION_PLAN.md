@@ -81,6 +81,7 @@ Global definition of done for any milestone:
 - Anki custom bases complete on 15 Sep 2026. Start-menu `.lnk` `-b` paths and hive `ANKI_BASE` are scanned; cards record `schema`, `backups`, `newestBackup`, and `addons`. Do not tag.
 - SSH unencrypted-key facts complete on 15 Sep 2026. OpenSSH `none` cipher is read from the PEM header only; cards also store key types and `config`/`known_hosts` counts. Do not tag.
 - Syncthing GUI TLS and custom GUI complete on 15 Sep 2026. `https-cert.pem`/`https-key.pem` default Leave Behind; `gui\` restores when present. Do not tag.
+- WSL allocated-size facts complete on 15 Sep 2026. `GetFileInformationByHandleEx` FileStandardInfo supplies `allocatedSize` beside `fileSize`. Do not tag.
 - Firefox tabs/extensions export complete on 14 Sep 2026. `MozLz4` decodes `sessionstore.jsonlz4` (and backups) via K4os.Compression.LZ4; tabs.html uses the selected session entry; extensions.html lists profile add-ons with AMO guid search links. Do not tag.
 - Firefox `profiles.ini` / `installs.ini` discovery complete on 14 Sep 2026. Relative and absolute profile paths are resolved under the old user profile; empty profiles are shown and default to Leave Behind; `Profiles\*` remains a fallback. Do not tag.
 - Firefox L3 verify complete on 14 Sep 2026. Recovered `profiles.ini` must list the new profile; dest `places.sqlite` is copied to session exports for `PRAGMA integrity_check` and bookmark-count compare; `key4.db` must be paired with `logins.json` or `logins.db`. Do not tag.
