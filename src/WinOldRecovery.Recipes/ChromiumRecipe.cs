@@ -166,6 +166,7 @@ public sealed class ChromiumRecipe : IRecipe
                         ["folder"] = name,
                         ["displayName"] = display,
                         ["browserVersion"] = localState.BrowserVersion,
+                        ["lastUsed"] = ReadHistoryLastUsed(context.SafeFs, entry),
                     }));
             DetectorWalk.AddTreeBadge(
                 badges,
@@ -423,6 +424,24 @@ public sealed class ChromiumRecipe : IRecipe
         try
         {
             return safeFs.ReadAllText(path).Trim();
+        }
+        catch (IOException)
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string ReadHistoryLastUsed(SafeFs safeFs, string profileDir)
+    {
+        string history = Path.Combine(profileDir, "History");
+        if (!safeFs.FileExists(history))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            return File.GetLastWriteTimeUtc(history).ToString("O");
         }
         catch (IOException)
         {

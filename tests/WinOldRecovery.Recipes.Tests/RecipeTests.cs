@@ -393,6 +393,7 @@ public sealed class RecipeTests
         Assert.Equal("Google Chrome — Work (alice@example.invalid)", chromeCard.Title);
         Assert.Equal("131.0.6778.86", chromeCard.Facts["browserVersion"]);
         Assert.Equal("Work", chromeCard.Facts["displayName"]);
+        Assert.True(DateTimeOffset.TryParse(chromeCard.Facts["lastUsed"], out _));
         Assert.DoesNotContain("encrypted_key", string.Join(';', chromeCard.Facts.Values), StringComparison.Ordinal);
         Assert.Contains(cards, card => card.RecipeId == "firefox");
         Assert.Equal(
