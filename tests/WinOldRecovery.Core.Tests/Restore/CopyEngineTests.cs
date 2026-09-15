@@ -45,6 +45,31 @@ public sealed class CopyEngineTests
     }
 
     [Fact]
+    public async Task KeepBoth_DoesNotDuplicateADestinationThatAlreadyMatchesTheSource()
+    {
+        await using CopyContext context = await CopyContext.CreateAsync();
+        string sourceFile = Path.Combine(context.Source, "note.txt");
+        string destFile = Path.Combine(context.Destination, "note.txt");
+        await File.WriteAllTextAsync(sourceFile, "same");
+        File.SetLastWriteTimeUtc(sourceFile, new DateTime(2024, 1, 2, 3, 4, 5, DateTimeKind.Utc));
+        PlanItem first = await context.StoreAsync(
+            PlanOperation.CopyFile,
+            sourceFile,
+            destFile,
+            ConflictPolicy.KeepBoth);
+        await new CopyEngine(context.Database, context.SafeFs).CopyAsync(first);
+        PlanItem second = await context.StoreAsync(
+            PlanOperation.CopyFile,
+            sourceFile,
+            destFile,
+            ConflictPolicy.KeepBoth);
+        await new CopyEngine(context.Database, context.SafeFs).CopyAsync(second);
+
+        Assert.Equal("same", await File.ReadAllTextAsync(destFile));
+        Assert.False(File.Exists(Path.Combine(context.Destination, "note (from Windows.old).txt")));
+    }
+
+    [Fact]
     public async Task SkipPolicy_DoesNotReplaceExistingFile()
     {
         await using CopyContext context = await CopyContext.CreateAsync();

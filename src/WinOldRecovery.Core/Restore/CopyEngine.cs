@@ -92,12 +92,11 @@ public sealed class CopyEngine
         RestoreSkipCounts skips = new();
         try
         {
-            bool resume = latest is "Started" or "Paused";
             IReadOnlySet<string> approved = OverwriteApprovals.Parse(
                 sessionDb.GetKv(item.SessionId, OverwriteApprovals.KvKey));
             if (item.Operation == PlanOperation.CopyTree)
             {
-                CopyTree(item, resume, approved, cancellationToken, pauseToken, skips);
+                CopyTree(item, approved, cancellationToken, pauseToken, skips);
             }
             else
             {
@@ -105,7 +104,6 @@ public sealed class CopyEngine
                     item.SourcePath,
                     item.DestinationPath,
                     item,
-                    resume,
                     approved,
                     cancellationToken,
                     pauseToken,
@@ -221,7 +219,6 @@ public sealed class CopyEngine
 
     private void CopyTree(
         PlanItem item,
-        bool resume,
         IReadOnlySet<string> approved,
         CancellationToken cancellationToken,
         CancellationToken pauseToken,
@@ -237,7 +234,6 @@ public sealed class CopyEngine
                 sourceFile,
                 destinationFile,
                 item,
-                resume,
                 approved,
                 cancellationToken,
                 pauseToken,
@@ -249,7 +245,6 @@ public sealed class CopyEngine
         string sourcePath,
         string destinationPath,
         PlanItem item,
-        bool resume,
         IReadOnlySet<string> approved,
         CancellationToken cancellationToken,
         CancellationToken pauseToken,
@@ -267,11 +262,7 @@ public sealed class CopyEngine
         string? already = FindRestoredPath(sourcePath, destinationPath);
         if (already is not null && LooksLikeSuccessfulCopy(sourcePath, already) && !overwriteThis)
         {
-            bool alreadyIsPlanned = already.Equals(destinationPath, StringComparison.OrdinalIgnoreCase);
-            if (!alreadyIsPlanned || resume)
-            {
-                return;
-            }
+            return;
         }
 
         if (File.Exists(finalPath) || Directory.Exists(finalPath))

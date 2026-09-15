@@ -25,7 +25,7 @@ try {
         $dir = Join-Path $source ("d" + $_.ToString("D2"))
         New-Item -ItemType Directory -Path $dir | Out-Null
         1..100 | ForEach-Object {
-            $bytes = New-Object byte[] 8192
+            $bytes = New-Object byte[] (64 * 1024)
             [System.IO.File]::WriteAllBytes((Join-Path $dir ("f" + $_.ToString("D3") + ".bin")), $bytes)
         }
     }
@@ -46,8 +46,11 @@ try {
     if (-not $p) { throw "Could not start published EXE." }
     Start-Sleep -Seconds 8
     try {
-        Stop-Process -Id $p.Id -Force -ErrorAction Stop
-        Write-Host "Killed pid $($p.Id)"
+        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+        if (Get-Process -Id $p.Id -ErrorAction SilentlyContinue) {
+            throw "Process $($p.Id) still running after Stop-Process."
+        }
+        Write-Host "Killed or already exited pid $($p.Id)"
     }
     catch {
         Write-Host "Could not kill pid $($p.Id): $($_.Exception.Message)"
@@ -67,6 +70,11 @@ try {
     if (Test-Path $report2) { Get-Content -Raw $report2 }
     $partials = @(Get-ChildItem $dest -Recurse -Filter "*.winold-partial" -ErrorAction SilentlyContinue)
     if ($partials.Count -ne 0) { throw "Leftover partials: $($partials.Count)" }
+    $sourceFiles = @(Get-ChildItem $source -Recurse -File).Count
+    $destFiles = @(Get-ChildItem $dest -Recurse -File -ErrorAction SilentlyContinue).Count
+    if ($destFiles -ne $sourceFiles) {
+        throw "Destination file count $destFiles does not match source $sourceFiles (Keep-Both duplicates?)."
+    }
     if (-not (Test-Path $report2) -or ((Get-Content -Raw $report2) -notmatch "Passed: true")) {
         throw "Resume report did not pass. See $report2 / $log"
     }
