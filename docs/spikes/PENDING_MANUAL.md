@@ -41,7 +41,16 @@ Pending on a disposable Windows 11 25H2 VM containing a real setup-created
 5. Remove the temporary `StateFlags` value.
 
 A fake folder on the development machine is not an adequate safety test, so no
-cleanup command was run here.
+cleanup command was run here. On a disposable VM with a setup-created
+`Windows.old`, run elevated:
+
+`$env:WOR_CLEANMGR_CONFIRM='SETUP_CREATED_WINDOWS_OLD'; powershell -File tools/run-cleanmgr-spike.ps1`
+
+The script refuses without that exact confirm string, arms only
+`Previous Installations\StateFlags0777` (sage 777, same as `PurgeExecutor`),
+runs `cleanmgr /sagerun:777`, polls folder disappearance, restores the flag,
+and checks that a temp marker file and other `VolumeCaches` `StateFlags0777`
+values are unchanged.
 
 ## Elevated WPF launch and startup measurement
 
@@ -52,6 +61,16 @@ Pending on a clean Windows 11 VM:
 3. Confirm the empty Fluent window opens.
 4. Confirm a session folder, schema-v1 database, and redacted log are created.
 5. Measure cold and warm startup without pre-populated extraction caches.
+
+On that clean VM, from an interactive desktop:
+
+`powershell -File tools/run-startup-measure.ps1`
+
+It publishes ReadyToRun and non-ReadyToRun x64 EXEs, clears `%TEMP%\.net\WinOldRecovery*`
+extraction caches before each cold run, and records time until a main window
+handle appears plus whether a session folder, `session.db`, and `log.txt` were
+created. Numbers from this development machine (FlaUI 14.1 s cold / 1.0 s warm)
+do not satisfy this row.
 
 ## Explorer long-path selection
 
@@ -160,7 +179,7 @@ Recorded from the development console session. This is not a pass.
 - Explorer long paths: code selects the nearest ancestor whose path is at most 259 characters (and strips `\\?\`). Interactive confirmation passed 15 Sep 2026 (`tools/run-explorer-long-path.ps1`, transcript `%TEMP%\WinOldRecovery-explorer-longpath-f3b01ca150e84361b4df4dc92f248625.log`): Explorer selected the 251-character ancestor of a 345-character leaf.
 - Crash-resume overlay: unit tests cover journal detection and the Resume prompt. Integration kills `RestoreHarness` mid-CopyTree of 50k files. Headless published kill-and-resume passed 15 Sep 2026 (450/2000 files killed, resume `Passed: true`). The WPF overlay was then dismissed by the FlaUI smoke on an elevated interactive desktop the same day.
 - SignPath / Trusted Signing: no signing identity, API token, or `SIGNPATH_ENABLED` variable is configured. Release assets stay unsigned.
-- `cleanmgr` and a setup-created Windows.old were not run. The 1,000,000-node published `--scan` later passed on 15 Sep 2026.
+- `cleanmgr` and a setup-created Windows.old were not run. Use `tools/run-cleanmgr-spike.ps1` on a disposable VM (`WOR_CLEANMGR_CONFIRM=SETUP_CREATED_WINDOWS_OLD`). The 1,000,000-node published `--scan` later passed on 15 Sep 2026.
 
 To run the backup-privilege FixtureGen spike, open an elevated PowerShell in the repo and run `tools/run-elevated-m0.ps1`. To run FlaUI, publish the x64 EXE, then from an **elevated** PowerShell (a Medium IL testhost cannot attach to the elevated GUI):
 
