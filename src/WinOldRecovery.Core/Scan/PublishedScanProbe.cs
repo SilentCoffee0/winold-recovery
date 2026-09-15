@@ -47,6 +47,7 @@ public static class PublishedScanProbe
                 sessionId,
                 fullSource,
                 sessionTemporaryDirectory,
+                computeFolderSizes: false,
                 cancellationToken: linked.Token)
             .ConfigureAwait(false);
         scanClock.Stop();
