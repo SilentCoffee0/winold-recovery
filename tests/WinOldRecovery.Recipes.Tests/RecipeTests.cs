@@ -2162,6 +2162,10 @@ public sealed class RecipeTests
         ChromiumRecipe.NewProfileTransplantEnabled = true;
         try
         {
+            Directory.CreateDirectory(Path.Combine(context.Destination, "AppData", "Local", "Google", "Chrome", "User Data"));
+            await File.WriteAllTextAsync(
+                Path.Combine(context.Destination, "AppData", "Local", "Google", "Chrome", "User Data", "Last Version"),
+                "131.0.6778.86\n");
             IReadOnlyList<RecipeCard> flagged = await host.DetectAsync(
                 "session-1",
                 [
@@ -2197,6 +2201,57 @@ public sealed class RecipeTests
                         "User Data",
                         "Recovered-from-Windows.old",
                         "Bookmarks")));
+        }
+        finally
+        {
+            ChromiumRecipe.NewProfileTransplantEnabled = false;
+        }
+    }
+
+    [Fact]
+    public async Task Chromium_Transplant_DisabledWhenDestLastVersionOlder()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string chrome = Path.Combine(alice, "AppData", "Local", "Google", "Chrome", "User Data", "Default");
+        Directory.CreateDirectory(chrome);
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, "AppData", "Local", "Google", "Chrome", "User Data", "Last Version"),
+            "131.0.6778.86\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(chrome, "Bookmarks"),
+            """{"roots":{"bookmark_bar":{"children":[{"type":"url","url":"https://example.com"}]}}}""");
+        Directory.CreateDirectory(Path.Combine(context.Destination, "AppData", "Local", "Google", "Chrome", "User Data"));
+        await File.WriteAllTextAsync(
+            Path.Combine(context.Destination, "AppData", "Local", "Google", "Chrome", "User Data", "Last Version"),
+            "120.0.6099.109\n");
+
+        ChromiumRecipe.NewProfileTransplantEnabled = true;
+        try
+        {
+            RecipeCard card = Assert.Single(
+                new ChromiumRecipe("chrome", "Chrome", Path.Combine("AppData", "Local", "Google", "Chrome", "User Data"))
+                    .Detect(
+                        new ProfileContext(
+                            "Alice",
+                            alice,
+                            context.Destination,
+                            context.Temp,
+                            context.Exports,
+                            context.SafeFs,
+                            context.Runner)).Cards);
+            RecipeComponent transplant = card.Components.Single(component => component.Key == "bookmarks-transplant");
+            Assert.True(transplant.Fixed);
+            Assert.Contains("older than the source", transplant.FixedReason);
+            Dictionary<string, Decision> forced = card.Components.ToDictionary(
+                static component => component.Key,
+                static component => component.Key == "bookmarks-transplant" ? Decision.Restore : Decision.Undecided);
+            PlanResult plan = new ChromiumRecipe(
+                    "chrome",
+                    "Chrome",
+                    Path.Combine("AppData", "Local", "Google", "Chrome", "User Data"))
+                .Plan(new CardDecisions(card, forced), Dest(context));
+            Assert.DoesNotContain(plan.Writes, write => write.ComponentKey == "bookmarks-transplant");
         }
         finally
         {

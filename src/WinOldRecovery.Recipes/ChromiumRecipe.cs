@@ -113,14 +113,19 @@ public sealed class ChromiumRecipe : IRecipe
             ];
             if (NewProfileTransplantEnabled)
             {
+                (bool allowed, string? reason) = TransplantAvailability(
+                    context,
+                    localState.BrowserVersion);
                 components.Add(
                     new RecipeComponent(
                         "bookmarks-transplant",
                         "Bookmarks file into a new profile folder",
-                        "Feature-flagged copy of Bookmarks.json into Recovered-from-Windows.old",
-                        Decision.Undecided,
-                        false,
-                        null,
+                        allowed
+                            ? "Feature-flagged copy of Bookmarks.json into Recovered-from-Windows.old"
+                            : reason ?? "Disabled",
+                        allowed ? Decision.Undecided : Decision.LeaveBehind,
+                        !allowed,
+                        allowed ? null : reason,
                         false));
             }
 
@@ -247,7 +252,10 @@ public sealed class ChromiumRecipe : IRecipe
         }
 
         if (NewProfileTransplantEnabled &&
-            RecipeDecisions.ShouldRestore(decisions, "bookmarks-transplant"))
+            RecipeDecisions.ShouldRestore(decisions, "bookmarks-transplant") &&
+            DestBrowserIsNewEnough(
+                destination,
+                decisions.Card.Facts.GetValueOrDefault("browserVersion")))
         {
             string source = Path.Combine(decisions.Card.Facts["profileDir"], "Bookmarks");
             string dest = Path.Combine(
@@ -279,6 +287,71 @@ public sealed class ChromiumRecipe : IRecipe
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite(Id == "edge" ? "msedge" : "chrome", product + " must be closed before a profile transplant.")];
+
+    private (bool Allowed, string? Reason) TransplantAvailability(ProfileContext context, string sourceVersion)
+    {
+        return EvaluateDestVersion(
+            ReadLastVersion(context.SafeFs, Path.Combine(context.DestinationProfileRoot, relativeUserData)),
+            sourceVersion);
+    }
+
+    private bool DestBrowserIsNewEnough(DestinationContext destination, string? sourceVersion)
+    {
+        return EvaluateDestVersion(
+            ReadLastVersion(destination.SafeFs, Path.Combine(destination.DestinationProfileRoot, relativeUserData)),
+            sourceVersion).Allowed;
+    }
+
+    private (bool Allowed, string? Reason) EvaluateDestVersion(string destVersion, string? sourceVersion)
+    {
+        if (string.IsNullOrWhiteSpace(destVersion))
+        {
+            return (false, product + " is not installed on this PC (no Last Version).");
+        }
+
+        if (!string.IsNullOrWhiteSpace(sourceVersion) &&
+            CompareChromeVersions(destVersion, sourceVersion) < 0)
+        {
+            return (
+                false,
+                "Installed " + product + " " + destVersion + " is older than the source " + sourceVersion + ".");
+        }
+
+        return (true, null);
+    }
+
+    internal static int CompareChromeVersions(string left, string right)
+    {
+        return ParseChromeVersion(left).CompareTo(ParseChromeVersion(right));
+    }
+
+    private static Version ParseChromeVersion(string text)
+    {
+        string[] parts = text.Trim().Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        int major = parts.Length > 0 && int.TryParse(parts[0], out int m) ? m : 0;
+        int minor = parts.Length > 1 && int.TryParse(parts[1], out int n) ? n : 0;
+        int build = parts.Length > 2 && int.TryParse(parts[2], out int b) ? b : 0;
+        int revision = parts.Length > 3 && int.TryParse(parts[3], out int r) ? r : 0;
+        return new Version(major, minor, build, revision);
+    }
+
+    private static string ReadLastVersion(SafeFs safeFs, string userData)
+    {
+        string path = Path.Combine(userData, "Last Version");
+        if (!safeFs.FileExists(path))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            return safeFs.ReadAllText(path).Trim();
+        }
+        catch (IOException)
+        {
+            return string.Empty;
+        }
+    }
 
     internal static int CountBookmarks(string json)
     {
