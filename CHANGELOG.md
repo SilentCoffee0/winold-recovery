@@ -7,7 +7,7 @@ All notable changes to WinOld Recovery will be documented here.
 ### Fixed
 
 - Keep-both verification hashed the restored copy instead of the preexisting destination; CopyTree resume no longer Keep-Boths files that already match; leftover `.winold-partial` cleanup no longer follows destination junctions; `RestoreRunner.Completed` is false when any item Failed; purge consults stored verify rows and the copy journal and fails closed if those fields are omitted; `cleanmgr /sagerun:777` runs only after Previous Installations `StateFlags0777` is armed. See `BUG_AUDIT.md`.
-- Elevated FixtureGen no longer creates a temporary local account with `net user`; it assigns an unmapped SID so orphan-owner creation cannot hang. `icacls`/`cipher` child processes time out after 45 seconds.
+- Elevated FixtureGen no longer creates a temporary local account with `net user`; it assigns an unmapped SID so orphan-owner creation cannot hang. `icacls` child processes time out after 45 seconds. `ProcessRunner` closes child stdin so a `net user /add` Y/N prompt cannot inherit an Administrator console and wait out the default two-minute timeout (15 Sep 2026 8.1 failure). See `docs/spikes/NET_USER_ADD_PROMPT.md`.
 - FixtureGen encrypts the EFS sample with `File.Encrypt` instead of `cipher.exe`, which can wait on a certificate UI. `ProcessRunner` uses `WaitForExit(timeout)` so a stuck child is killed.
 - Elevated FixtureGen self-check enables backup privilege and lists deny-ACL / orphan-SID children with `FileSystemEnumerator`.
 - FixtureGen prints stage progress (including 25k node_modules checkpoints) so an elevated 100k run is not a silent hang.

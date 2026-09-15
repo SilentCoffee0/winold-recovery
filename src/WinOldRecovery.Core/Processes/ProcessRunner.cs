@@ -19,6 +19,9 @@ public sealed class ProcessRunner : IProcessRunner
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // Close stdin so children cannot wait on a parent console prompt
+            // (e.g. `net user /add` Y/N for passwords longer than 14 characters).
+            RedirectStandardInput = true,
             WorkingDirectory = request.WorkingDirectory ?? string.Empty,
         };
 
@@ -41,6 +44,8 @@ public sealed class ProcessRunner : IProcessRunner
             throw new InvalidOperationException(
                 $"Windows did not start child process '{request.FileName}'.");
         }
+
+        process.StandardInput.Close();
 
         Task<string> outputTask = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
         Task<string> errorTask = process.StandardError.ReadToEndAsync(CancellationToken.None);

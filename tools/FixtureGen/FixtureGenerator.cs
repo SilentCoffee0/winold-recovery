@@ -85,7 +85,7 @@ public sealed class FixtureGenerator
             hazards["orphan-sid"] = Unavailable(
                 targetRoot,
                 Path.Combine(targetRoot, "Users", "Bob", "Orphaned", "owned.txt"),
-                "Requires temporary local-account creation in an elevated full-fixture run.");
+                "Requires an elevated full-fixture run (unmapped owner SID).");
             hazards["efs"] = Unavailable(
                 targetRoot,
                 Path.Combine(targetRoot, "Users", "Alice", "Efs", "encrypted.txt"),

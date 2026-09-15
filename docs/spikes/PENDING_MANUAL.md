@@ -76,6 +76,11 @@ Pending on a machine with a large scratch volume:
 
 CI expands a 100k-child node in under 300 ms, pages 1M synthetic SQLite children under 1.5 GB, and walks 1,000,000 on-disk empty files in the test process under 60 s / 1.5 GB. It does not scan them with the published `requireAdministrator` EXE.
 
+## Attempt log — 15 Sep 2026
+
+- Elevated `run-elevated-m0.ps1` failed at generate: `Child process 'net.exe' exceeded its 00:02:00 timeout` (script line 28). Cause: `net user /add` with a >14-character password prompts Y/N; redirected IO never answers. See `docs/spikes/NET_USER_ADD_PROMPT.md`. FixtureGen no longer invokes `net.exe`. **8.1 is not passed** until a new elevated 100k self-check succeeds.
+- Integrity: Medium (`S-1-16-8192`) for the agent console. The hung generate was in a separate Administrator window.
+
 ## Attempt log — 14 Sep 2026
 
 Recorded from the development console session. This is not a pass.

@@ -177,4 +177,30 @@ public sealed class FixtureGeneratorTests
 
         Directory.Delete(testRoot, recursive: true);
     }
+
+    [Fact]
+    public void FixtureGeneratorSource_DoesNotInvokeNetExe()
+    {
+        string source = File.ReadAllText(FindFixtureGeneratorSource());
+        Assert.DoesNotContain("net.exe", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"net\"", source, StringComparison.Ordinal);
+        Assert.Contains("AssignUnmappedOwner", source, StringComparison.Ordinal);
+    }
+
+    private static string FindFixtureGeneratorSource()
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            string candidate = Path.Combine(directory.FullName, "tools", "FixtureGen", "FixtureGenerator.cs");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException("Could not locate tools/FixtureGen/FixtureGenerator.cs from the test host.");
+    }
 }
