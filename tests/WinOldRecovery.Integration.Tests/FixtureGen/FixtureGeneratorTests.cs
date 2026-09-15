@@ -188,6 +188,25 @@ public sealed class FixtureGeneratorTests
     }
 
     [Fact]
+    public void ScaleTree_CreatesExpectedEmptyFiles()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "WinOldRecovery-scale-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            ScaleTree.Create(root, directoryCount: 2, filesPerDirectory: 3);
+            Assert.Equal(2 * 3, Directory.EnumerateFiles(Path.Combine(root, "Users", "Alice", "Scale"), "*.txt", SearchOption.AllDirectories).Count());
+            Assert.Equal(4 + 2 + (2 * 3), ScaleTree.ExpectedNodes(2, 3));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void FixtureSelfCheckSource_ArmsWatchdogOnFullHazards()
     {
         string source = File.ReadAllText(FindToolsSource("FixtureSelfCheck.cs"));

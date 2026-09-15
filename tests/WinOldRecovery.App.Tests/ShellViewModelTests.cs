@@ -75,6 +75,22 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task RunPublishedMemoryProbeAsync_ScansASmallTreeAndPagesChildren()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Scale", "d0000"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "Scale", "d0000", "f0000.txt"),
+            "x");
+        string report = await context.ViewModel.RunPublishedMemoryProbeAsync(source);
+        Assert.Contains("Passed: true", report, StringComparison.Ordinal);
+        Assert.Contains("TreePageRows:", report, StringComparison.Ordinal);
+        Assert.True(context.ViewModel.ScanCompleted);
+        Assert.Equal(DecidePane.Files, context.ViewModel.DecidePane);
+    }
+
+    [Fact]
     public async Task Scan_AddsCollapsedCardsForAppsThatWereLookedForAndMissing()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync(RecipeCatalog.All);

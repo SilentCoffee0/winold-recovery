@@ -1,4 +1,5 @@
-﻿using System.Windows;
+﻿using System.IO;
+using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
 using WinOldRecovery.App.ViewModels;
@@ -33,7 +34,10 @@ public partial class App : Application
             SourceGuard sourceGuard = new();
             SafeFs safeFs = new(sourceGuard);
             DateTimeOffset startedAt = DateTimeOffset.Now;
-            InterruptedRestoreReport? interrupted = InterruptedRestore.FindLatest(safeFs);
+            bool publishedScan = PublishedScanArgs.TryParse(e.Args, out string scanRoot, out string scanReport);
+            InterruptedRestoreReport? interrupted = publishedScan
+                ? null
+                : InterruptedRestore.FindLatest(safeFs);
             SessionWorkspace workspace = interrupted is null
                 ? SessionWorkspace.Create(safeFs, now: startedAt)
                 : SessionWorkspace.Open(interrupted.WorkspaceRoot, interrupted.SessionId);
@@ -79,13 +83,40 @@ public partial class App : Application
                 sourceGuard,
                 RecipeCatalog.All,
                 folderPicker: new WpfFolderPicker());
-            viewModel.LoadSourcesAsync().GetAwaiter().GetResult();
+            if (!publishedScan)
+            {
+                // --scan must not enumerate every DriveInfo root: a disconnected
+                // network volume can stall startup before MainWindow.Loaded.
+                viewModel.LoadSourcesAsync().GetAwaiter().GetResult();
+            }
+
             if (interrupted is not null)
             {
                 viewModel.OfferInterruptedRestore(interrupted);
             }
 
             MainWindow window = new(viewModel);
+            if (publishedScan)
+            {
+                window.Loaded += async (_, _) =>
+                {
+                    try
+                    {
+                        string report = await viewModel.RunPublishedMemoryProbeAsync(scanRoot)
+                            .ConfigureAwait(true);
+                        File.WriteAllText(scanReport, report);
+                        Shutdown(report.Contains("Passed: true", StringComparison.Ordinal) ? 0 : 2);
+                    }
+                    catch (Exception exception)
+                    {
+                        File.WriteAllText(
+                            scanReport,
+                            "Passed: false" + Environment.NewLine + exception.Message);
+                        Shutdown(1);
+                    }
+                };
+            }
+
             window.Show();
         }
         catch (Exception exception)

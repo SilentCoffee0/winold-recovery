@@ -30,6 +30,23 @@ internal static class Program
                 return 0;
             }
 
+            if (string.Equals(args[0], "--scale-tree", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length != 2)
+                {
+                    PrintUsage();
+                    return 2;
+                }
+
+                string scaleRoot = Path.GetFullPath(args[1]);
+                Console.WriteLine(
+                    $"Writing {ScaleTree.DefaultDirectoryCount:N0} folders of {ScaleTree.DefaultFilesPerDirectory:N0} empty files at {scaleRoot} ...");
+                ScaleTree.Create(scaleRoot);
+                Console.WriteLine(
+                    $"Scale tree created at '{scaleRoot}' ({ScaleTree.ExpectedNodes(ScaleTree.DefaultDirectoryCount, ScaleTree.DefaultFilesPerDirectory):N0} nodes including Users/Alice/Scale).");
+                return 0;
+            }
+
             if (string.Equals(args[0], "--self-check-only", StringComparison.OrdinalIgnoreCase))
             {
                 if (args.Length != 2)
@@ -100,6 +117,7 @@ internal static class Program
             """
             Usage:
               FixtureGen <target-Windows.old> [--files <count>] [--portable]
+              FixtureGen --scale-tree <target-Windows.old>
               FixtureGen --self-check-only <target-Windows.old>
               FixtureGen --bundle-self-test
 

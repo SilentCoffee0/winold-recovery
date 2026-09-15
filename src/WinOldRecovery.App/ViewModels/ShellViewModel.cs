@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -1362,6 +1363,93 @@ public sealed class ShellViewModel : ObservableObject
         if (!CompactLayout)
         {
             CompactInspect = false;
+        }
+    }
+
+    public async Task<string> RunPublishedMemoryProbeAsync(string sourcePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+        DismissFirstRun();
+        InterruptedRestoreVisible = false;
+        SourceCandidate candidate = sourceDiscovery.InspectBrowsedPath(sourcePath, cleanupTaskPresent: false);
+        if (!Sources.Any(existing => existing.Path.Equals(candidate.Path, StringComparison.OrdinalIgnoreCase)))
+        {
+            Sources.Add(candidate);
+        }
+
+        SelectedSourcePath = candidate.Path;
+        Process process = Process.GetCurrentProcess();
+        long peakWorkingSet = process.WorkingSet64;
+        using CancellationTokenSource sample = new();
+        Task sampler = SampleWorkingSetAsync(process, sample.Token, value =>
+        {
+            if (value > peakWorkingSet)
+            {
+                peakWorkingSet = value;
+            }
+        });
+        Stopwatch scanClock = Stopwatch.StartNew();
+        await ScanCommand.ExecuteAsync(null).ConfigureAwait(true);
+        scanClock.Stop();
+        await sample.CancelAsync().ConfigureAwait(true);
+        try
+        {
+            await sampler.ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
+        peakWorkingSet = Math.Max(peakWorkingSet, process.WorkingSet64);
+        Stopwatch treeClock = Stopwatch.StartNew();
+        NodePage folders = nodeBrowser.GetLargest(null, folders: true);
+        TreeNodeRow? scale = folders.Rows.FirstOrDefault(
+            static row => string.Equals(row.Name, "Scale", StringComparison.OrdinalIgnoreCase))
+            ?? folders.Rows.FirstOrDefault();
+        NodePage page = scale is null
+            ? nodeBrowser.GetChildren(null)
+            : nodeBrowser.GetChildren(scale.Id);
+        treeClock.Stop();
+        CurrentStep = WorkflowStep.Decide;
+        DecidePane = DecidePane.Files;
+        ReloadView();
+
+        const long ceiling = 1_500L * 1024 * 1024;
+        bool passed = ScanCompleted &&
+            peakWorkingSet < ceiling &&
+            page.Rows.Count <= NodeBrowser.ChildPageSize;
+        return string.Join(
+            Environment.NewLine,
+            [
+                "Passed: " + (passed ? "true" : "false"),
+                "Source: " + candidate.Path,
+                "NodesVisited: " + NodesVisited.ToString(CultureInfo.InvariantCulture),
+                "ScanSeconds: " + scanClock.Elapsed.TotalSeconds.ToString("0.000", CultureInfo.InvariantCulture),
+                "PeakWorkingSetBytes: " + peakWorkingSet.ToString(CultureInfo.InvariantCulture),
+                "PeakWorkingSetMiB: " + (peakWorkingSet / (1024d * 1024d)).ToString("0.0", CultureInfo.InvariantCulture),
+                "TreePageRows: " + page.Rows.Count.ToString(CultureInfo.InvariantCulture),
+                "TreePageMilliseconds: " + treeClock.Elapsed.TotalMilliseconds.ToString("0.0", CultureInfo.InvariantCulture),
+                "TreeParent: " + (scale?.Name ?? "(root)"),
+            ]);
+    }
+
+    private static async Task SampleWorkingSetAsync(
+        Process process,
+        CancellationToken cancellationToken,
+        Action<long> onSample)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            process.Refresh();
+            onSample(process.WorkingSet64);
+            try
+            {
+                await Task.Delay(250, cancellationToken).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
         }
     }
 

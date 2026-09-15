@@ -78,7 +78,7 @@ Pending on a machine with a large scratch volume:
 3. Confirm working set stays under 1.5 GB and the Files tree stays responsive (SQLite paging, 2,000 children per page).
 4. Record peak working set and duration.
 
-CI expands a 100k-child node in under 300 ms, pages 1M synthetic SQLite children under 1.5 GB, and walks 1,000,000 on-disk empty files in the test process under 60 s / 1.5 GB. It does not scan them with the published `requireAdministrator` EXE.
+CI expands a 100k-child node in under 300 ms, pages 1M synthetic SQLite children under 1.5 GB, and walks 1,000,000 on-disk empty files in the test process under 60 s / 1.5 GB. The published EXE probe is `tools/run-1m-scan.ps1` (`WinOldRecovery.exe --scan`). That check is not passed until the report file contains `Passed: true`.
 
 ## Attempt log — 15 Sep 2026
 
