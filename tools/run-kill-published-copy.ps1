@@ -40,14 +40,11 @@ try {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
     $elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    if ($elevated) {
-        $p = Start-Process -FilePath $exe -PassThru -ArgumentList @("--restore", $source, $dest, "--report", $report1)
-    }
-    else {
-        $p = Start-Process -FilePath $exe -Verb RunAs -PassThru -ArgumentList @("--restore", $source, $dest, "--report", $report1)
-    }
+    $start = @{ FilePath = $exe; PassThru = $true; ArgumentList = @("--restore", $source, $dest, "--report", $report1) }
+    if (-not $elevated) { $start.Verb = "RunAs" }
+    $p = Start-Process @start
     if (-not $p) { throw "Could not start published EXE." }
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 8
     try {
         Stop-Process -Id $p.Id -Force -ErrorAction Stop
         Write-Host "Killed pid $($p.Id)"
@@ -59,15 +56,12 @@ try {
 
     Start-Sleep -Seconds 1
     Write-Host "Resuming published --restore..."
-    if ($elevated) {
-        & $exe --restore $source $dest --report $report2
-        $resumeExit = $LASTEXITCODE
-    }
-    else {
-        $resume = Start-Process -FilePath $exe -Verb RunAs -PassThru -ArgumentList @("--restore", $source, $dest, "--report", $report2)
-        $resume.WaitForExit()
-        $resumeExit = $resume.ExitCode
-    }
+    $resumeStart = @{ FilePath = $exe; PassThru = $true; ArgumentList = @("--restore", $source, $dest, "--report", $report2) }
+    if (-not $elevated) { $resumeStart.Verb = "RunAs" }
+    $resume = Start-Process @resumeStart
+    if (-not $resume) { throw "Could not start resume EXE." }
+    $resume.WaitForExit()
+    $resumeExit = $resume.ExitCode
 
     Write-Host "Resume exit $resumeExit"
     if (Test-Path $report2) { Get-Content -Raw $report2 }

@@ -114,9 +114,10 @@ public static class InterruptedRestore
                 continue;
             }
 
-            SessionDb database = SessionDb.OpenAsync(databasePath, safeFs).GetAwaiter().GetResult();
+            SessionDb? database = null;
             try
             {
+                database = SessionDb.OpenAsync(databasePath, safeFs).GetAwaiter().GetResult();
                 string sessionId = Path.GetFileName(directory);
                 InterruptedRestoreReport? report = Describe(database, sessionId, directory);
                 if (report is not null)
@@ -124,9 +125,13 @@ public static class InterruptedRestore
                     return report;
                 }
             }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SqliteException)
+            {
+                continue;
+            }
             finally
             {
-                database.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                database?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             }
         }
 
