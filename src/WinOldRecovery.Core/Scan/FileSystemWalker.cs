@@ -311,13 +311,12 @@ public sealed class FileSystemWalker
                     }
                 }
 
-                await FlushIfNeededAsync(state, cancellationToken).ConfigureAwait(false);
-
                 if (isScopeRoot)
                 {
                     state.CompletedTopLevel.Add(entry.Name);
-                    await FlushAsync(state, cancellationToken).ConfigureAwait(false);
                 }
+
+                await FlushIfNeededAsync(state, cancellationToken).ConfigureAwait(false);
 
                 Report(progress, force: isScopeRoot, counters, state);
             }

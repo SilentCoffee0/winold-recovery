@@ -86,6 +86,12 @@ CI expands a 100k-child node in under 300 ms, pages 1M synthetic SQLite children
 - After removing `net.exe` and closing `ProcessRunner` stdin, two elevated 100k runs passed self-check (transcripts `WinOldRecovery-elevated-m0-3920d38c3bfe4dec894efb66a1d830ed.log` and `771b81a389904c61ab69a0c82a7c5809.log`). **8.1 passed.**
 - Integrity: Medium (`S-1-16-8192`) for the agent console; the passing generate ran in an Administrator window (UAC RunAs).
 
+## Attempt log — 15 Sep 2026 (1M published `--scan`)
+
+Not a pass. A glob-cache published EXE (`%TEMP%\wor-publish-1m-globcache\WinOldRecovery.exe`, pid 23244, started 17:30) is still running after 20+ minutes at ~380 MB working set with no `%TEMP%\WinOldRecovery-1m-scan-globcache.txt`. Session `2026-09-15_173025_45d5e4d9` has a ~360 MB `session.db`. Leftover elevated EXEs from earlier hung `--scan` attempts (pids 3420, 10968, 15528) are still alive; Medium IL cannot stop them.
+
+Do not mark the 1M memory ceiling complete until the report contains `Passed: true`.
+
 ## Attempt log — 14 Sep 2026
 
 Recorded from the development console session. This is not a pass.

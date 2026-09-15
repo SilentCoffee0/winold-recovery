@@ -152,6 +152,31 @@ public sealed class FileSystemWalkerTests
         Assert.Equal(nodes.Count, nodes.Values.Select(node => node.RelPath).Distinct().Count());
     }
 
+    [Fact]
+    public async Task Walk_WideRootDoesNotCommitAfterEveryTopLevelDirectory()
+    {
+        await using WalkerTestContext context = await WalkerTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "source");
+        Directory.CreateDirectory(source);
+        for (int index = 0; index < 400; index++)
+        {
+            string folder = Path.Combine(source, "d" + index.ToString("D3"));
+            Directory.CreateDirectory(folder);
+            await File.WriteAllTextAsync(Path.Combine(folder, "f.txt"), string.Empty);
+        }
+
+        FileSystemWalker walker = new(context.Database);
+        Stopwatch clock = Stopwatch.StartNew();
+        WalkResult result = await walker.WalkAsync(new WalkRequest("session-1", source));
+        clock.Stop();
+
+        Assert.True(result.Completed);
+        Assert.Equal(801, result.NodesVisited);
+        Assert.True(
+            clock.Elapsed < TimeSpan.FromSeconds(8),
+            "Wide-root walk took " + clock.Elapsed.TotalSeconds.ToString("0.000") + " s.");
+    }
+
     private static Dictionary<string, NodeRow> LoadNodes(SessionDb database)
     {
         using SqliteConnection connection = database.OpenReadConnection();
