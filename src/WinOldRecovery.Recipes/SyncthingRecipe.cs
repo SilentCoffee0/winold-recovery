@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Xml.Linq;
 using WinOldRecovery.Core.Decisions;
 using WinOldRecovery.Core.IO;
@@ -13,6 +14,8 @@ public sealed class SyncthingRecipe : IRecipe
     {
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
+        List<(RecipeCard Card, DateTimeOffset Activity)> pending = [];
+        string exeVersion = SyncTrayzorExeVersion(context);
         foreach (string home in CandidateHomes(context))
         {
             if (!IsHome(context.SafeFs, home))
@@ -37,7 +40,8 @@ public sealed class SyncthingRecipe : IRecipe
             int folders = SyncthingConfig.FolderCount(document);
             int devices = SyncthingConfig.DeviceCount(document);
             string scrubbed = SyncthingConfig.ScrubSecrets(xml);
-            cards.Add(
+            DateTimeOffset activity = LastActivity(context.SafeFs, home);
+            pending.Add((
                 new RecipeCard(
                     Id,
                     "Syncthing — " + deviceId,
@@ -69,7 +73,10 @@ public sealed class SyncthingRecipe : IRecipe
                         ["devices"] = devices.ToString(),
                         ["preview"] = scrubbed,
                         ["oldProfile"] = context.OldProfileRoot,
-                    }));
+                        ["lastActivity"] = activity.ToString("O"),
+                        ["syncthingExeVersion"] = exeVersion,
+                    }),
+                activity));
             DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, home, "Syncthing", deviceId);
             foreach (SyncthingFolder folder in SyncthingConfig.ListFolders(xml))
             {
@@ -80,6 +87,24 @@ public sealed class SyncthingRecipe : IRecipe
                     "Syncthing folder",
                     folder.Label);
             }
+        }
+
+        DateTimeOffset newest = pending.Count == 0
+            ? DateTimeOffset.MinValue
+            : pending.Max(static item => item.Activity);
+        foreach ((RecipeCard card, DateTimeOffset activity) in pending)
+        {
+            bool active = activity == newest && newest > DateTimeOffset.MinValue;
+            Dictionary<string, string> facts = new(card.Facts, StringComparer.Ordinal)
+            {
+                ["probablyActive"] = active ? "1" : "0",
+            };
+            cards.Add(
+                card with
+                {
+                    Title = active ? card.Title + " (probably active)" : card.Title,
+                    Facts = facts,
+                });
         }
 
         return new DetectResult(cards, badges);
@@ -172,6 +197,56 @@ public sealed class SyncthingRecipe : IRecipe
         }
 
         return local;
+    }
+
+    private static DateTimeOffset LastActivity(SafeFs safeFs, string home)
+    {
+        DateTimeOffset latest = DateTimeOffset.MinValue;
+        foreach (string name in new[] { "config.xml", "index-v2", "index-v0.14.0.db", "logs" })
+        {
+            string path = Path.Combine(home, name);
+            if (!safeFs.FileExists(path) && !safeFs.DirectoryExists(path))
+            {
+                continue;
+            }
+
+            try
+            {
+                DateTime utc = File.GetLastWriteTimeUtc(path);
+                if (utc > latest.UtcDateTime)
+                {
+                    latest = utc;
+                }
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        return latest;
+    }
+
+    private static string SyncTrayzorExeVersion(ProfileContext context)
+    {
+        string exe = Path.Combine(
+            context.OldProfileRoot,
+            "AppData",
+            "Roaming",
+            "SyncTrayzor",
+            "syncthing.exe");
+        if (!context.SafeFs.FileExists(exe))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            return FileVersionInfo.GetVersionInfo(exe).FileVersion ?? string.Empty;
+        }
+        catch (Exception exception) when (exception is FileNotFoundException or BadImageFormatException)
+        {
+            return string.Empty;
+        }
     }
 
     private static bool IsHome(SafeFs safeFs, string home)

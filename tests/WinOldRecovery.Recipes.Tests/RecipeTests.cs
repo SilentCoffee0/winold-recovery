@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using WinOldRecovery.Core.Decisions;
 using WinOldRecovery.Core.IO;
@@ -111,9 +112,14 @@ public sealed class RecipeTests
             Path.Combine(chrome, "Bookmarks"),
             """{"roots":{"bookmark_bar":{"children":[{"type":"url","url":"https://example.com"}]}}}""");
         await File.WriteAllTextAsync(Path.Combine(chrome, "Login Data"), Canary);
+        Directory.CreateDirectory(
+            Path.Combine(chrome, "Extensions", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "1.0", "_locales", "en"));
         await File.WriteAllTextAsync(
             Path.Combine(chrome, "Extensions", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "1.0", "manifest.json"),
-            """{"name":"Fixture Extension","version":"1.0"}""");
+            """{"name":"__MSG_extName__","default_locale":"en","version":"1.0"}""");
+        await File.WriteAllTextAsync(
+            Path.Combine(chrome, "Extensions", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "1.0", "_locales", "en", "messages.json"),
+            """{"extName":{"message":"Localized Fixture"}}""");
         WriteSqlite(
             Path.Combine(chrome, "History"),
             """
@@ -258,10 +264,13 @@ public sealed class RecipeTests
             "tabs.example",
             await File.ReadAllTextAsync(chromePlan.Writes.Single(write => write.DestinationPath.EndsWith("tabs.html", StringComparison.Ordinal)).DestinationPath),
             StringComparison.Ordinal);
+        string extensionsHtml = await File.ReadAllTextAsync(
+            chromePlan.Writes.Single(write => write.DestinationPath.EndsWith("extensions.html", StringComparison.Ordinal)).DestinationPath);
         Assert.Contains(
             "chromewebstore.google.com/detail/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            await File.ReadAllTextAsync(chromePlan.Writes.Single(write => write.DestinationPath.EndsWith("extensions.html", StringComparison.Ordinal)).DestinationPath),
+            extensionsHtml,
             StringComparison.Ordinal);
+        Assert.Contains("Localized Fixture", extensionsHtml, StringComparison.Ordinal);
 
         RecipeCard firefoxCard = cards.Single(card => card.RecipeId == "firefox");
         PlanResult firefoxPlan = host.PlanCard(new FirefoxRecipe(), firefoxCard, Dest(context));
@@ -1482,6 +1491,17 @@ public sealed class RecipeTests
               </gui>
             </configuration>
             """);
+        File.SetLastWriteTimeUtc(Path.Combine(home, "config.xml"), DateTime.UtcNow);
+        string stale = Path.Combine(context.Source, "ProgramData", "Syncthing");
+        Directory.CreateDirectory(stale);
+        string staleCert = CreateCertificatePem();
+        await File.WriteAllTextAsync(Path.Combine(stale, "cert.pem"), staleCert);
+        await File.WriteAllTextAsync(Path.Combine(stale, "key.pem"), "stale-key");
+        await File.WriteAllTextAsync(Path.Combine(stale, "config.xml"), """<configuration version="30"></configuration>""");
+        File.SetLastWriteTimeUtc(Path.Combine(stale, "config.xml"), DateTime.UtcNow.AddDays(-30));
+        string trayzor = Path.Combine(alice, "AppData", "Roaming", "SyncTrayzor");
+        Directory.CreateDirectory(trayzor);
+        File.Copy(typeof(SyncthingRecipe).Assembly.Location, Path.Combine(trayzor, "syncthing.exe"));
 
         RecipeHost host = new(context.Database, context.SafeFs, context.Runner, RecipeCatalog.All);
         IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
@@ -1502,7 +1522,16 @@ public sealed class RecipeTests
             context.Temp,
             context.Exports);
 
-        RecipeCard card = Assert.Single(cards, item => item.RecipeId == "syncthing");
+        List<RecipeCard> synCards = cards.Where(item => item.RecipeId == "syncthing").ToList();
+        Assert.Equal(2, synCards.Count);
+        RecipeCard card = Assert.Single(synCards, item => item.Facts["probablyActive"] == "1");
+        RecipeCard staleCard = Assert.Single(synCards, item => item.Facts["probablyActive"] == "0");
+        Assert.Contains("probably active", card.Title, StringComparison.Ordinal);
+        Assert.DoesNotContain("probably active", staleCard.Title, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrWhiteSpace(card.Facts["lastActivity"]));
+        Assert.Equal(
+            FileVersionInfo.GetVersionInfo(typeof(SyncthingRecipe).Assembly.Location).FileVersion,
+            card.Facts["syncthingExeVersion"]);
         string dump = string.Join(';', card.Facts.Values);
         Assert.DoesNotContain(Canary, dump, StringComparison.Ordinal);
         Assert.DoesNotContain("SUPERSECRETAPIKEY", dump, StringComparison.Ordinal);

@@ -50,6 +50,7 @@ All notable changes to WinOld Recovery will be documented here.
 - R9 classification: `.vbox`/`.vmx`, `*.db` ≥ 1 MB, Joplin/Logseq, NuGet/Maven/Gradle/Cargo config, `.yarnrc.yml`, certs next to a key, Unreal `SaveGames`, GOG Galaxy Applications, Notion AppData as regeneratable.
 - Regeneratable badges for browser Cache/Code Cache/GPUCache/cache2 (not a random `Documents\Cache`), D3DSCache/DXCache, and `.ollama\models`. Sensitive badges for Login Data, NTUSER.DAT, DPAPI Protect, and the Windows credential vault.
 - Chrome/Edge cards use `Local State` profile names and the `Last Version` file; `os_crypt` keys stay out of card facts. `Local State` is classified Sensitive.
+- Chrome/Edge extension lists resolve `__MSG_*__` names from `_locales\<default_locale>\messages.json`. Syncthing cards record last activity, mark the newest home probably active, and store the SyncTrayzor `syncthing.exe` file version.
 - Gated purge: I10 gates, `PurgeToken` minted only after they pass, preferred `cleanmgr /sagerun:777` via `IProcessRunner`, reparse-aware manual delete, session purge manifest and support bundle.
 - Preview conflict list with per-file overwrite confirmation (I2); copy resume after a leftover `.winold-partial`; runtime disk-full pause that does not delete existing destination files.
 - Chromium autofill CSV from `Web Data` (never `credit_cards`); optional bookmark transplant behind `WINOLD_RECOVERY_CHROMIUM_TRANSPLANT=1`.

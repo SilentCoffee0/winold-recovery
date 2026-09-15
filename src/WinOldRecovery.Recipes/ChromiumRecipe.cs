@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using WinOldRecovery.Core.Decisions;
+using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Recipes;
 
 namespace WinOldRecovery.Recipes;
@@ -413,10 +414,9 @@ public sealed class ChromiumRecipe : IRecipe
                 {
                     using JsonDocument document = JsonDocument.Parse(context.SafeFs.ReadAllText(manifest));
                     if (document.RootElement.TryGetProperty("name", out JsonElement nameElement) &&
-                        nameElement.GetString() is string manifestName &&
-                        !manifestName.StartsWith("__MSG_", StringComparison.Ordinal))
+                        nameElement.GetString() is string manifestName)
                     {
-                        name = manifestName;
+                        name = ResolveExtensionName(context.SafeFs, versionDir, document.RootElement, manifestName);
                     }
                 }
                 catch (JsonException)
@@ -474,6 +474,50 @@ public sealed class ChromiumRecipe : IRecipe
         }
 
         return count;
+    }
+
+    private static string ResolveExtensionName(
+        SafeFs safeFs,
+        string versionDir,
+        JsonElement manifest,
+        string manifestName)
+    {
+        if (!manifestName.StartsWith("__MSG_", StringComparison.Ordinal) ||
+            !manifestName.EndsWith("__", StringComparison.Ordinal) ||
+            manifestName.Length <= 8)
+        {
+            return manifestName;
+        }
+
+        string key = manifestName[6..^2];
+        string locale = manifest.TryGetProperty("default_locale", out JsonElement localeElement)
+            ? localeElement.GetString() ?? "en"
+            : "en";
+        foreach (string candidate in new[] { locale, "en", "en_US" })
+        {
+            string messages = Path.Combine(versionDir, "_locales", candidate, "messages.json");
+            if (!safeFs.FileExists(messages))
+            {
+                continue;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(safeFs.ReadAllText(messages));
+                if (document.RootElement.TryGetProperty(key, out JsonElement entry) &&
+                    entry.TryGetProperty("message", out JsonElement message) &&
+                    message.GetString() is string resolved &&
+                    !string.IsNullOrWhiteSpace(resolved))
+                {
+                    return resolved;
+                }
+            }
+            catch (JsonException)
+            {
+            }
+        }
+
+        return manifestName;
     }
 
     internal static string NetscapeBookmarks(string json)
