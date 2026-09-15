@@ -13,6 +13,23 @@ internal static class DetectorWalk
         "AppData.old",
     ];
 
+    private static readonly HashSet<string> VendoredDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "node_modules",
+        ".cache",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".tox",
+        ".gradle",
+        ".parcel-cache",
+        ".turbo",
+        ".next",
+        ".nuxt",
+    };
+
     public static bool IsReparse(string path)
     {
         try
@@ -122,9 +139,22 @@ internal static class DetectorWalk
                     continue;
                 }
 
-                if (safeFs.DirectoryExists(entry) &&
-                    depth < maxDepth &&
-                    !skip.Contains(name))
+                if (!safeFs.DirectoryExists(entry) || depth >= maxDepth)
+                {
+                    continue;
+                }
+
+                if (IsVendoredDirectoryName(name))
+                {
+                    foreach (string vendored in ProbeVendoredGitRepos(safeFs, entry))
+                    {
+                        yield return vendored;
+                    }
+
+                    continue;
+                }
+
+                if (!skip.Contains(name))
                 {
                     stack.Push((entry, depth + 1));
                 }
@@ -152,6 +182,73 @@ internal static class DetectorWalk
         }
 
         return outermost;
+    }
+
+    public static bool IsVendoredGitPath(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        foreach (string segment in path.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (IsVendoredDirectoryName(segment))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static bool IsVendoredDirectoryName(string name) =>
+        VendoredDirectoryNames.Contains(name);
+
+    public static bool HasGit(SafeFs safeFs, string directory)
+    {
+        ArgumentNullException.ThrowIfNull(safeFs);
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        string git = Path.Combine(directory, ".git");
+        return safeFs.DirectoryExists(git) || safeFs.FileExists(git);
+    }
+
+    public static IEnumerable<string> ProbeVendoredGitRepos(SafeFs safeFs, string root)
+    {
+        ArgumentNullException.ThrowIfNull(safeFs);
+        ArgumentException.ThrowIfNullOrWhiteSpace(root);
+        if (IsReparse(root))
+        {
+            yield break;
+        }
+
+        if (HasGit(safeFs, root))
+        {
+            yield return root;
+        }
+
+        foreach (string child in safeFs.EnumerateDirectories(root))
+        {
+            if (IsReparse(child))
+            {
+                continue;
+            }
+
+            if (HasGit(safeFs, child))
+            {
+                yield return child;
+            }
+
+            string childName = Path.GetFileName(child);
+            if (!childName.StartsWith('@'))
+            {
+                continue;
+            }
+
+            foreach (string package in safeFs.EnumerateDirectories(child))
+            {
+                if (!IsReparse(package) && HasGit(safeFs, package))
+                {
+                    yield return package;
+                }
+            }
+        }
     }
 
     public static string StripExtended(string path)

@@ -1862,6 +1862,7 @@ public sealed class ShellViewModel : ObservableObject
         {
             RecipeCard card = updated[index];
             if (!IsGitRepoCard(card) ||
+                card.Facts.GetValueOrDefault("vendored") == "1" ||
                 !card.Facts.TryGetValue("source", out string? source) ||
                 string.IsNullOrWhiteSpace(source))
             {

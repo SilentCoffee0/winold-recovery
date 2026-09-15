@@ -549,6 +549,70 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Git_Detect_ListsVendoredReposWithoutAnalyzingStatus()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string app = Path.Combine(alice, "Projects", "app");
+        Directory.CreateDirectory(Path.Combine(app, ".git"));
+        await File.WriteAllTextAsync(Path.Combine(app, ".git", "HEAD"), "ref: refs/heads/main\n");
+        string leftPad = Path.Combine(app, "node_modules", "left-pad");
+        Directory.CreateDirectory(Path.Combine(leftPad, ".git"));
+        await File.WriteAllTextAsync(Path.Combine(leftPad, ".git", "HEAD"), "ref: refs/heads/master\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(leftPad, ".git", "config"),
+            "[remote \"origin\"]\n\turl = https://user:" + Canary + "@example.invalid/left-pad.git\n");
+        string scoped = Path.Combine(app, "node_modules", "@scope", "pkg");
+        Directory.CreateDirectory(Path.Combine(scoped, ".git"));
+        await File.WriteAllTextAsync(Path.Combine(scoped, ".git", "HEAD"), "ref: refs/heads/main\n");
+        string cached = Path.Combine(alice, ".cache", "tool");
+        Directory.CreateDirectory(Path.Combine(cached, ".git"));
+        await File.WriteAllTextAsync(Path.Combine(cached, ".git", "HEAD"), "ref: refs/heads/main\n");
+        string clutter = Path.Combine(app, "node_modules");
+        for (int index = 0; index < 20; index++)
+        {
+            await File.WriteAllTextAsync(Path.Combine(clutter, $"package-{index:D4}.tmp"), "file");
+        }
+
+        GitRecipe recipe = new();
+        DetectResult detected = recipe.Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        RecipeCard appCard = detected.Cards.Single(card =>
+            card.Facts.GetValueOrDefault("kind") == "repo" &&
+            card.Facts.GetValueOrDefault("vendored") != "1");
+        Assert.Contains("app", appCard.Title, StringComparison.Ordinal);
+        Assert.Equal(Decision.Restore, appCard.Components.Single(c => c.Key == "repo").SuggestedDefault);
+
+        IReadOnlyList<RecipeCard> vendored = detected.Cards
+            .Where(card => card.Facts.GetValueOrDefault("vendored") == "1")
+            .ToArray();
+        Assert.Equal(3, vendored.Count);
+        Assert.All(
+            vendored,
+            card =>
+            {
+                Assert.Equal("Git: vendored", card.Facts["risk"]);
+                Assert.Equal(Decision.LeaveBehind, card.Components.Single(c => c.Key == "repo").SuggestedDefault);
+                Assert.DoesNotContain(Canary, string.Join(';', card.Facts.Values), StringComparison.Ordinal);
+                Assert.Contains("(vendored)", card.Title, StringComparison.Ordinal);
+            });
+        Assert.Contains(vendored, card => card.Title.Contains("left-pad", StringComparison.Ordinal));
+        Assert.Contains(vendored, card => card.Title.Contains("pkg", StringComparison.Ordinal));
+        Assert.Contains(vendored, card => card.Title.Contains("tool", StringComparison.Ordinal));
+        Assert.Contains(
+            detected.Badges,
+            badge => badge.Kind == "Git" && badge.Detail == "Git: vendored");
+        Assert.Empty(context.Runner.Requests);
+    }
+
+    [Fact]
     public void GitAnalyze_CreateVerifyRequests_DestinationUsesDashC()
     {
         IReadOnlyList<ProcessRequest> requests = GitAnalyze.CreateVerifyRequests(

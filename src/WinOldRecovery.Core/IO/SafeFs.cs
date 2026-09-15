@@ -152,6 +152,24 @@ public sealed class SafeFs
         return Directory.EnumerateFileSystemEntries(normalizedPath).ToArray();
     }
 
+    public IReadOnlyList<string> EnumerateDirectories(string path)
+    {
+        string normalizedPath = PathCanonicalizer.NormalizeLexically(path);
+        if (!Directory.Exists(normalizedPath))
+        {
+            return [];
+        }
+
+        try
+        {
+            return Directory.EnumerateDirectories(normalizedPath).ToArray();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
     public string ReadAllText(string path)
     {
         using FileStream stream = OpenRead(path);

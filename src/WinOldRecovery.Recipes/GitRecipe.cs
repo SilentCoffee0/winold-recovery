@@ -41,29 +41,79 @@ public sealed class GitRecipe : IRecipe
         }
 
         List<string> trees = DetectorWalk.EnumerateGitWorkingTrees(context.SafeFs, context.OldProfileRoot, 8)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        foreach (string entry in DetectorWalk.OutermostDirectories(trees))
+        List<string> analysis = [];
+        List<string> vendored = [];
+        foreach (string tree in trees)
         {
-            string? gitDir = ResolveGitDir(context.SafeFs, entry);
-            GitOfflineResult offline = GitOffline.Analyze(context.SafeFs, gitDir);
-            string relative = DetectorWalk.RelativeUnder(context.OldProfileRoot, entry);
-            badges.Add((relative, "Git", offline.Badge));
-            Dictionary<string, string> facts = new(StringComparer.Ordinal)
+            string relative = DetectorWalk.RelativeUnder(context.OldProfileRoot, tree);
+            if (DetectorWalk.IsVendoredGitPath(relative))
             {
-                ["source"] = entry,
-                ["head"] = string.IsNullOrEmpty(offline.Head) ? "unknown" : offline.Head,
-                ["kind"] = "repo",
-                ["risk"] = offline.Badge,
-                ["branch"] = offline.CurrentBranch,
-                ["branches"] = string.Join(", ", offline.Branches),
-                ["remotes"] = string.Join(
-                    "; ",
-                    offline.Remotes.Select(static remote => remote.Name + "=" + remote.Url)),
-                ["stash"] = offline.Stash ? "1" : "0",
-                ["localOnly"] = offline.LocalOnlyBranch ? "1" : "0",
-                ["uncommitted"] = GitOffline.UnknownUntilGit,
-                ["unpushed"] = GitOffline.UnknownUntilGit,
-            };
+                vendored.Add(tree);
+            }
+            else
+            {
+                analysis.Add(tree);
+            }
+        }
+
+        foreach (string entry in DetectorWalk.OutermostDirectories(analysis))
+        {
+            AddRepositoryCard(context, cards, badges, entry, vendored: false);
+        }
+
+        foreach (string entry in vendored)
+        {
+            AddRepositoryCard(context, cards, badges, entry, vendored: true);
+        }
+
+        return new DetectResult(cards, badges);
+    }
+
+    private static void AddRepositoryCard(
+        ProfileContext context,
+        List<RecipeCard> cards,
+        List<(string RelativePath, string Kind, string Detail)> badges,
+        string entry,
+        bool vendored)
+    {
+        string relative = DetectorWalk.RelativeUnder(context.OldProfileRoot, entry);
+        string badge;
+        GitOfflineResult? offline = null;
+        if (vendored)
+        {
+            badge = "Git: vendored";
+        }
+        else
+        {
+            offline = GitOffline.Analyze(context.SafeFs, ResolveGitDir(context.SafeFs, entry));
+            badge = offline.Badge;
+        }
+
+        badges.Add((relative, "Git", badge));
+        Dictionary<string, string> facts = new(StringComparer.Ordinal)
+        {
+            ["source"] = entry,
+            ["head"] = offline is null || string.IsNullOrEmpty(offline.Head) ? "unknown" : offline.Head,
+            ["kind"] = "repo",
+            ["risk"] = badge,
+            ["branch"] = offline?.CurrentBranch ?? string.Empty,
+            ["branches"] = offline is null ? string.Empty : string.Join(", ", offline.Branches),
+            ["remotes"] = offline is null
+                ? string.Empty
+                : string.Join("; ", offline.Remotes.Select(static remote => remote.Name + "=" + remote.Url)),
+            ["stash"] = offline?.Stash == true ? "1" : "0",
+            ["localOnly"] = offline?.LocalOnlyBranch == true ? "1" : "0",
+            ["uncommitted"] = GitOffline.UnknownUntilGit,
+            ["unpushed"] = GitOffline.UnknownUntilGit,
+        };
+        if (vendored)
+        {
+            facts["vendored"] = "1";
+        }
+        else if (offline is not null)
+        {
             if (offline.Reftable)
             {
                 facts["reftable"] = "1";
@@ -78,32 +128,36 @@ public sealed class GitRecipe : IRecipe
             {
                 facts["indexMtime"] = indexMtime.ToString("O");
             }
-
-            cards.Add(
-                new RecipeCard(
-                    Id,
-                    "Git repository — " + Path.GetFileName(entry),
-                    "A Git repository found in the old profile.",
-                    "Unpushed commits and uncommitted work cannot be cloned from a remote.",
-                    "The whole working tree including .git. Offline analysis cannot see uncommitted or unpushed work until Git is installed.",
-                    "Re-clone if a remote exists and there is no local-only work.",
-                    "node_modules and build folders may regenerate.",
-                    "Local-only work is gone.",
-                    [
-                        new RecipeComponent(
-                            "repo",
-                            "Restore repository",
-                            offline.CurrentBranch,
-                            Decision.Restore,
-                            false,
-                            null,
-                            false),
-                    ],
-                    context.ProfileName + ":" + relative,
-                    facts));
         }
 
-        return new DetectResult(cards, badges);
+        cards.Add(
+            new RecipeCard(
+                "git",
+                "Git repository — " + Path.GetFileName(entry) + (vendored ? " (vendored)" : string.Empty),
+                vendored
+                    ? "A Git repository inside node_modules, cache, or another regeneratable folder."
+                    : "A Git repository found in the old profile.",
+                vendored
+                    ? "Package installs recreate this tree. Status is not analyzed."
+                    : "Unpushed commits and uncommitted work cannot be cloned from a remote.",
+                "The whole working tree including .git. Offline analysis cannot see uncommitted or unpushed work until Git is installed.",
+                vendored
+                    ? "Reinstall the package or re-clone if you still need it."
+                    : "Re-clone if a remote exists and there is no local-only work.",
+                "node_modules and build folders may regenerate.",
+                vendored ? "You can reinstall the package later." : "Local-only work is gone.",
+                [
+                    new RecipeComponent(
+                        "repo",
+                        "Restore repository",
+                        badge,
+                        vendored ? Decision.LeaveBehind : Decision.Restore,
+                        false,
+                        null,
+                        false),
+                ],
+                context.ProfileName + ":" + relative,
+                facts));
     }
 
     public PlanResult Plan(CardDecisions decisions, DestinationContext destination)
