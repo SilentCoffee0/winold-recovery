@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO.Enumeration;
 using System.Security.Principal;
 using System.Text.Json;
 using WinOldRecovery.Core.IO;
@@ -60,6 +61,15 @@ public sealed class FixtureSelfCheck
 
         if (manifest.FullHazardsRequested)
         {
+            try
+            {
+                Privileges.EnableBackupAndRestore();
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException and not StackOverflowException)
+            {
+                errors.Add("Could not enable backup privilege for the full-hazard self-check: " + exception.Message);
+            }
+
             CheckFullHazards(root, manifest, errors);
         }
         else
@@ -315,6 +325,11 @@ public sealed class FixtureSelfCheck
 
         if (TryGetCreatedPath(root, manifest, "deny-acl", errors, out string? denyPath))
         {
+            if (!EnumerateChildNames(denyPath).Contains("protected.txt", StringComparer.OrdinalIgnoreCase))
+            {
+                errors.Add("FileSystemEnumerator did not list protected.txt under the deny-ACL directory after backup privilege.");
+            }
+
             string protectedFile = Path.Combine(denyPath, "protected.txt");
             try
             {
@@ -343,6 +358,14 @@ public sealed class FixtureSelfCheck
 
         if (TryGetCreatedPath(root, manifest, "orphan-sid", errors, out string? orphanPath))
         {
+            string orphanDirectory = Path.GetDirectoryName(orphanPath) ?? orphanPath;
+            if (!EnumerateChildNames(orphanDirectory).Contains(
+                    Path.GetFileName(orphanPath),
+                    StringComparer.OrdinalIgnoreCase))
+            {
+                errors.Add("FileSystemEnumerator did not list the orphan-SID file after backup privilege.");
+            }
+
             string ownerSid = FileSecurityInfo.GetOwnerSid(orphanPath);
             FixtureHazard orphanHazard = manifest.Hazards["orphan-sid"];
             if (!string.Equals(ownerSid, orphanHazard.Detail, StringComparison.Ordinal))
@@ -379,6 +402,36 @@ public sealed class FixtureSelfCheck
 
         path = Path.Combine(root, hazard.RelativePath);
         return true;
+    }
+
+    private static IReadOnlyList<string> EnumerateChildNames(string directory)
+    {
+        using ChildNameEnumerator enumerator = new(directory);
+        List<string> names = [];
+        while (enumerator.MoveNext())
+        {
+            names.Add(enumerator.Current);
+        }
+
+        return names;
+    }
+
+    private sealed class ChildNameEnumerator : FileSystemEnumerator<string>
+    {
+        public ChildNameEnumerator(string directory)
+            : base(
+                directory,
+                new EnumerationOptions
+                {
+                    RecurseSubdirectories = false,
+                    IgnoreInaccessible = false,
+                    AttributesToSkip = 0,
+                })
+        {
+        }
+
+        protected override string TransformEntry(ref FileSystemEntry entry) =>
+            entry.FileName.ToString();
     }
 }
 

@@ -34,3 +34,4 @@ if ($LASTEXITCODE -ne 0) { throw "Self-check failed." }
 
 Write-Host "Elevated FixtureGen and self-check passed. Record the path in docs/spikes/PENDING_MANUAL.md:"
 Write-Host $target
+Write-Host "Self-check enabled backup privilege and used FileSystemEnumerator on deny-ACL and orphan-SID paths."
