@@ -101,7 +101,7 @@ Recorded from the development console session. This is not a pass.
 - Integrity: Medium (`S-1-16-8192`). `BUILTIN\Administrators` is present as a deny-only SID. `net session` failed. The agent is **not elevated**.
 - Interactive desktop: console logon for user `VJ` is present, but launching the `requireAdministrator` EXE still needs a UAC consent that this Medium IL process cannot complete by itself. FlaUI smoke uses `ProcessStartInfo.Verb = runas` when `RUN_FLAUI=1`.
 - Explorer long paths: code now selects the nearest ancestor whose path is at most 259 characters (and strips `\\?\`). Clicking the result in Explorer is still pending.
-- Crash-resume overlay: unit tests cover journal detection and the Resume prompt. Integration kills `RestoreHarness` mid-CopyTree of 50k files. Relaunching the published elevated EXE after killing a restore mid-copy is still pending on an interactive desktop.
+- Crash-resume overlay: unit tests cover journal detection and the Resume prompt. Integration kills `RestoreHarness` mid-CopyTree of 50k files. Headless `WinOldRecovery.exe --restore <source> <dest> --report <file>` and `tools/run-kill-published-copy.ps1` are the published-EXE probe; killing an elevated copy from Medium IL is still pending on an interactive desktop.
 - SignPath / Trusted Signing: no signing identity, API token, or `SIGNPATH_ENABLED` variable is configured. Release assets stay unsigned.
 - `cleanmgr`, 200 MB VHDX, and a 1,000,000-node tree were not run.
 

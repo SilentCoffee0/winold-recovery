@@ -35,16 +35,33 @@ public partial class App : Application
             SafeFs safeFs = new(sourceGuard);
             DateTimeOffset startedAt = DateTimeOffset.Now;
             bool publishedScan = PublishedScanArgs.TryParse(e.Args, out string scanRoot, out string scanReport);
+            bool publishedRestore = PublishedRestoreArgs.TryParse(
+                e.Args,
+                out string restoreSource,
+                out string restoreDest,
+                out string restoreReport);
             InterruptedRestoreReport? interrupted = publishedScan
                 ? null
                 : InterruptedRestore.FindLatest(safeFs);
             SessionWorkspace workspace;
-            if (publishedScan)
+            if (publishedScan || publishedRestore)
             {
+                InterruptedRestoreReport? resume = publishedRestore ? interrupted : null;
                 // Open SQLite off the WPF STA thread. CreateSessionAsync().GetResult()
                 // on the dispatcher deadlocks the writer when OpenAsync completes inline.
                 (workspace, sessionDatabase) = Task.Run(() =>
                     {
+                        if (resume is not null)
+                        {
+                            SessionWorkspace opened = SessionWorkspace.Open(
+                                resume.WorkspaceRoot,
+                                resume.SessionId);
+                            SessionDb existing = SessionDb.OpenAsync(opened.DatabasePath, safeFs)
+                                .GetAwaiter()
+                                .GetResult();
+                            return (opened, existing);
+                        }
+
                         SessionWorkspace created = SessionWorkspace.Create(safeFs, now: startedAt);
                         SessionDb database = SessionDb.OpenAsync(created.DatabasePath, safeFs)
                             .GetAwaiter()
@@ -96,6 +113,28 @@ public partial class App : Application
             logger.LogInformation(
                 "Session {SessionId} initialized. Windows.old has not been touched.",
                 workspace.SessionId);
+
+            if (publishedRestore)
+            {
+                SessionDb restoreDatabase = sessionDatabase
+                    ?? throw new InvalidOperationException("The session database was not opened.");
+                string restoreText = Task.Run(
+                        () => PublishedRestoreProbe.RunAsync(
+                                restoreDatabase,
+                                safeFs,
+                                sourceGuard,
+                                workspace.SessionId,
+                                restoreSource,
+                                restoreDest)
+                            .GetAwaiter()
+                            .GetResult())
+                    .GetAwaiter()
+                    .GetResult();
+                File.WriteAllText(restoreReport, restoreText);
+                base.OnStartup(e);
+                Shutdown(restoreText.Contains("Passed: true", StringComparison.Ordinal) ? 0 : 2);
+                return;
+            }
 
             if (publishedScan)
             {
