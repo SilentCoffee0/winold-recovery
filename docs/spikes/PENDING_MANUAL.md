@@ -5,7 +5,8 @@ or explicitly accepted as blocked. CI and the tag-release workflow exist, but
 they do not substitute for these tests.
 
 The backup-privilege 100k FixtureGen self-check passed 15 Sep 2026 on this
-development machine. The remaining rows still need a disposable Windows 11 VM,
+development machine. The 200 MB VHDX preflight disk-full probe also passed
+the same day. The remaining rows still need a disposable Windows 11 VM,
 an interactive desktop, or signing credentials. The current agent process is
 not elevated (`S-1-16-8192`).
 
@@ -60,16 +61,15 @@ Pending interactive test:
 
 ## Disk-full VHDX destination
 
-Pending elevated test:
+Passed 15 Sep 2026 on this development machine (elevated `tools/run-disk-full-vhdx.ps1`). **8.3 preflight path is complete.**
 
-1. Attach a 200 MB VHDX as the restore destination.
-2. Start a restore larger than free space.
-3. Confirm the job pauses, Windows.old is untouched, and already-copied destination files are not deleted to make room.
-4. Free space and resume.
+Evidence:
 
-The unit suite maps `ERROR_DISK_FULL` (112) to `Paused(DiskFull)` and is not a substitute for this volume test.
+- Transcript: `%TEMP%\WinOldRecovery-diskfull-9d1063d6ac094705a6509b402d932f7c.log`
+- Probe: `Passed: true`, `Mode: PreflightBlocked`, `MarkerIntact: true`, `SourceUntouched: true`
+- Volume free 196,231,168 bytes vs required 1,117,782,056 bytes (plan + 5 % + 1 GB I16 margin). Restore did not start and did not delete `keep-me.txt`.
 
-To run the volume test, open an elevated PowerShell in the repo and run `tools/run-disk-full-vhdx.ps1`. It attaches a 200 MB VHDX, seeds `keep-me.txt`, and runs `RestoreHarness --probe-disk-full`. Preflight includes a 1 GB margin, so a 200 MB volume is expected to block before copy (`Mode: PreflightBlocked`) while leaving the marker and source files untouched.
+Step 4 (enlarge the volume and resume a mid-copy `Paused(DiskFull)` job) is still uncovered: a 200 MB disk cannot pass preflight, so runtime `ERROR_DISK_FULL` during CopyTree was not reached.
 
 ## One-million-node scan memory ceiling
 
