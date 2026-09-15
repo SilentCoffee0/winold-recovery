@@ -216,6 +216,8 @@ public sealed class GitRecipe : IRecipe
                 repo.SourcePath,
                 repo.DestinationPath,
                 plan.Destination.DestinationProfileRoot,
+                plan.Destination.SafeFs,
+                plan.Destination.SessionExportsDirectory,
                 cancellationToken)
             .ConfigureAwait(false);
         if (!git.GitAvailable)

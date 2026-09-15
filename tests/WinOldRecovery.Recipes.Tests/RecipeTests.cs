@@ -549,10 +549,10 @@ public sealed class RecipeTests
     }
 
     [Fact]
-    public void GitAnalyze_CreateVerifyRequests_UsesRevParseAndStatusFlags()
+    public void GitAnalyze_CreateVerifyRequests_DestinationUsesDashC()
     {
         IReadOnlyList<ProcessRequest> requests = GitAnalyze.CreateVerifyRequests(
-            @"D:\Windows.old\Users\Alice\repo",
+            @"C:\Users\Alice\Recovered\repo",
             @"C:\Users\Alice");
         Assert.Equal(2, requests.Count);
         Assert.Contains("rev-parse", requests[0].Arguments);
@@ -571,9 +571,30 @@ public sealed class RecipeTests
                 Assert.Contains("--no-optional-locks", request.Arguments);
                 Assert.Contains("safe.directory=*", request.Arguments);
                 Assert.Contains("-C", request.Arguments);
-                Assert.Contains(@"D:\Windows.old\Users\Alice\repo", request.Arguments);
+                Assert.Contains(@"C:\Users\Alice\Recovered\repo", request.Arguments);
+                Assert.DoesNotContain("--git-dir", request.Arguments);
                 Assert.Equal("0", request.Environment!["GIT_OPTIONAL_LOCKS"]);
                 Assert.Equal(@"C:\Users\Alice", request.Environment["HOME"]);
+            });
+    }
+
+    [Fact]
+    public void GitAnalyze_CreateSourceVerifyRequests_UsesGitDirNotDashC()
+    {
+        IReadOnlyList<ProcessRequest> requests = GitAnalyze.CreateSourceVerifyRequests(
+            @"D:\session\tmp\git-analyze\copy",
+            @"D:\Windows.old\Users\Alice\repo",
+            @"C:\Users\Alice");
+        Assert.Equal(2, requests.Count);
+        Assert.All(
+            requests,
+            request =>
+            {
+                Assert.Contains("--git-dir", request.Arguments);
+                Assert.Contains(@"D:\session\tmp\git-analyze\copy", request.Arguments);
+                Assert.Contains("--work-tree", request.Arguments);
+                Assert.Contains(@"D:\Windows.old\Users\Alice\repo", request.Arguments);
+                Assert.DoesNotContain("-C", request.Arguments);
             });
     }
 
@@ -608,6 +629,49 @@ public sealed class RecipeTests
             @"C:\Users\Alice");
         Assert.False(result.GitAvailable);
         Assert.True(result.Ok);
+    }
+
+    [Fact]
+    public async Task GitAnalyze_CompareRestored_CopiesSourceGitDirAndDoesNotDashCWindowsOld()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string repo = Path.Combine(context.Source, "repo");
+        Directory.CreateDirectory(Path.Combine(repo, ".git"));
+        await File.WriteAllTextAsync(Path.Combine(repo, ".git", "HEAD"), "ref: refs/heads/main\n");
+        string dest = Path.Combine(context.Destination, "Recovered", "repo");
+        Directory.CreateDirectory(Path.Combine(dest, ".git"));
+        await File.WriteAllTextAsync(Path.Combine(dest, ".git", "HEAD"), "ref: refs/heads/main\n");
+        await GitAnalyze.CompareRestoredAsync(
+            context.Runner,
+            repo,
+            dest,
+            context.Destination,
+            context.SafeFs,
+            context.Temp);
+        Assert.Contains(
+            context.Runner.Requests,
+            request => request.Arguments.Contains("--git-dir") &&
+                request.Arguments.Contains("--work-tree") &&
+                request.Arguments.Contains(repo));
+        Assert.DoesNotContain(
+            context.Runner.Requests,
+            request =>
+            {
+                for (int i = 0; i < request.Arguments.Count - 1; i++)
+                {
+                    if (request.Arguments[i] == "-C" &&
+                        request.Arguments[i + 1].Equals(repo, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+        Assert.Contains(
+            context.Runner.Requests,
+            request => request.Arguments.Any(static argument =>
+                argument.Contains("git-analyze", StringComparison.OrdinalIgnoreCase)));
     }
 
     [Fact]
@@ -2016,7 +2080,7 @@ public sealed class RecipeTests
             string? repo = null;
             for (int i = 0; i < request.Arguments.Count - 1; i++)
             {
-                if (request.Arguments[i] == "-C")
+                if (request.Arguments[i] == "-C" || request.Arguments[i] == "--work-tree")
                 {
                     repo = request.Arguments[i + 1];
                     break;

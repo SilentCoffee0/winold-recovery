@@ -39,8 +39,41 @@ public static class GitAnalyze
         string destinationHome,
         string? gitExecutable = null)
     {
+        return VerifyRequests(
+            destinationHome,
+            gitExecutable,
+            repositoryPath: repositoryPath);
+    }
+
+    public static IReadOnlyList<ProcessRequest> CreateSourceVerifyRequests(
+        string gitDir,
+        string workTree,
+        string destinationHome,
+        string? gitExecutable = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(gitDir);
+        ArgumentException.ThrowIfNullOrWhiteSpace(workTree);
+        return VerifyRequests(
+            destinationHome,
+            gitExecutable,
+            gitDir: gitDir,
+            workTree: workTree);
+    }
+
+    private static IReadOnlyList<ProcessRequest> VerifyRequests(
+        string destinationHome,
+        string? gitExecutable,
+        string? repositoryPath = null,
+        string? gitDir = null,
+        string? workTree = null)
+    {
         (string fileName, string[] prefix, Dictionary<string, string?> environment, TimeSpan timeout) =
-            Invocation(destinationHome, gitExecutable, repositoryPath: repositoryPath);
+            Invocation(
+                destinationHome,
+                gitExecutable,
+                repositoryPath: repositoryPath,
+                gitDir: gitDir,
+                workTree: workTree);
         return
         [
             Request(fileName, [.. prefix, "rev-parse", "HEAD"], environment, timeout),
@@ -136,6 +169,8 @@ public static class GitAnalyze
         string sourceRepository,
         string destinationRepository,
         string destinationHome,
+        SafeFs? safeFs = null,
+        string? sessionTemporaryDirectory = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(processRunner);
@@ -144,8 +179,33 @@ public static class GitAnalyze
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationHome);
 
         string gitExecutable = ResolveGitExecutable();
-        IReadOnlyList<ProcessRequest> sourceRequests =
-            CreateVerifyRequests(sourceRepository, destinationHome, gitExecutable);
+        IReadOnlyList<ProcessRequest> sourceRequests;
+        if (safeFs is not null && !string.IsNullOrWhiteSpace(sessionTemporaryDirectory))
+        {
+            try
+            {
+                string gitDirCopy = CopyGitDirectory(safeFs, sourceRepository, sessionTemporaryDirectory);
+                sourceRequests = CreateSourceVerifyRequests(
+                    gitDirCopy,
+                    sourceRepository,
+                    destinationHome,
+                    gitExecutable);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or DirectoryNotFoundException)
+            {
+                return new GitLevel3Result(GitAvailable: false, HeadMatches: true, StatusMatches: true);
+            }
+        }
+        else
+        {
+            sourceRequests = CreateSourceVerifyRequests(
+                Path.Combine(sourceRepository, ".git"),
+                sourceRepository,
+                destinationHome,
+                gitExecutable);
+        }
+
         IReadOnlyList<ProcessRequest> destRequests =
             CreateVerifyRequests(destinationRepository, destinationHome, gitExecutable);
         (bool sourceHeadOk, string sourceHead) = await RunVerifyAsync(
