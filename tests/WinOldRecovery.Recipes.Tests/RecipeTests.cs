@@ -2182,6 +2182,61 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Thunderbird_Detect_UsesIniAbsolutePathAndIgnoresOutside()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string thunderbird = Path.Combine(alice, "AppData", "Roaming", "Thunderbird");
+        Directory.CreateDirectory(thunderbird);
+        string relocated = Path.Combine(alice, "Documents", "relocated.thunderbird");
+        Directory.CreateDirectory(Path.Combine(relocated, "Mail"));
+        await File.WriteAllTextAsync(Path.Combine(relocated, "prefs.js"), "user_pref(\"fixture\", true);");
+        await File.WriteAllTextAsync(Path.Combine(relocated, "Mail", "Inbox"), "mail");
+        string outside = Path.Combine(context.Root, "outside.thunderbird");
+        Directory.CreateDirectory(outside);
+        await File.WriteAllTextAsync(Path.Combine(outside, "prefs.js"), "no");
+        await File.WriteAllTextAsync(
+            Path.Combine(thunderbird, "profiles.ini"),
+            $"""
+            [Profile0]
+            Name=relocated
+            IsRelative=0
+            Path={relocated}
+
+            [Profile1]
+            Name=sneaky
+            IsRelative=0
+            Path={outside}
+            """);
+
+        DetectResult detected = new ThunderbirdRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        RecipeCard card = Assert.Single(detected.Cards);
+        Assert.Equal("relocated", card.Facts["name"]);
+        Assert.Equal(relocated, card.Facts["source"]);
+        Assert.DoesNotContain(detected.Cards, item => item.Facts.GetValueOrDefault("name") == "sneaky");
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, [new ThunderbirdRecipe()]);
+        PlanResult plan = host.PlanCard(new ThunderbirdRecipe(), card, Dest(context));
+        await host.ExecuteAsync("session-1", new ThunderbirdRecipe(), plan);
+        Assert.True(File.Exists(
+            Path.Combine(
+                context.Destination,
+                "AppData",
+                "Roaming",
+                "Thunderbird",
+                "Profiles",
+                "relocated.thunderbird-recovered",
+                "prefs.js")));
+    }
+
+    [Fact]
     public async Task HighValueDetectors_CopyKeePassVsCodeThunderbirdTerminalObsidianAndOutlookPst()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
@@ -2310,7 +2365,7 @@ public sealed class RecipeTests
         await host.ExecuteAsync("session-1", new VsCodeRecipe(), vscodePlan);
         Assert.True(new VsCodeRecipe().Verify(vscodePlan).Ok);
         Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "Code", "User", "settings.json")));
-        string cmd = await File.ReadAllTextAsync(Path.Combine(context.Exports, "install-extensions.cmd"));
+        string cmd = await File.ReadAllTextAsync(Path.Combine(context.Exports, "install-extensions-code.cmd"));
         Assert.Contains("code --install-extension ms-python.python", cmd, StringComparison.Ordinal);
         Assert.DoesNotContain(Canary, cmd, StringComparison.Ordinal);
 

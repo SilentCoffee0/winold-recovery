@@ -61,6 +61,7 @@ All notable changes to WinOld Recovery will be documented here.
 - SSH cards warn when a private key has the EFS attribute. Firefox 135+ `StoreID` profile groups skip `profiles.ini` edits and point at `about:profiles`.
 - SSH verify rejects private keys, `config`, and `authorized_keys` that still Allow Everyone, Users, or Authenticated Users.
 - Outlook detects PST files on Desktop, Downloads, and Outlook AppData as well as Documents. GPG `--list-secret-keys` runs with `GNUPGHOME` on the restored ring.
+- Thunderbird follows `profiles.ini` the same way Firefox does, and ignores profiles outside the old user folder. VS Code / VSCodium / Cursor write `install-extensions-<cli>.cmd`.
 - Gated purge: I10 gates, `PurgeToken` minted only after they pass, preferred `cleanmgr /sagerun:777` via `IProcessRunner`, reparse-aware manual delete, session purge manifest and support bundle.
 - Preview conflict list with per-file overwrite confirmation (I2); copy resume after a leftover `.winold-partial`; runtime disk-full pause that does not delete existing destination files.
 - Chromium autofill CSV from `Web Data` (never `credit_cards`); optional bookmark transplant behind `WINOLD_RECOVERY_CHROMIUM_TRANSPLANT=1`.

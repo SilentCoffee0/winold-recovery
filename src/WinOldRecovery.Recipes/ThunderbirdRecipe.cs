@@ -26,21 +26,19 @@ public sealed class ThunderbirdRecipe : IRecipe
 
     public DetectResult Detect(ProfileContext context)
     {
-        string profilesDir = Path.Combine(
+        string thunderbird = Path.Combine(
             context.OldProfileRoot,
             "AppData",
             "Roaming",
-            "Thunderbird",
-            "Profiles");
-        if (!context.SafeFs.DirectoryExists(profilesDir))
-        {
-            return new DetectResult([], []);
-        }
-
+            "Thunderbird");
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
-        foreach (string profile in context.SafeFs.EnumerateFileSystemEntries(profilesDir))
+        foreach (DiscoveredFirefoxProfile discovered in FirefoxIni.Discover(
+                     context.SafeFs,
+                     thunderbird,
+                     context.OldProfileRoot))
         {
+            string profile = discovered.Directory;
             if (!context.SafeFs.DirectoryExists(profile) || DetectorWalk.IsReparse(profile))
             {
                 continue;
@@ -63,10 +61,11 @@ public sealed class ThunderbirdRecipe : IRecipe
             }
 
             string folder = Path.GetFileName(profile);
+            string titleName = discovered.IsDefault ? discovered.Name + " (default)" : discovered.Name;
             cards.Add(
                 new RecipeCard(
                     Id,
-                    "Thunderbird — " + folder,
+                    "Thunderbird — " + titleName,
                     "Address books, mail folders, saved passwords, and settings from the old Thunderbird profile.",
                     "Local folders and IMAP caches may be the only copy of older mail.",
                     "Allow-listed profile files plus Mail and ImapMail. panacea.dat and global-messages-db.sqlite are left behind.",
@@ -89,8 +88,14 @@ public sealed class ThunderbirdRecipe : IRecipe
                         ["source"] = profile,
                         ["files"] = string.Join('|', present),
                         ["folder"] = folder,
+                        ["name"] = discovered.Name,
                     }));
-            DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, profile, "Thunderbird", folder);
+            DetectorWalk.AddTreeBadge(
+                badges,
+                context.OldProfileRoot,
+                profile,
+                "Thunderbird",
+                string.IsNullOrWhiteSpace(discovered.Name) ? folder : discovered.Name);
         }
 
         return new DetectResult(cards, badges);

@@ -144,7 +144,7 @@ public sealed class VsCodeRecipe : IRecipe
             new RecipeWrite(
                 RecipeWriteKind.WriteContent,
                 null,
-                Path.Combine(destination.SessionExportsDirectory, "install-extensions.cmd"),
+                Path.Combine(destination.SessionExportsDirectory, "install-extensions-" + decisions.Card.Facts["cli"] + ".cmd"),
                 cmd,
                 cmd.Length,
                 "settings"));
