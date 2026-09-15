@@ -202,6 +202,8 @@ public partial class App : Application
                 viewModel.OfferInterruptedRestore(interrupted);
             }
 
+            ApplyOptionalSmokeFixture(viewModel);
+
             MainWindow window = new(viewModel);
             window.Show();
             MainWindow = window;
@@ -230,6 +232,18 @@ public partial class App : Application
         logger.LogInformation(
             "Session {SessionId} initialized. Windows.old has not been touched.",
             workspace.SessionId);
+    }
+
+    private static void ApplyOptionalSmokeFixture(ShellViewModel viewModel)
+    {
+        string? source = Environment.GetEnvironmentVariable("WINOLD_RECOVERY_SMOKE_SOURCE");
+        string? destination = Environment.GetEnvironmentVariable("WINOLD_RECOVERY_SMOKE_DEST");
+        if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(destination))
+        {
+            return;
+        }
+
+        viewModel.TryApplySmokeFixture(source, destination);
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

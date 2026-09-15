@@ -59,6 +59,12 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("Edit Syncthing folder mapping", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"DeleteWindowsOldButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"CancelPurgeButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"ScanStatusText\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"RunRestoreButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"RunVerifyButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"PreferManualDeleteRadio\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"FilesCheckedBox\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"PurgeTypedNameBox\"", xaml, StringComparison.Ordinal);
         Assert.Contains("How to delete", xaml, StringComparison.Ordinal);
         Assert.Contains("PreferManualDelete", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"LogButton\"", xaml, StringComparison.Ordinal);

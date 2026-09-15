@@ -1394,6 +1394,89 @@ public sealed class ShellViewModel : ObservableObject
         return report;
     }
 
+    /// <summary>
+    /// Opt-in FlaUI fixture: browse a TEMP folder, set the restore destination, and
+    /// force manual delete. Never selects a volume-root Windows.old* path, so a smoke
+    /// run cannot arm Previous Installations cleanup against the live install.
+    /// </summary>
+    public bool TryApplySmokeFixture(string sourcePath, string destinationPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
+        string source = Path.GetFullPath(sourcePath);
+        string destination = Path.GetFullPath(destinationPath);
+        if (TouchesVolumeRootPreviousInstallation(source) ||
+            TouchesVolumeRootPreviousInstallation(destination))
+        {
+            return false;
+        }
+
+        if (!Directory.Exists(source))
+        {
+            return false;
+        }
+
+        if (source.Equals(destination, StringComparison.OrdinalIgnoreCase) ||
+            destination.StartsWith(
+                source.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        Directory.CreateDirectory(destination);
+        PreferCleanupHandler = false;
+        InterruptedRestoreVisible = false;
+        CurrentStep = WorkflowStep.Scan;
+        SourceCandidate candidate = sourceDiscovery.InspectBrowsedPath(source, cleanupTaskPresent: false);
+        if (!Sources.Any(existing => existing.Path.Equals(candidate.Path, StringComparison.OrdinalIgnoreCase)))
+        {
+            Sources.Add(candidate);
+        }
+
+        SelectedSourcePath = candidate.Path;
+        DestinationRoot = destination;
+        ScanStatus = "Smoke fixture ready (" + Path.GetFileName(source) + "). Windows.old has not been touched.";
+        return true;
+    }
+
+    internal static bool TouchesVolumeRootPreviousInstallation(string path)
+    {
+        string current = Path.GetFullPath(path);
+        string? volume = Path.GetPathRoot(current);
+        if (string.IsNullOrEmpty(volume))
+        {
+            return false;
+        }
+
+        string volumeTrim = volume.TrimEnd(Path.DirectorySeparatorChar);
+        while (!string.IsNullOrEmpty(current))
+        {
+            string trimmed = current.TrimEnd(Path.DirectorySeparatorChar);
+            string? parent = Path.GetDirectoryName(trimmed);
+            if (parent is null)
+            {
+                break;
+            }
+
+            string parentTrim = parent.TrimEnd(Path.DirectorySeparatorChar);
+            if (parentTrim.Equals(volumeTrim, StringComparison.OrdinalIgnoreCase) &&
+                Path.GetFileName(trimmed).StartsWith("Windows.old", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (parentTrim.Equals(volumeTrim, StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            current = parent;
+        }
+
+        return false;
+    }
+
     private void DismissFirstRun()
     {
         firstRun.Dismiss();

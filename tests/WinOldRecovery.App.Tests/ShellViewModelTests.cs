@@ -91,6 +91,43 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task TryApplySmokeFixture_RefusesVolumeRootWindowsOldAndLeavesCleanupHandlerDefault()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string dest = Path.Combine(context.Root, "Recovered");
+        Directory.CreateDirectory(dest);
+        string volumeOld = Path.Combine(Path.GetPathRoot(Environment.SystemDirectory)!, "Windows.old");
+        Assert.True(ShellViewModel.TouchesVolumeRootPreviousInstallation(volumeOld));
+        Assert.False(context.ViewModel.TryApplySmokeFixture(volumeOld, dest));
+        Assert.Null(context.ViewModel.SelectedSourcePath);
+        Assert.True(context.ViewModel.PreferCleanupHandler);
+        Assert.Empty(context.ViewModel.Sources);
+    }
+
+    [Fact]
+    public async Task TryApplySmokeFixture_SelectsBrowsedTempFolderAndForcesManualDelete()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "OldInstall");
+        string dest = Path.Combine(context.Root, "Recovered");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        Directory.CreateDirectory(dest);
+        Assert.True(context.ViewModel.TryApplySmokeFixture(source, dest));
+        Assert.False(context.ViewModel.PreferCleanupHandler);
+        Assert.True(context.ViewModel.PreferManualDelete);
+        Assert.Equal(
+            PathCanonicalizer.NormalizeLexically(source),
+            context.ViewModel.SelectedSourcePath,
+            StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(Path.GetFullPath(dest), context.ViewModel.DestinationRoot, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(SourceCandidateKind.BrowsedFolder, Assert.Single(context.ViewModel.Sources).Kind);
+        Assert.Contains("Smoke fixture ready (OldInstall)", context.ViewModel.ScanStatus, StringComparison.Ordinal);
+        Assert.Equal(WorkflowStep.Scan, context.ViewModel.CurrentStep);
+        Assert.False(context.ViewModel.InterruptedRestoreVisible);
+        Assert.False(ShellViewModel.TouchesVolumeRootPreviousInstallation(source));
+    }
+
+    [Fact]
     public async Task Scan_AddsCollapsedCardsForAppsThatWereLookedForAndMissing()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync(RecipeCatalog.All);

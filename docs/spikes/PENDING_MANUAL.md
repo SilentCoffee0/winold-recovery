@@ -7,9 +7,10 @@ they do not substitute for these tests.
 The backup-privilege 100k FixtureGen self-check passed 15 Sep 2026 on this
 development machine. The 200 MB VHDX preflight disk-full probe, 1400 MB runtime
 disk-full pause/resume, published 1M `--scan` memory ceiling, published
-mid-copy kill-and-resume, the FlaUI smoke on the published EXE, and Explorer
-long-path `/select,` also passed the same day. The remaining rows still need a
-disposable Windows 11 VM or signing credentials. The current agent process is
+mid-copy kill-and-resume, the FlaUI overlay smoke on the published EXE, and Explorer
+long-path `/select,` also passed the same day. The FlaUI scan→purge e2e, SignPath,
+and clean-VM `cleanmgr`/startup rows still need an elevated desktop or a
+disposable Windows 11 VM. The current agent process is
 not elevated (`S-1-16-8192`); the passing runs were launched through UAC
 `RunAs` where elevation was required.
 
@@ -127,14 +128,21 @@ The WPF Resume overlay was exercised by the FlaUI smoke below. Do not tag.
 
 ## FlaUI smoke on the published EXE
 
-Passed 15 Sep 2026 on this development machine (interactive desktop, elevated testhost). **The FlaUI row is complete.**
+Overlay/Help/step navigation passed 15 Sep 2026 on this development machine
+(interactive desktop, elevated testhost). **That overlay row is complete.**
+The same test now continues through scan→decide→preview→restore→verify→purge
+on a browsed TEMP `OldInstall` folder. **The scan→purge e2e still needs an
+elevated `tools/run-flaui-e2e.ps1` pass.** It will not click Scan unless the
+status line shows `Smoke fixture ready (OldInstall)`, it forces
+PreferManualDelete, and it refuses a volume-root `Windows.old*`. It never
+selects `C:\Windows.old` and never arms Previous Installations `cleanmgr`.
 
-The smoke launches the published `requireAdministrator` EXE, attaches with UIA3,
-dismisses the first-run and interrupted-restore overlays, opens and closes Help,
-finds Preview plan, clicks the Scan step, and finds the Purge step. It never
-starts a scan and never touches `C:\Windows.old`.
+The overlay smoke launches the published `requireAdministrator` EXE, attaches
+with UIA3, dismisses the first-run and interrupted-restore overlays, opens and
+closes Help, finds Preview plan, clicks the Scan step, and finds the Purge
+step.
 
-Evidence:
+Evidence (overlay):
 
 - Transcript: `%TEMP%\WinOldRecovery-flaui-elevated.txt`
 - EXE: `%TEMP%\wor-publish-flaui\WinOldRecovery.exe` (single-file, self-contained, not ReadyToRun)
@@ -181,6 +189,6 @@ Recorded from the development console session. This is not a pass.
 - SignPath / Trusted Signing: no signing identity, API token, or `SIGNPATH_ENABLED` variable is configured. Release assets stay unsigned.
 - `cleanmgr` and a setup-created Windows.old were not run. Use `tools/run-cleanmgr-spike.ps1` on a disposable VM (`WOR_CLEANMGR_CONFIRM=SETUP_CREATED_WINDOWS_OLD`). The 1,000,000-node published `--scan` later passed on 15 Sep 2026.
 
-To run the backup-privilege FixtureGen spike, open an elevated PowerShell in the repo and run `tools/run-elevated-m0.ps1`. To run FlaUI, publish the x64 EXE, then from an **elevated** PowerShell (a Medium IL testhost cannot attach to the elevated GUI):
+To run the backup-privilege FixtureGen spike, open an elevated PowerShell in the repo and run `tools/run-elevated-m0.ps1`. To run FlaUI scan→purge, from an **elevated** PowerShell (a Medium IL testhost cannot attach to the elevated GUI):
 
-`$env:RUN_FLAUI=1; $env:WINOLD_RECOVERY_EXE='<published exe>'; dotnet test tests/WinOldRecovery.App.Tests -c Release --filter FlaUiSmokeTests`
+`powershell -File tools/run-flaui-e2e.ps1`

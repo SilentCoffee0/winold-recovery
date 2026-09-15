@@ -7,7 +7,7 @@ All notable changes to WinOld Recovery will be documented here.
 ### Fixed
 
 - Startup no longer opens every past session database as a writer while looking for an interrupted restore. A read-only probe checks for `Started`/`Paused`/`Failed` journal rows first, so leftover scan-only sessions are skipped without running migrations against them.
-- The FlaUI smoke waits for a UIA-ready window instead of a fixed 90 seconds. A freshly published single-file EXE needs bundle extraction and an antimalware scan on its first launch (14.1 s measured, 1.0 s warm), which used to fail the smoke; the budget is overridable with `FLAUI_WINDOW_TIMEOUT_SECONDS`. The smoke also skips instead of failing when a Medium IL testhost is blocked from attaching by UIPI, and it passed 15 Sep 2026 from an elevated testhost.
+- The FlaUI smoke waits for a UIA-ready window instead of a fixed 90 seconds. A freshly published single-file EXE needs bundle extraction and an antimalware scan on its first launch (14.1 s measured, 1.0 s warm), which used to fail the smoke; the budget is overridable with `FLAUI_WINDOW_TIMEOUT_SECONDS`. The smoke also skips instead of failing when a Medium IL testhost is blocked from attaching by UIPI. Overlay/Help/step navigation passed 15 Sep 2026 from an elevated testhost. The same test now drives scan→purge on a browsed TEMP fixture and will not click Scan unless `Smoke fixture ready (OldInstall)` is on the status line.
 - Keep-both verification hashed the restored copy instead of the preexisting destination; CopyTree resume no longer Keep-Boths files that already match; leftover `.winold-partial` cleanup no longer follows destination junctions; `RestoreRunner.Completed` is false when any item Failed; purge consults stored verify rows and the copy journal and fails closed if those fields are omitted; `cleanmgr /sagerun:777` runs only after Previous Installations `StateFlags0777` is armed. See `BUG_AUDIT.md`.
 - Elevated FixtureGen no longer creates a temporary local account with `net user`; it assigns an unmapped SID so orphan-owner creation cannot hang. `icacls` child processes time out after 45 seconds. `ProcessRunner` closes child stdin so a `net user /add` Y/N prompt cannot inherit an Administrator console and wait out the default two-minute timeout (15 Sep 2026 8.1 failure). See `docs/spikes/NET_USER_ADD_PROMPT.md`.
 - FixtureGen encrypts the EFS sample with `File.Encrypt` instead of `cipher.exe`, which can wait on a certificate UI. `ProcessRunner` uses `WaitForExit(timeout)` so a stuck child is killed.
@@ -27,6 +27,7 @@ All notable changes to WinOld Recovery will be documented here.
 
 ### Added
 
+- FlaUI scan→decide→preview→restore→verify→purge on a browsed TEMP fixture (`WINOLD_RECOVERY_SMOKE_SOURCE` / `WINOLD_RECOVERY_SMOKE_DEST`). The app refuses a volume-root `Windows.old*` smoke path, forces PreferManualDelete, and will not start the scan until the status line shows `Smoke fixture ready`. Still skipped unless `RUN_FLAUI=1` from an elevated testhost (`tools/run-flaui-e2e.ps1`).
 - Milestone 0 .NET 10 solution and project dependency structure.
 - Empty WPF shell using the system Fluent theme.
 - Administrator, long-path-aware, PerMonitorV2 application manifest.

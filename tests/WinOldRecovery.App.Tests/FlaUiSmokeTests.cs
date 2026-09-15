@@ -3,14 +3,16 @@ using System.Diagnostics;
 using System.IO;
 using System.Security.Principal;
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Definitions;
 using FlaUI.UIA3;
+using WinOldRecovery.App.ViewModels;
 
 namespace WinOldRecovery.App.Tests;
 
 public sealed class FlaUiSmokeTests
 {
-    [SkippableFact]
-    public void ScanThroughPurge_OnPublishedExe_WhenInteractiveSessionProvided()
+    [SkippableFact(Timeout = 600_000)]
+    public async Task ScanThroughPurge_OnPublishedExe_WhenInteractiveSessionProvided()
     {
         Skip.If(
             !string.Equals(Environment.GetEnvironmentVariable("RUN_FLAUI"), "1", StringComparison.Ordinal),
@@ -19,6 +21,24 @@ public sealed class FlaUiSmokeTests
         string? exe = Environment.GetEnvironmentVariable("WINOLD_RECOVERY_EXE");
         Assert.False(string.IsNullOrWhiteSpace(exe), "Set WINOLD_RECOVERY_EXE to the published WinOldRecovery.exe.");
         Assert.True(File.Exists(exe!), exe);
+
+        string work = Path.Combine(Path.GetTempPath(), "wor-flaui-e2e-" + Guid.NewGuid().ToString("N"));
+        string source = Path.Combine(work, "OldInstall");
+        string dest = Path.Combine(work, "Recovered");
+        string markerName = "hello-flaui.txt";
+        string markerText = "flaui-" + Guid.NewGuid().ToString("N");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        Directory.CreateDirectory(dest);
+        File.WriteAllText(Path.Combine(source, "Users", "Alice", "NTUSER.DAT"), "hive");
+        File.WriteAllText(Path.Combine(source, "Users", "Alice", "Desktop", markerName), markerText);
+
+        Assert.False(
+            ShellViewModel.TouchesVolumeRootPreviousInstallation(source),
+            "FlaUI e2e must not use a volume-root Windows.old.");
+        Assert.False(ShellViewModel.TouchesVolumeRootPreviousInstallation(dest));
+
+        Environment.SetEnvironmentVariable("WINOLD_RECOVERY_SMOKE_SOURCE", source);
+        Environment.SetEnvironmentVariable("WINOLD_RECOVERY_SMOKE_DEST", dest);
 
         using Process started = StartElevated(exe);
         Process process = WaitForAppProcess(started);
@@ -47,18 +67,68 @@ public sealed class FlaUiSmokeTests
             AutomationElement closeHelp = found.FindFirstDescendant(cf => cf.ByAutomationId("CloseHelpButton"))
                 ?? throw new InvalidOperationException("Close help button was not found.");
             closeHelp.AsButton().Invoke();
-            AutomationElement preview = found.FindFirstDescendant(cf => cf.ByAutomationId("PreviewPlanButton"))
-                ?? throw new InvalidOperationException("Preview plan button was not found.");
-            Assert.NotNull(preview);
-            AutomationElement scan = found.FindFirstDescendant(cf => cf.ByAutomationId("StepScan"))
-                ?? throw new InvalidOperationException("Scan step button was not found.");
-            scan.AsButton().Invoke();
-            AutomationElement purge = found.FindFirstDescendant(cf => cf.ByAutomationId("StepPurge"))
-                ?? throw new InvalidOperationException("Purge step button was not found.");
-            Assert.NotNull(purge);
+            TryInvoke(found, "StepScan");
+            WaitForStatus(
+                found,
+                static text => text.Contains("Smoke fixture ready (OldInstall)", StringComparison.Ordinal),
+                TimeSpan.FromMinutes(1),
+                "smoke fixture");
+            InvokeEnabled(found, "ScanButton");
+            WaitForStatus(found, static text => text.Contains("holds", StringComparison.OrdinalIgnoreCase), TimeSpan.FromMinutes(3), "scan");
+
+            TryInvoke(found, "StepDecide");
+            InvokeFirstEnabledByName(found, "Restore this card");
+            InvokeEnabled(found, "PreviewPlanButton");
+            WaitForNonEmptyPreview(found);
+
+            SetNamedText(found, "Restore destination folder", dest);
+            InvokeEnabled(found, "PreviewPlanButton");
+            WaitForNonEmptyPreview(found);
+
+            InvokeEnabled(found, "RunRestoreButton");
+            WaitForStatus(
+                found,
+                static text => text.Contains("Restore finished", StringComparison.OrdinalIgnoreCase),
+                TimeSpan.FromMinutes(3),
+                "restore");
+
+            string[] restored = Directory.GetFiles(dest, markerName, SearchOption.AllDirectories);
+            Assert.True(restored.Length > 0, "Restore did not copy " + markerName + " under " + dest);
+            Assert.Equal(markerText, File.ReadAllText(restored[0]));
+            Assert.True(Directory.Exists(source), "Source must stay intact until purge.");
+
+            InvokeEnabled(found, "RunVerifyButton");
+            WaitForStatus(
+                found,
+                static text => text.Contains("Verify report:", StringComparison.Ordinal),
+                TimeSpan.FromMinutes(2),
+                "verify");
+
+            TryInvoke(found, "StepPurge");
+            SetToggle(found, "PreferManualDeleteRadio", true);
+            AutomationElement? cleanup = found.FindFirstDescendant(cf => cf.ByAutomationId("PreferCleanupHandlerRadio"));
+            Assert.False(
+                cleanup?.AsRadioButton().IsChecked == true,
+                "FlaUI e2e must never arm Previous Installations cleanup.");
+            SetToggle(found, "FilesCheckedBox", true);
+            SetToggle(found, "UndecidedAcknowledgedBox", true);
+            SetToggle(found, "CustomRootConfirmedBox", true);
+            SetNamedText(found, "Type the Windows.old folder name to confirm purge", Path.GetFileName(source));
+            InvokeEnabled(found, "DeleteWindowsOldButton");
+            WaitForStatus(
+                found,
+                static text => text.Contains("Purge finished", StringComparison.OrdinalIgnoreCase) &&
+                    !text.Contains("cleanup-handler", StringComparison.OrdinalIgnoreCase),
+                TimeSpan.FromMinutes(2),
+                "purge");
+
+            Assert.False(Directory.Exists(source), "Manual purge should remove the browsed fixture.");
+            Assert.True(File.Exists(restored[0]), "Purge must not delete restored files.");
         }
         finally
         {
+            Environment.SetEnvironmentVariable("WINOLD_RECOVERY_SMOKE_SOURCE", null);
+            Environment.SetEnvironmentVariable("WINOLD_RECOVERY_SMOKE_DEST", null);
             try
             {
                 application?.Close();
@@ -72,7 +142,21 @@ public sealed class FlaUiSmokeTests
             {
                 process.Kill(entireProcessTree: true);
             }
+
+            try
+            {
+                if (Directory.Exists(work) &&
+                    !ShellViewModel.TouchesVolumeRootPreviousInstallation(work))
+                {
+                    Directory.Delete(work, recursive: true);
+                }
+            }
+            catch (Exception)
+            {
+            }
         }
+
+        await Task.CompletedTask;
     }
 
     private static Process WaitForAppProcess(Process started)
@@ -161,12 +245,132 @@ public sealed class FlaUiSmokeTests
         element?.AsButton().Invoke();
     }
 
+    private static void InvokeEnabled(FlaUI.Core.AutomationElements.Window window, string automationId)
+    {
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromMinutes(1);
+        while (DateTime.UtcNow < deadline)
+        {
+            AutomationElement? element = window.FindFirstDescendant(cf => cf.ByAutomationId(automationId));
+            if (element is not null && element.IsEnabled)
+            {
+                element.AsButton().Invoke();
+                return;
+            }
+
+            Thread.Sleep(250);
+        }
+
+        throw new TimeoutException("Timed out waiting to invoke " + automationId + ". Status: " + ReadScanStatus(window));
+    }
+
+    private static void InvokeFirstEnabledByName(FlaUI.Core.AutomationElements.Window window, string name)
+    {
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromMinutes(1);
+        while (DateTime.UtcNow < deadline)
+        {
+            AutomationElement[] matches = window.FindAllDescendants(cf => cf.ByName(name));
+            foreach (AutomationElement match in matches)
+            {
+                if (!match.IsEnabled)
+                {
+                    continue;
+                }
+
+                match.AsButton().Invoke();
+                return;
+            }
+
+            Thread.Sleep(250);
+        }
+
+        throw new TimeoutException("Timed out waiting for an enabled '" + name + "'. Status: " + ReadScanStatus(window));
+    }
+
+    private static void WaitForStatus(
+        FlaUI.Core.AutomationElements.Window window,
+        Func<string, bool> match,
+        TimeSpan timeout,
+        string step)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+        string last = string.Empty;
+        while (DateTime.UtcNow < deadline)
+        {
+            last = ReadScanStatus(window);
+            if (match(last))
+            {
+                return;
+            }
+
+            Thread.Sleep(250);
+        }
+
+        throw new TimeoutException("Timed out waiting for " + step + ". Last status: " + last);
+    }
+
+    private static void WaitForNonEmptyPreview(FlaUI.Core.AutomationElements.Window window)
+    {
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromMinutes(2);
+        string last = string.Empty;
+        while (DateTime.UtcNow < deadline)
+        {
+            last = ReadScanStatus(window);
+            if (last.Contains("Preview:", StringComparison.Ordinal) &&
+                !last.Contains("Preview: 0 copy operations", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (last.Contains("Preview: 0 copy operations", StringComparison.Ordinal))
+            {
+                InvokeFirstEnabledByName(window, "Restore this card");
+                InvokeEnabled(window, "PreviewPlanButton");
+            }
+
+            Thread.Sleep(250);
+        }
+
+        throw new TimeoutException("Timed out waiting for a non-empty preview. Last status: " + last);
+    }
+
+    private static string ReadScanStatus(FlaUI.Core.AutomationElements.Window window)
+    {
+        AutomationElement? status = window.FindFirstDescendant(cf => cf.ByAutomationId("ScanStatusText"));
+        return status?.Name ?? string.Empty;
+    }
+
+    private static void SetNamedText(FlaUI.Core.AutomationElements.Window window, string name, string value)
+    {
+        AutomationElement element = window.FindFirstDescendant(cf => cf.ByName(name))
+            ?? throw new InvalidOperationException("Could not find text box " + name);
+        element.AsTextBox().Text = value;
+    }
+
+    private static void SetToggle(FlaUI.Core.AutomationElements.Window window, string automationId, bool on)
+    {
+        AutomationElement element = window.FindFirstDescendant(cf => cf.ByAutomationId(automationId))
+            ?? throw new InvalidOperationException("Could not find " + automationId);
+        if (element.ControlType == ControlType.RadioButton)
+        {
+            FlaUI.Core.AutomationElements.RadioButton radio = element.AsRadioButton();
+            if (radio.IsEnabled)
+            {
+                radio.IsChecked = on;
+            }
+
+            return;
+        }
+
+        FlaUI.Core.AutomationElements.CheckBox box = element.AsCheckBox();
+        box.IsChecked = on;
+    }
+
     private static Process StartElevated(string exe)
     {
         bool alreadyAdmin = IsAdministrator();
         ProcessStartInfo start = new(exe)
         {
-            UseShellExecute = true,
+            UseShellExecute = !alreadyAdmin,
             Verb = alreadyAdmin ? string.Empty : "runas",
             WorkingDirectory = Path.GetDirectoryName(exe) ?? Environment.CurrentDirectory,
             WindowStyle = ProcessWindowStyle.Normal,
