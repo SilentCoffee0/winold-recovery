@@ -484,15 +484,21 @@ public sealed class FixtureGenerator
             "Efs",
             "encrypted.txt");
         WriteText(efsFile, "EFS fixture");
-        await RunRequiredAsync(
-            "cipher.exe",
-            ["/E", "/A", efsFile],
-            "encrypt the EFS fixture",
-            cancellationToken);
+        try
+        {
+            File.Encrypt(efsFile);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            throw new InvalidOperationException(
+                "Could not EFS-encrypt the fixture file without cipher.exe: " + exception.Message,
+                exception);
+        }
+
         if ((File.GetAttributes(efsFile) & FileAttributes.Encrypted) == 0)
         {
             throw new InvalidOperationException(
-                "cipher.exe returned success but the fixture file is not EFS-encrypted.");
+                "File.Encrypt returned without setting the Encrypted attribute.");
         }
 
         hazards["efs"] = Created(targetRoot, efsFile);

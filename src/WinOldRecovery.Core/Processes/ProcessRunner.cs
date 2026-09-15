@@ -42,29 +42,32 @@ public sealed class ProcessRunner : IProcessRunner
                 $"Windows did not start child process '{request.FileName}'.");
         }
 
-        Task<string> outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        Task<string> errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        Task<string> outputTask = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+        Task<string> errorTask = process.StandardError.ReadToEndAsync(CancellationToken.None);
         TimeSpan timeout = request.Timeout ?? DefaultTimeout;
-        using CancellationTokenSource timeoutSource = new(timeout);
-        using CancellationTokenSource linkedSource =
-            CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken,
-                timeoutSource.Token);
+        int timeoutMs = timeout.TotalMilliseconds <= 0
+            ? 1
+            : (int)Math.Min(timeout.TotalMilliseconds, int.MaxValue);
 
+        bool exited;
         try
         {
-            await process.WaitForExitAsync(linkedSource.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested)
-        {
-            TryKill(process);
-            throw new TimeoutException(
-                $"Child process '{request.FileName}' exceeded its {timeout} timeout.");
+            exited = await Task.Run(
+                    () => process.WaitForExit(timeoutMs),
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         catch
         {
             TryKill(process);
             throw;
+        }
+
+        if (!exited)
+        {
+            TryKill(process);
+            throw new TimeoutException(
+                $"Child process '{request.FileName}' exceeded its {timeout} timeout.");
         }
 
         return new ProcessResult(
@@ -85,6 +88,10 @@ public sealed class ProcessRunner : IProcessRunner
         catch (InvalidOperationException)
         {
             // The process exited between the state check and Kill.
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // The child may already be gone or not killable from this integrity level.
         }
     }
 }
