@@ -7,6 +7,19 @@
 #   powershell -File tools/run-kill-published-copy.ps1
 
 $ErrorActionPreference = "Stop"
+
+function Get-WorPidForReport {
+    param([Parameter(Mandatory = $true)][string]$ReportPath)
+    $match = Get-CimInstance Win32_Process -Filter "Name = 'WinOldRecovery.exe'" |
+        Where-Object {
+            $_.CommandLine -and
+            $_.CommandLine.IndexOf($ReportPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+        } |
+        Select-Object -First 1
+    if ($null -eq $match) { return 0 }
+    return [int]$match.ProcessId
+}
+
 $dotnet = "C:\Program Files\dotnet\dotnet.exe"
 $root = Split-Path -Parent $PSScriptRoot
 $stamp = [guid]::NewGuid().ToString("N")
@@ -48,14 +61,17 @@ try {
 
     $deadline = (Get-Date).AddSeconds(60)
     $copied = 0
+    $pidToKill = 0
     do {
         Start-Sleep -Milliseconds 250
         $copied = @(Get-ChildItem $dest -Recurse -File -ErrorAction SilentlyContinue).Count
-        $alive = [bool](Get-Process -Id $p.Id -ErrorAction SilentlyContinue)
+        $pidToKill = Get-WorPidForReport $report1
+        if ($pidToKill -eq 0) { $pidToKill = $p.Id }
+        $alive = [bool](Get-Process -Id $pidToKill -ErrorAction SilentlyContinue)
     } while ($alive -and $copied -eq 0 -and (Get-Date) -lt $deadline)
 
-    if (-not (Get-Process -Id $p.Id -ErrorAction SilentlyContinue)) {
-        throw "Copy process $($p.Id) exited before kill (copied $copied / $sourceFiles). Payload finished too fast."
+    if (-not (Get-Process -Id $pidToKill -ErrorAction SilentlyContinue)) {
+        throw "Copy process $pidToKill exited before kill (copied $copied / $sourceFiles). Payload finished too fast."
     }
     if ($copied -le 0) {
         throw "Copy had not written destination files after 60s."
@@ -64,20 +80,25 @@ try {
         throw "Copy finished before kill ($copied files). Increase payload."
     }
 
-    Write-Host "Killing pid $($p.Id) after $copied / $sourceFiles files..."
-    Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+    Write-Host "Killing pid $pidToKill after $copied / $sourceFiles files..."
+    Stop-Process -Id $pidToKill -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 400
-    if (Get-Process -Id $p.Id -ErrorAction SilentlyContinue) {
+    if (Get-Process -Id $pidToKill -ErrorAction SilentlyContinue) {
         Write-Host "Stop-Process blocked (elevated). Requesting UAC taskkill /PID..."
-        $killer = Start-Process -FilePath "$env:SystemRoot\System32\taskkill.exe" -Verb RunAs -PassThru -ArgumentList @("/F", "/PID", "$($p.Id)")
+        $killer = Start-Process -FilePath "$env:SystemRoot\System32\taskkill.exe" -Verb RunAs -PassThru -Wait -ArgumentList @("/F", "/PID", "$pidToKill")
         if (-not $killer) { throw "UAC declined for taskkill." }
-        $killer.WaitForExit()
-        if ($killer.ExitCode -ne 0) { throw "taskkill exited $($killer.ExitCode)." }
+        if ($killer.ExitCode -ne 0 -and $killer.ExitCode -ne 128) {
+            Write-Host "taskkill exit $($killer.ExitCode)"
+        }
     }
-    if (Get-Process -Id $p.Id -ErrorAction SilentlyContinue) {
-        throw "Could not kill pid $($p.Id)."
+    $goneDeadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $goneDeadline -and (Get-Process -Id $pidToKill -ErrorAction SilentlyContinue)) {
+        Start-Sleep -Milliseconds 200
     }
-    Write-Host "Killed pid $($p.Id) with dest still incomplete."
+    if (Get-Process -Id $pidToKill -ErrorAction SilentlyContinue) {
+        throw "Could not kill pid $pidToKill."
+    }
+    Write-Host "Killed pid $pidToKill with dest still incomplete."
 
     Start-Sleep -Seconds 1
     Write-Host "Resuming published --restore..."

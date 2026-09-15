@@ -5,7 +5,8 @@ or explicitly accepted as blocked. CI and the tag-release workflow exist, but
 they do not substitute for these tests.
 
 The backup-privilege 100k FixtureGen self-check passed 15 Sep 2026 on this
-development machine. The 200 MB VHDX preflight disk-full probe also passed
+development machine. The 200 MB VHDX preflight disk-full probe, published 1M
+`--scan` memory ceiling, and published mid-copy kill-and-resume also passed
 the same day. The remaining rows still need a disposable Windows 11 VM,
 an interactive desktop, or signing credentials. The current agent process is
 not elevated (`S-1-16-8192`).
@@ -71,6 +72,19 @@ Evidence:
 
 Step 4 (enlarge the volume and resume a mid-copy `Paused(DiskFull)` job) is still uncovered: a 200 MB disk cannot pass preflight, so runtime `ERROR_DISK_FULL` during CopyTree was not reached.
 
+## Published kill-and-resume mid-copy
+
+Passed 15 Sep 2026 on this development machine (`tools/run-kill-published-copy.ps1`). **8.4 headless path is complete.**
+
+Evidence:
+
+- Transcript: `%TEMP%\WinOldRecovery-kill-copy-e2b2930055f4487dab397a387aef55cc.log`
+- First copy killed at **450 / 2000** files (pid 29248) via UAC `taskkill /PID` after Medium IL `Stop-Process` was denied
+- Resume report: `Passed: true`, `Completed: True`, `DestinationFiles: 2000`, `PartialFiles: 0`
+- Source/dest: `%TEMP%\WinOldRecovery-KillPub-e2b2930055f4487dab397a387aef55cc\`
+
+The WPF Resume overlay on an interactive elevated launch is still pending (FlaUI / desktop). Do not tag.
+
 ## One-million-node scan memory ceiling
 
 Passed 15 Sep 2026 on this development machine (published `WinOldRecovery.exe --scan`, not testhost). **8.2 is complete.**
@@ -102,7 +116,7 @@ Recorded from the development console session. This is not a pass.
 - Integrity: Medium (`S-1-16-8192`). `BUILTIN\Administrators` is present as a deny-only SID. `net session` failed. The agent is **not elevated**.
 - Interactive desktop: console logon for user `VJ` is present, but launching the `requireAdministrator` EXE still needs a UAC consent that this Medium IL process cannot complete by itself. FlaUI smoke uses `ProcessStartInfo.Verb = runas` when `RUN_FLAUI=1`.
 - Explorer long paths: code now selects the nearest ancestor whose path is at most 259 characters (and strips `\\?\`). Clicking the result in Explorer is still pending.
-- Crash-resume overlay: unit tests cover journal detection and the Resume prompt. Integration kills `RestoreHarness` mid-CopyTree of 50k files. Headless `WinOldRecovery.exe --restore <source> <dest> --report <file>` and `tools/run-kill-published-copy.ps1` are the published-EXE probe. The script now waits for destination files, fails if the first process already exited, and kills by PID (UAC `taskkill` when Medium IL cannot `Stop-Process`). Do not use `/IM WinOldRecovery.exe` while a 1M `--scan` is running.
+- Crash-resume overlay: unit tests cover journal detection and the Resume prompt. Integration kills `RestoreHarness` mid-CopyTree of 50k files. Headless published kill-and-resume passed 15 Sep 2026 (450/2000 files killed, resume `Passed: true`). The WPF overlay still needs FlaUI / an interactive desktop.
 - SignPath / Trusted Signing: no signing identity, API token, or `SIGNPATH_ENABLED` variable is configured. Release assets stay unsigned.
 - `cleanmgr` and a setup-created Windows.old were not run. The 1,000,000-node published `--scan` later passed on 15 Sep 2026.
 

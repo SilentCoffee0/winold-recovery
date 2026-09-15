@@ -139,8 +139,10 @@ destination junction is deleted). That mutation was applied, observed red, then 
 - `RegistryCleanupSage` cannot be proven on this Medium IL console (no HKLM
   write). Real `cleanmgr` on a setup-created `Windows.old` is still pending.
 - Kill-process CopyTree of 50,000 files is covered in the integration suite
-  (`tools/RestoreHarness`). Killing the published elevated EXE mid-copy is still
-  pending on an interactive desktop.
+  (`tools/RestoreHarness`). Published elevated EXE mid-copy kill-and-resume
+  passed 15 Sep 2026 (`tools/run-kill-published-copy.ps1`, 450/2000 then resume
+  2000 files, `%TEMP%\WinOldRecovery-kill-copy-e2b2930055f4487dab397a387aef55cc.log`).
+  The WPF Resume overlay still needs FlaUI.
 - FlaUI scan→purge e2e still skipped without `RUN_FLAUI=1` and UAC.
 - Elevated deny-ACL FixtureGen and the 200 MB VHDX *preflight* disk-full probe
   passed 15 Sep 2026. Published 1M-node `--scan` memory passed the same day
@@ -151,7 +153,8 @@ destination junction is deleted). That mutation was applied, observed red, then 
 
 Everything listed in `PENDING_MANUAL.md`, plus: arm `StateFlags0777`, run
 `cleanmgr /sagerun:777` against a **setup-created** Windows.old, confirm unrelated
-cleanup categories stay off, then disarm. Kill the published EXE mid-copy and
-relaunch elevated to confirm the interrupt overlay and keep-both resume.
+cleanup categories stay off, then disarm. Confirm the WPF interrupt overlay on
+an elevated relaunch after a mid-copy kill (headless `--restore` resume already
+passed).
 
 Do not treat a green unit suite as a safety sign-off.
