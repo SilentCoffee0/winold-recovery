@@ -81,6 +81,8 @@ public static class PublishedScanProbe
                 "Source: " + result.SourceRoot,
                 "NodesVisited: " + result.Walk.NodesVisited.ToString(CultureInfo.InvariantCulture),
                 "ScanSeconds: " + scanClock.Elapsed.TotalSeconds.ToString("0.000", CultureInfo.InvariantCulture),
+                "WalkSeconds: " + result.WalkElapsed.TotalSeconds.ToString("0.000", CultureInfo.InvariantCulture),
+                "ClassifySeconds: " + result.ClassifyElapsed.TotalSeconds.ToString("0.000", CultureInfo.InvariantCulture),
                 "PeakWorkingSetBytes: " + peakWorkingSet.ToString(CultureInfo.InvariantCulture),
                 "PeakWorkingSetMiB: " + (peakWorkingSet / (1024d * 1024d)).ToString("0.0", CultureInfo.InvariantCulture),
                 "TreePageRows: " + page.Rows.Count.ToString(CultureInfo.InvariantCulture),

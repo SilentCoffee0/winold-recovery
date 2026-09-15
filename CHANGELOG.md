@@ -10,6 +10,7 @@ All notable changes to WinOld Recovery will be documented here.
 - Elevated FixtureGen no longer creates a temporary local account with `net user`; it assigns an unmapped SID so orphan-owner creation cannot hang. `icacls` child processes time out after 45 seconds. `ProcessRunner` closes child stdin so a `net user /add` Y/N prompt cannot inherit an Administrator console and wait out the default two-minute timeout (15 Sep 2026 8.1 failure). See `docs/spikes/NET_USER_ADD_PROMPT.md`.
 - FixtureGen encrypts the EFS sample with `File.Encrypt` instead of `cipher.exe`, which can wait on a certificate UI. `ProcessRunner` uses `WaitForExit(timeout)` so a stuck child is killed.
 - Classification path globs compile once and reuse the regex. Matching 1,000,000 scale-tree paths against the embedded globs no longer rebuilds a regex per node (the 15 Sep 2026 published `--scan` spent hours in `ClassifyAsync` after the walk finished in two minutes).
+- Published `--scan` reports `WalkSeconds` and `ClassifySeconds` so a 1M memory run can tell walk time from classify time.
 - The file walker checkpoints SQLite on the 5,000-node insert batch, not after every top-level directory. A 1,000-folder scale-tree root was committing about a thousand transactions during `--scan`.
 - FixtureGen prints stage progress (including 25k node_modules checkpoints) so an elevated 100k run is not a silent hang.
 - CopyTree and verify skip the same Offline/EFS/reparse entries, so a restore of a mixed folder can complete and verify without requiring cloud placeholders.

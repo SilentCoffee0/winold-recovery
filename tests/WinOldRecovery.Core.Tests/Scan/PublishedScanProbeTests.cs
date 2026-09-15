@@ -30,6 +30,8 @@ public sealed class PublishedScanProbeTests
                 root,
                 Path.Combine(root, "tmp"));
             Assert.Contains("Passed: true", report, StringComparison.Ordinal);
+            Assert.Contains("WalkSeconds:", report, StringComparison.Ordinal);
+            Assert.Contains("ClassifySeconds:", report, StringComparison.Ordinal);
             Assert.Contains("TreePageRows:", report, StringComparison.Ordinal);
         }
         finally

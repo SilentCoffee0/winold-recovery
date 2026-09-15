@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using WinOldRecovery.Core.Browse;
 using WinOldRecovery.Core.Classification;
@@ -287,6 +288,57 @@ public sealed class ClassificationEngineTests
         Assert.DoesNotContain("Password export", notes.BadgeText);
         DecisionEngine engine = new(context.Database, context.SessionId);
         Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(bitwarden.Id));
+    }
+
+    [Fact]
+    public async Task Classify_OneHundredThousandScaleNodesStayUnderFifteenSeconds()
+    {
+        await using ClassifyContext context = await ClassifyContext.CreateAsync();
+        List<PersistedNode> batch = [Node(1, null, string.Empty, "root", NodeKind.Directory, 0)];
+        long id = 1;
+        for (int directory = 0; directory < 100; directory++)
+        {
+            long directoryId = ++id;
+            string directoryName = "d" + directory.ToString("D3");
+            batch.Add(Node(directoryId, 1, directoryName, directoryName, NodeKind.Directory, 0));
+            for (int file = 0; file < 1000; file++)
+            {
+                long fileId = ++id;
+                string fileName = "f" + file.ToString("D4") + ".txt";
+                batch.Add(
+                    Node(
+                        fileId,
+                        directoryId,
+                        directoryName + "\\" + fileName,
+                        fileName,
+                        NodeKind.File,
+                        0));
+            }
+
+            if (batch.Count >= 5000)
+            {
+                await context.Database.InsertNodesAsync(batch);
+                batch.Clear();
+            }
+        }
+
+        if (batch.Count > 0)
+        {
+            await context.Database.InsertNodesAsync(batch);
+        }
+
+        ClassificationEngine classifier = new(context.Database, context.SafeFs);
+        Stopwatch clock = Stopwatch.StartNew();
+        ClassificationSummary summary = await classifier.ClassifyAsync(
+            context.SessionId,
+            context.Root,
+            []);
+        clock.Stop();
+
+        Assert.Equal(0, summary.HighValueCount);
+        Assert.True(
+            clock.Elapsed < TimeSpan.FromSeconds(15),
+            "ClassifyAsync for 100,101 nodes took " + clock.Elapsed.TotalSeconds.ToString("0.000") + " s.");
     }
 
     private static TreeNodeRow Find(ClassifyContext context, string relPath)

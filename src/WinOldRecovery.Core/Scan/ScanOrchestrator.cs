@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using WinOldRecovery.Core.Classification;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Persistence;
@@ -60,21 +61,31 @@ public sealed class ScanOrchestrator
         }
 
         FileSystemWalker walker = new(sessionDb);
+        Stopwatch walkClock = Stopwatch.StartNew();
         WalkResult walk = await walker.WalkAsync(
                 new WalkRequest(sessionId, registered, Resume: resume, ComputeFolderSizes: computeFolderSizes),
                 progress,
                 cancellationToken)
             .ConfigureAwait(false);
+        walkClock.Stop();
 
         ClassificationEngine classifier = new(sessionDb, safeFs);
+        Stopwatch classifyClock = Stopwatch.StartNew();
         ClassificationSummary classification = await classifier.ClassifyAsync(
                 sessionId,
                 registered,
                 profiles,
                 cancellationToken)
             .ConfigureAwait(false);
+        classifyClock.Stop();
 
-        return new ScanRunResult(registered, profiles, walk, classification);
+        return new ScanRunResult(
+            registered,
+            profiles,
+            walk,
+            classification,
+            walkClock.Elapsed,
+            classifyClock.Elapsed);
     }
 }
 
@@ -82,4 +93,6 @@ public sealed record ScanRunResult(
     string SourceRoot,
     IReadOnlyList<DetectedProfile> Profiles,
     WalkResult Walk,
-    ClassificationSummary Classification);
+    ClassificationSummary Classification,
+    TimeSpan WalkElapsed,
+    TimeSpan ClassifyElapsed);
