@@ -69,6 +69,8 @@ Pending elevated test:
 
 The unit suite maps `ERROR_DISK_FULL` (112) to `Paused(DiskFull)` and is not a substitute for this volume test.
 
+To run the volume test, open an elevated PowerShell in the repo and run `tools/run-disk-full-vhdx.ps1`. It attaches a 200 MB VHDX, seeds `keep-me.txt`, and runs `RestoreHarness --probe-disk-full`. Preflight includes a 1 GB margin, so a 200 MB volume is expected to block before copy (`Mode: PreflightBlocked`) while leaving the marker and source files untouched.
+
 ## One-million-node scan memory ceiling
 
 Pending on a machine with a large scratch volume:
