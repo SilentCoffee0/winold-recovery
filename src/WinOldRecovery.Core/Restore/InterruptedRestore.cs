@@ -114,6 +114,11 @@ public static class InterruptedRestore
                 continue;
             }
 
+            if (IsDatabaseInUse(databasePath))
+            {
+                continue;
+            }
+
             SessionDb? database = null;
             try
             {
@@ -157,6 +162,23 @@ public static class InterruptedRestore
         }
 
         return DateTimeOffset.Parse(value, CultureInfo.InvariantCulture);
+    }
+
+    private static bool IsDatabaseInUse(string databasePath)
+    {
+        try
+        {
+            using FileStream stream = new(
+                databasePath,
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.None);
+            return false;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
     }
 
     private static string InferDirectory(string path)

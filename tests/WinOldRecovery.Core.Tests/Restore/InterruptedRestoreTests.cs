@@ -130,6 +130,50 @@ public sealed class InterruptedRestoreTests
         }
     }
 
+    [Fact]
+    public async Task FindLatest_SkipsADatabaseHeldOpenByAnotherHandle()
+    {
+        string localData = Path.Combine(Path.GetTempPath(), $"WinOldRecovery-FindLock-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(localData);
+        SourceGuard guard = new();
+        SafeFs safeFs = new(guard);
+        FileStream? locker = null;
+        try
+        {
+            SessionWorkspace older = SessionWorkspace.Create(
+                safeFs,
+                localData,
+                new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero));
+            SessionWorkspace newer = SessionWorkspace.Create(
+                safeFs,
+                localData,
+                new DateTimeOffset(2024, 2, 1, 0, 0, 0, TimeSpan.Zero));
+            await using (SessionDb olderDb = await SessionDb.OpenAsync(older.DatabasePath, safeFs))
+            {
+                await olderDb.CreateSessionAsync(
+                    new SessionRecord(older.SessionId, DateTimeOffset.UtcNow, "Created", "0.1.0"));
+                PlanItem item = await StoreFileAsync(olderDb, older.SessionId, Path.Combine(localData, "old.txt"));
+                await olderDb.AppendJournalAsync(item.Id!.Value, "Started");
+            }
+
+            await File.WriteAllBytesAsync(newer.DatabasePath, [0, 1, 2, 3]);
+            locker = new FileStream(newer.DatabasePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read);
+
+            InterruptedRestoreReport? report = InterruptedRestore.FindLatest(safeFs, localData);
+            Assert.NotNull(report);
+            Assert.Equal(older.SessionId, report.SessionId);
+        }
+        finally
+        {
+            locker?.Dispose();
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            if (Directory.Exists(localData))
+            {
+                Directory.Delete(localData, recursive: true);
+            }
+        }
+    }
+
     private static async Task<PlanItem> StoreFileAsync(SessionDb database, string sessionId, string source)
     {
         PlanItem item = new(
