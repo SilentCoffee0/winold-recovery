@@ -27,6 +27,26 @@ public sealed class FirefoxRecipe : IRecipe
         "handlers.json",
         "extensions.json",
         "sessionstore.jsonlz4",
+        "search.json.mozlz4",
+        "addonStartup.json.lz4",
+        "storage-sync-v2.sqlite",
+        "storage.sqlite",
+        "webappsstore.sqlite",
+        "cookies.sqlite-shm",
+        "formhistory.sqlite-wal",
+        "formhistory.sqlite-shm",
+        "permissions.sqlite-wal",
+        "permissions.sqlite-shm",
+        "favicons.sqlite-wal",
+        "favicons.sqlite-shm",
+    ];
+
+    private static readonly string[] FolderAllowList =
+    [
+        "sessionstore-backups",
+        "bookmarkbackups",
+        "extensions",
+        "storage",
     ];
 
     public string Id => "firefox";
@@ -48,6 +68,16 @@ public sealed class FirefoxRecipe : IRecipe
                 if (context.SafeFs.FileExists(Path.Combine(profile, name)))
                 {
                     present.Add(name);
+                }
+            }
+
+            List<string> folders = [];
+            foreach (string name in FolderAllowList)
+            {
+                if (context.SafeFs.DirectoryExists(Path.Combine(profile, name)) &&
+                    !DetectorWalk.IsReparse(Path.Combine(profile, name)))
+                {
+                    folders.Add(name);
                 }
             }
 
@@ -101,7 +131,7 @@ public sealed class FirefoxRecipe : IRecipe
                         new RecipeComponent(
                             "transplant",
                             "Profile transplant",
-                            present.Count == 0 ? "Empty profile" : string.Join(", ", present),
+                            TransplantSummary(present, folders),
                             hasPlaces ? Decision.Restore : Decision.LeaveBehind,
                             false,
                             null,
@@ -144,6 +174,7 @@ public sealed class FirefoxRecipe : IRecipe
                     {
                         ["source"] = profile,
                         ["files"] = string.Join("|", present),
+                        ["folders"] = string.Join("|", folders),
                         ["folder"] = folder,
                         ["name"] = discovered.Name,
                         ["isDefault"] = discovered.IsDefault ? "1" : "0",
@@ -184,6 +215,22 @@ public sealed class FirefoxRecipe : IRecipe
                         null,
                         1,
                         "transplant"));
+            }
+
+            foreach (string name in FolderNames(decisions.Card))
+            {
+                string folderSource = Path.Combine(source, name);
+                if (destination.SafeFs.DirectoryExists(folderSource) && !DetectorWalk.IsReparse(folderSource))
+                {
+                    AnkiRecipe.AddTree(
+                        destination.SafeFs,
+                        folderSource,
+                        Path.Combine(dest, name),
+                        folderSource,
+                        "transplant",
+                        writes,
+                        SkipRegenerated);
+                }
             }
 
             string iniPath = Path.Combine(
@@ -273,6 +320,36 @@ public sealed class FirefoxRecipe : IRecipe
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite("firefox", "Firefox must be closed before the profile is transplanted.")];
+
+    private static string TransplantSummary(List<string> present, List<string> folders)
+    {
+        if (present.Count == 0 && folders.Count == 0)
+        {
+            return "Empty profile";
+        }
+
+        return string.Join(", ", present.Concat(folders));
+    }
+
+    private static IEnumerable<string> FolderNames(RecipeCard card)
+    {
+        string stored = card.Facts.GetValueOrDefault("folders") ?? string.Empty;
+        if (stored.Length > 0)
+        {
+            return stored.Split('|', StringSplitOptions.RemoveEmptyEntries);
+        }
+
+        return FolderAllowList;
+    }
+
+    private static bool SkipRegenerated(string relative)
+    {
+        string name = Path.GetFileName(relative);
+        return name.Equals("lock", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("parent.lock", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("sessionCheckpoints.json", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("times.json", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string PrimaryPasswordRestoreCopy(string primaryPassword)
     {

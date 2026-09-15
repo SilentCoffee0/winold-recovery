@@ -33,12 +33,7 @@ internal static class FirefoxVerify
             }
         }
 
-        string? destProfile = plan.Writes
-            .Where(static write => write.ComponentKey == "transplant")
-            .Select(static write => write.DestinationPath)
-            .Where(static path => !path.EndsWith("profiles.ini", StringComparison.OrdinalIgnoreCase))
-            .Select(Path.GetDirectoryName)
-            .FirstOrDefault(static path => !string.IsNullOrEmpty(path));
+        string? destProfile = RecoveredProfileDirectory(plan);
         if (!string.IsNullOrEmpty(destProfile))
         {
             bool key4 = File.Exists(Path.Combine(destProfile, "key4.db"));
@@ -90,6 +85,37 @@ internal static class FirefoxVerify
         }
 
         return new RecipeVerifyResult(true, "Firefox files present");
+    }
+
+    private static string? RecoveredProfileDirectory(PlanResult plan)
+    {
+        string folder = plan.Card.Facts.GetValueOrDefault("folder") ?? string.Empty;
+        if (string.IsNullOrEmpty(folder))
+        {
+            return null;
+        }
+
+        string recovered = folder + "-recovered";
+        foreach (RecipeWrite write in plan.Writes)
+        {
+            if (write.ComponentKey != "transplant")
+            {
+                continue;
+            }
+
+            string? current = write.DestinationPath;
+            while (!string.IsNullOrEmpty(current))
+            {
+                if (Path.GetFileName(current).Equals(recovered, StringComparison.OrdinalIgnoreCase))
+                {
+                    return current;
+                }
+
+                current = Path.GetDirectoryName(current);
+            }
+        }
+
+        return null;
     }
 
     private static string CopyPlaces(PlanResult plan, string destinationPlaces)

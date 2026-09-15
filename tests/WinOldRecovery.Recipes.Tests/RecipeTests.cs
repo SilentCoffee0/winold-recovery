@@ -1124,6 +1124,73 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Firefox_Transplant_CopiesAllowListedFoldersAndSkipsLocks()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string firefox = Path.Combine(alice, "AppData", "Roaming", "Mozilla", "Firefox", "Profiles", "folders.default");
+        string backups = Path.Combine(firefox, "sessionstore-backups");
+        string bookmarkBackups = Path.Combine(firefox, "bookmarkbackups");
+        string extensions = Path.Combine(firefox, "extensions");
+        string storage = Path.Combine(firefox, "storage", "default", "https+++example.com");
+        Directory.CreateDirectory(backups);
+        Directory.CreateDirectory(bookmarkBackups);
+        Directory.CreateDirectory(extensions);
+        Directory.CreateDirectory(storage);
+        await File.WriteAllTextAsync(Path.Combine(firefox, "logins.json"), """{"logins":[]}""");
+        await File.WriteAllTextAsync(Path.Combine(firefox, "key4.db"), "k");
+        await File.WriteAllTextAsync(Path.Combine(firefox, "search.json.mozlz4"), "search");
+        await File.WriteAllBytesAsync(
+            Path.Combine(backups, "recovery.jsonlz4"),
+            MozLz4.Encode("""{"windows":[]}"""u8));
+        await File.WriteAllTextAsync(Path.Combine(backups, "parent.lock"), "skip");
+        await File.WriteAllTextAsync(Path.Combine(bookmarkBackups, "bookmarks-2026.jsonlz4"), "bookmarks");
+        await File.WriteAllTextAsync(Path.Combine(extensions, "ublock@raymondhill.net.xpi"), "xpi");
+        await File.WriteAllTextAsync(Path.Combine(storage, "ls"), "site-storage");
+        WriteSqlite(
+            Path.Combine(firefox, "places.sqlite"),
+            """
+            CREATE TABLE moz_places(id INTEGER PRIMARY KEY, url TEXT, title TEXT, hidden INTEGER DEFAULT 0);
+            CREATE TABLE moz_bookmarks(id INTEGER PRIMARY KEY, type INTEGER, fk INTEGER, title TEXT, parent INTEGER);
+            INSERT INTO moz_places(id, url, title) VALUES (1, 'https://folders.firefox.example', 'Fx');
+            INSERT INTO moz_bookmarks(id, type, fk, title, parent) VALUES (1, 1, 1, 'Fx', 0);
+            """);
+
+        FirefoxRecipe recipe = new();
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, [recipe]);
+        DetectResult detected = recipe.Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        RecipeCard card = Assert.Single(detected.Cards);
+        Assert.Contains("sessionstore-backups", card.Facts["folders"], StringComparison.Ordinal);
+        Assert.Contains("search.json.mozlz4", card.Facts["files"], StringComparison.Ordinal);
+        PlanResult plan = host.PlanCard(recipe, card, Dest(context));
+        await host.ExecuteAsync("session-1", recipe, plan);
+        string dest = Path.Combine(
+            context.Destination,
+            "AppData",
+            "Roaming",
+            "Mozilla",
+            "Firefox",
+            "Profiles",
+            "folders.default-recovered");
+        Assert.True(File.Exists(Path.Combine(dest, "search.json.mozlz4")));
+        Assert.True(File.Exists(Path.Combine(dest, "sessionstore-backups", "recovery.jsonlz4")));
+        Assert.True(File.Exists(Path.Combine(dest, "bookmarkbackups", "bookmarks-2026.jsonlz4")));
+        Assert.True(File.Exists(Path.Combine(dest, "extensions", "ublock@raymondhill.net.xpi")));
+        Assert.True(File.Exists(Path.Combine(dest, "storage", "default", "https+++example.com", "ls")));
+        Assert.False(File.Exists(Path.Combine(dest, "sessionstore-backups", "parent.lock")));
+        Assert.True(recipe.Verify(plan).Ok);
+        Assert.DoesNotContain(Canary, string.Join(';', card.Facts.Values), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SnssReader_ExtractsNavigationUrls()
     {
         byte[] session = SnssReader.CreateSessionFile(

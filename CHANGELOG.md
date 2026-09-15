@@ -104,3 +104,4 @@ All notable changes to WinOld Recovery will be documented here.
 - Firefox exports open tabs from the newest `sessionstore*.jsonlz4` (mozLz4) and an extensions list with AMO search links. Builtin add-ons are omitted.
 - Firefox profile discovery reads `profiles.ini` and `installs.ini` (relative and absolute paths, default install mapping). Empty profiles are shown and default to Leave Behind. Paths outside the old user profile are ignored.
 - Firefox L3 verify checks that `profiles.ini` lists the recovered profile, `places.sqlite` `PRAGMA integrity_check` is ok and bookmark counts match, and `key4.db` is paired with `logins.json` or `logins.db`.
+- Firefox transplant copies `sessionstore-backups`, `bookmarkbackups`, `extensions`, and `storage`, plus `search.json.mozlz4` / `addonStartup.json.lz4` / site-storage sqlite files. `lock`, `parent.lock`, `sessionCheckpoints.json`, and `times.json` stay behind.
