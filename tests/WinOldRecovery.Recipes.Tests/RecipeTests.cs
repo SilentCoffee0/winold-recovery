@@ -1709,6 +1709,50 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Anki_Detect_FindsShortcutDashBBaseAndRecordsBackupFacts()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string custom = Path.Combine(alice, "CustomAnki");
+        string profile = Path.Combine(custom, "Work");
+        Directory.CreateDirectory(Path.Combine(profile, "backups"));
+        Directory.CreateDirectory(Path.Combine(custom, "addons21", "2040501954"));
+        WriteSqlite(
+            Path.Combine(profile, "collection.anki2"),
+            """
+            CREATE TABLE notes(id INTEGER PRIMARY KEY, guid TEXT);
+            CREATE TABLE cards(id INTEGER PRIMARY KEY, nid INTEGER);
+            CREATE TABLE col(id INTEGER PRIMARY KEY, ver INTEGER, scm INTEGER);
+            INSERT INTO notes(guid) VALUES ('note-1');
+            INSERT INTO cards(nid) VALUES (1);
+            INSERT INTO col(id, ver, scm) VALUES (1, 18, 18);
+            """);
+        await File.WriteAllTextAsync(Path.Combine(profile, "backups", "backup-1.colpkg"), "pkg");
+        await File.WriteAllTextAsync(Path.Combine(custom, "addons21", "2040501954", "manifest.json"), """{"name":"Review Heatmap"}""");
+        string programs = Path.Combine(alice, "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", "Programs");
+        Directory.CreateDirectory(programs);
+        await File.WriteAllBytesAsync(
+            Path.Combine(programs, "Anki.lnk"),
+            System.Text.Encoding.Unicode.GetBytes("Anki.exe -b \"" + custom + "\""));
+
+        DetectResult detected = new AnkiRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        RecipeCard card = Assert.Single(detected.Cards);
+        Assert.Equal("Work", Path.GetFileName(card.Facts["source"]));
+        Assert.Equal("18", card.Facts["schema"]);
+        Assert.Equal("1", card.Facts["backups"]);
+        Assert.Equal("backup-1.colpkg", card.Facts["newestBackup"]);
+        Assert.Equal("1", card.Facts["addons"]);
+    }
+
+    [Fact]
     public async Task AnkiWslAndGpg_RestoreWithoutTrashIndexOrRandomSeed()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
@@ -1764,6 +1808,8 @@ public sealed class RecipeTests
 
         RecipeCard ankiCard = Assert.Single(cards, card => card.RecipeId == "anki");
         Assert.Equal("1", ankiCard.Facts["notes"]);
+        Assert.Equal("0", ankiCard.Facts["backups"]);
+        Assert.Equal("0", ankiCard.Facts["addons"]);
         PlanResult ankiPlan = host.PlanCard(new AnkiRecipe(), ankiCard, Dest(context));
         await host.ExecuteAsync("session-1", new AnkiRecipe(), ankiPlan);
         Assert.True(new AnkiRecipe().Verify(ankiPlan).Ok);

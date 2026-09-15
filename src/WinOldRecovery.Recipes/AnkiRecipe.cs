@@ -13,7 +13,7 @@ public sealed class AnkiRecipe : IRecipe
     {
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
-        foreach (string baseFolder in CandidateBases(context))
+        foreach (string baseFolder in AnkiBaseDiscovery.CandidateBases(context))
         {
             if (!context.SafeFs.DirectoryExists(baseFolder))
             {
@@ -33,9 +33,11 @@ public sealed class AnkiRecipe : IRecipe
                     continue;
                 }
 
-                (int notes, int cardCount, string integrity) = ReadCollectionFacts(context, collection, Path.GetFileName(profile));
+                (int notes, int cardCount, string integrity, string schema) = ReadCollectionFacts(context, collection, Path.GetFileName(profile));
                 int media = CountMedia(context.SafeFs, Path.Combine(profile, "collection.media"));
                 bool hasWal = context.SafeFs.FileExists(Path.Combine(profile, "collection.anki2-wal"));
+                (int backups, string newestBackup) = CountBackups(context.SafeFs, Path.Combine(profile, "backups"));
+                int addons = CountAddons(context.SafeFs, Path.Combine(baseFolder, "addons21"));
                 string destAnki = Path.Combine(context.DestinationProfileRoot, "AppData", "Roaming", "Anki2");
                 bool destPrefs = context.SafeFs.FileExists(Path.Combine(destAnki, "prefs21.db"));
                 cards.Add(
@@ -93,6 +95,10 @@ public sealed class AnkiRecipe : IRecipe
                             ["cards"] = cardCount.ToString(),
                             ["media"] = media.ToString(),
                             ["integrity"] = integrity,
+                            ["schema"] = schema,
+                            ["backups"] = backups.ToString(),
+                            ["newestBackup"] = newestBackup,
+                            ["addons"] = addons.ToString(),
                         }));
                 DetectorWalk.AddTreeBadge(
                     badges,
@@ -181,12 +187,6 @@ public sealed class AnkiRecipe : IRecipe
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite("anki", "Anki must be closed before the profile is restored.")];
 
-    private static IEnumerable<string> CandidateBases(ProfileContext context)
-    {
-        yield return Path.Combine(context.OldProfileRoot, "AppData", "Roaming", "Anki2");
-        yield return Path.Combine(context.OldProfileRoot, "Documents", "Anki");
-    }
-
     private static bool SkipProfile(string relative)
     {
         return relative.Contains("media.trash", StringComparison.OrdinalIgnoreCase) ||
@@ -195,7 +195,7 @@ public sealed class AnkiRecipe : IRecipe
             Path.GetFileName(relative).Equals("collection.media.db2", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static (int Notes, int Cards, string Integrity) ReadCollectionFacts(
+    private static (int Notes, int Cards, string Integrity, string Schema) ReadCollectionFacts(
         ProfileContext context,
         string collection,
         string profileName)
@@ -211,12 +211,77 @@ public sealed class AnkiRecipe : IRecipe
             string integrity = Scalar(connection, "PRAGMA integrity_check;") ?? "unknown";
             int notes = TableCount(connection, "notes");
             int cards = TableCount(connection, "cards");
-            return (notes, cards, integrity);
+            string schema = string.Empty;
+            try
+            {
+                schema = Scalar(connection, "SELECT ver FROM col LIMIT 1;")
+                    ?? Scalar(connection, "SELECT scm FROM col LIMIT 1;")
+                    ?? string.Empty;
+            }
+            catch (SqliteException)
+            {
+            }
+
+            return (notes, cards, integrity, schema);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SqliteException)
         {
-            return (0, 0, "unreadable");
+            return (0, 0, "unreadable", string.Empty);
         }
+    }
+
+    private static (int Count, string Newest) CountBackups(SafeFs safeFs, string backups)
+    {
+        if (!safeFs.DirectoryExists(backups))
+        {
+            return (0, string.Empty);
+        }
+
+        int count = 0;
+        DateTime newest = DateTime.MinValue;
+        string newestName = string.Empty;
+        foreach (string entry in safeFs.EnumerateFileSystemEntries(backups))
+        {
+            if (!entry.EndsWith(".colpkg", StringComparison.OrdinalIgnoreCase) || safeFs.DirectoryExists(entry))
+            {
+                continue;
+            }
+
+            count++;
+            try
+            {
+                DateTime written = File.GetLastWriteTimeUtc(entry);
+                if (written >= newest)
+                {
+                    newest = written;
+                    newestName = Path.GetFileName(entry);
+                }
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        return (count, newestName);
+    }
+
+    private static int CountAddons(SafeFs safeFs, string addons21)
+    {
+        if (!safeFs.DirectoryExists(addons21))
+        {
+            return 0;
+        }
+
+        int count = 0;
+        foreach (string entry in safeFs.EnumerateFileSystemEntries(addons21))
+        {
+            if (safeFs.FileExists(Path.Combine(entry, "manifest.json")))
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     private static int TableCount(SqliteConnection connection, string table)
