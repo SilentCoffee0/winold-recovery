@@ -2088,6 +2088,22 @@ public sealed class RecipeTests
         Assert.Equal("wsl.exe", register[0].FileName);
         Assert.Contains("--import-in-place", register[1].Arguments);
         Assert.Contains("C:\\tmp\\ext4.vhdx", register[1].Arguments);
+        Assert.Contains("getent passwd", wslCard.Facts["defaultUserCommands"], StringComparison.Ordinal);
+        Assert.Contains("--set-default-user", wslCard.Facts["defaultUserCommands"], StringComparison.Ordinal);
+        IReadOnlyList<WinOldRecovery.Core.Processes.ProcessRequest> defaultUser =
+            WslRecipe.CreateDefaultUserRequests("Ubuntu", "1000");
+        Assert.Contains("getent", defaultUser[1].Arguments);
+        Assert.Contains("1000", defaultUser[1].Arguments);
+        Assert.Contains("--terminate", defaultUser[^1].Arguments);
+        Assert.DoesNotContain(
+            defaultUser,
+            request => request.Arguments.Any(static argument =>
+                argument.Contains("Windows.old", StringComparison.OrdinalIgnoreCase)));
+        Assert.DoesNotContain(
+            context.Runner.Requests,
+            request => request.Arguments.Contains("getent") ||
+                request.Arguments.Contains("--set-default-user") ||
+                request.Arguments.Contains("--terminate"));
 
         RecipeCard gpgCard = Assert.Single(cards, card => card.RecipeId == "gpg");
         PlanResult gpgPlan = host.PlanCard(new GpgRecipe(), gpgCard, Dest(context));

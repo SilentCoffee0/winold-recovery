@@ -91,6 +91,7 @@ public sealed class WslRecipe : IRecipe
                         ["wslVersion"] = lxssDistro?.Version ?? string.Empty,
                         ["wslInstalled"] = wslInstalled ? "1" : "0",
                         ["defaultDistribution"] = lxssDistro is { IsDefault: true } ? "1" : "0",
+                        ["defaultUserCommands"] = FormatDefaultUserCommands(name, lxssDistro?.DefaultUid ?? string.Empty),
                     }));
             DetectorWalk.AddTreeBadge(
                 badges,
@@ -166,6 +167,39 @@ public sealed class WslRecipe : IRecipe
             new("wsl.exe", ["--shutdown"], Timeout: TimeSpan.FromSeconds(60)),
             new("wsl.exe", ["--import-in-place", distroName, destinationVhdx], Timeout: TimeSpan.FromMinutes(2)),
         ];
+    }
+
+    public static IReadOnlyList<ProcessRequest> CreateDefaultUserRequests(
+        string distroName,
+        string defaultUid)
+    {
+        TimeSpan timeout = TimeSpan.FromSeconds(30);
+        List<ProcessRequest> requests =
+        [
+            new("wsl.exe", ["-d", distroName, "-u", "root", "cat", "/etc/wsl.conf"], Timeout: timeout),
+        ];
+        if (!string.IsNullOrWhiteSpace(defaultUid))
+        {
+            requests.Add(
+                new(
+                    "wsl.exe",
+                    ["-d", distroName, "-u", "root", "getent", "passwd", defaultUid],
+                    Timeout: timeout));
+        }
+
+        requests.Add(new("wsl.exe", ["--terminate", distroName], Timeout: timeout));
+        return requests;
+    }
+
+    public static string FormatDefaultUserCommands(string distroName, string defaultUid)
+    {
+        string uid = string.IsNullOrWhiteSpace(defaultUid) ? "<DefaultUid>" : defaultUid;
+        return string.Join(
+            Environment.NewLine,
+            "wsl.exe -d " + distroName + " -u root cat /etc/wsl.conf",
+            "wsl.exe -d " + distroName + " -u root getent passwd " + uid,
+            "wsl.exe --manage " + distroName + " --set-default-user <name-from-getent>",
+            "wsl.exe --terminate " + distroName);
     }
 
     public RecipeVerifyResult Verify(PlanResult plan)
