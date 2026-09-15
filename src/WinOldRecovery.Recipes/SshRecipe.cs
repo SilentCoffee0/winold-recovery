@@ -113,7 +113,7 @@ public sealed class SshRecipe : IRecipe
         {
             cancellationToken.ThrowIfCancellationRequested();
             string name = Path.GetFileName(write.DestinationPath);
-            if (name.EndsWith(".pub", StringComparison.OrdinalIgnoreCase))
+            if (!NeedsStrictAcl(write.DestinationPath))
             {
                 continue;
             }
@@ -142,8 +142,25 @@ public sealed class SshRecipe : IRecipe
 
     public RecipeVerifyResult Verify(PlanResult plan)
     {
-        bool ok = plan.Writes.All(static write => File.Exists(write.DestinationPath));
-        return new RecipeVerifyResult(ok, ok ? "SSH files present" : "SSH destination missing");
+        foreach (RecipeWrite write in plan.Writes)
+        {
+            if (!File.Exists(write.DestinationPath))
+            {
+                return new RecipeVerifyResult(false, "SSH destination missing");
+            }
+
+            if (!NeedsStrictAcl(write.DestinationPath))
+            {
+                continue;
+            }
+
+            if (AclAllowsBroadUsers(write.DestinationPath))
+            {
+                return new RecipeVerifyResult(false, "SSH private key ACL allows Everyone, Users, or Authenticated Users");
+            }
+        }
+
+        return new RecipeVerifyResult(true, "SSH files present");
     }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) => [];
@@ -174,7 +191,83 @@ public sealed class SshRecipe : IRecipe
                 user,
                 FileSystemRights.FullControl,
                 AccessControlType.Allow));
+        security.AddAccessRule(
+            new FileSystemAccessRule(
+                new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+                FileSystemRights.FullControl,
+                AccessControlType.Allow));
+        security.AddAccessRule(
+            new FileSystemAccessRule(
+                new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+                FileSystemRights.FullControl,
+                AccessControlType.Allow));
         file.SetAccessControl(security);
+    }
+
+    internal static bool AclAllowsBroadUsers(string path)
+    {
+        FileSecurity security;
+        try
+        {
+            security = new FileInfo(path).GetAccessControl();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return true;
+        }
+
+        SecurityIdentifier[] forbidden =
+        [
+            new(WellKnownSidType.WorldSid, null),
+            new(WellKnownSidType.BuiltinUsersSid, null),
+            new(WellKnownSidType.AuthenticatedUserSid, null),
+        ];
+        foreach (FileSystemAccessRule rule in security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>())
+        {
+            if (rule.AccessControlType != AccessControlType.Allow)
+            {
+                continue;
+            }
+
+            SecurityIdentifier sid = (SecurityIdentifier)rule.IdentityReference;
+            if (forbidden.Any(sid.Equals))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    internal static bool NeedsStrictAcl(string path)
+    {
+        string name = Path.GetFileName(path);
+        if (name.EndsWith(".pub", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (name.Equals("config", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("authorized_keys", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("id_", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("ssh_host_", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        try
+        {
+            using FileStream stream = File.OpenRead(path);
+            byte[] buffer = new byte[64];
+            int read = stream.Read(buffer, 0, buffer.Length);
+            string text = System.Text.Encoding.ASCII.GetString(buffer, 0, read);
+            return text.Contains("BEGIN", StringComparison.OrdinalIgnoreCase) &&
+                text.Contains("PRIVATE KEY", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static Dictionary<string, string> UserFacts(string source, SshFolderFacts facts)

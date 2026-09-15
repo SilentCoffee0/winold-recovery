@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Microsoft.Data.Sqlite;
 using WinOldRecovery.Core.Decisions;
 using WinOldRecovery.Core.IO;
@@ -146,6 +148,49 @@ public sealed class RecipeTests
         Assert.Equal("aes256-ctr", cipher);
         Assert.True(SshRecipe.HasEfsAttribute(FileAttributes.Encrypted));
         Assert.False(SshRecipe.HasEfsAttribute(FileAttributes.Normal));
+    }
+
+    [Fact]
+    public void Ssh_Verify_RejectsWorldReadablePrivateKeys()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "WinOldRecovery-SshAcl-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string key = Path.Combine(dir, "id_ed25519");
+            File.WriteAllText(key, "key");
+            FileSecurity security = new FileInfo(key).GetAccessControl();
+            security.AddAccessRule(
+                new FileSystemAccessRule(
+                    new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                    FileSystemRights.Read,
+                    AccessControlType.Allow));
+            new FileInfo(key).SetAccessControl(security);
+            RecipeCard card = new(
+                "ssh",
+                "SSH",
+                "w",
+                "y",
+                "r",
+                "c",
+                "g",
+                "l",
+                [],
+                "t",
+                new Dictionary<string, string>());
+            PlanResult plan = new(
+                card,
+                [new RecipeWrite(RecipeWriteKind.CopyFile, key, key, null, 1, "files")]);
+            Assert.True(SshRecipe.AclAllowsBroadUsers(key));
+            Assert.False(new SshRecipe().Verify(plan).Ok);
+            SshRecipe.HardenUserOnlyAcl(key);
+            Assert.False(SshRecipe.AclAllowsBroadUsers(key));
+            Assert.True(new SshRecipe().Verify(plan).Ok);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 
     [Fact]
