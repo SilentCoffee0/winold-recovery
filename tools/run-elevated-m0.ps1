@@ -24,6 +24,7 @@ if ($LASTEXITCODE -ne 0) { throw "FixtureGen build failed." }
 
 $dll = Join-Path $root "tools\FixtureGen\bin\Release\net10.0-windows\FixtureGen.dll"
 Write-Host "Generating elevated fixture at $target with $Files node_modules files..."
+Write-Host "Stop any previous hung FixtureGen (Ctrl+C in that window) before this rebuild, or DLL copy will fail."
 & $dotnet $dll $target --files $Files
 if ($LASTEXITCODE -ne 0) { throw "FixtureGen failed." }
 

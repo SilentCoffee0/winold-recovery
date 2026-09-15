@@ -63,6 +63,7 @@ public sealed class FixtureGenerator
         safeFs.CreateDirectory(liveProfile);
         WriteText(Path.Combine(liveProfile, "live-only.txt"), "must never be scanned");
 
+        Console.WriteLine("Creating profiles and reparse hazards...");
         CreateProfiles(targetRoot, options.PortableMode, hazards);
         await CreateReparseHazardsAsync(
             targetRoot,
@@ -70,7 +71,9 @@ public sealed class FixtureGenerator
             options.PortableMode,
             hazards,
             cancellationToken);
+        Console.WriteLine($"Writing {options.NodeModulesFileCount:N0} node_modules files...");
         CreateFilesystemHazards(targetRoot, options.NodeModulesFileCount, hazards);
+        Console.WriteLine("Creating recipe shells...");
         CreateRecipeShells(targetRoot, hazards);
 
         if (options.PortableMode)
@@ -90,11 +93,14 @@ public sealed class FixtureGenerator
         }
         else
         {
+            Console.WriteLine("Creating privileged hazards (deny-ACL, EFS, orphan SID)...");
             await CreatePrivilegedHazardsAsync(
                 targetRoot,
                 hazards,
                 cancellationToken);
         }
+
+        Console.WriteLine("Writing fixture-manifest.json...");
 
         FixtureManifest manifest = new(
             Version: 1,
@@ -316,6 +322,10 @@ public sealed class FixtureGenerator
             using FileStream file = safeFs.OpenWrite(
                 Path.Combine(nodeModules, $"package-{index:D6}.tmp"),
                 FileMode.CreateNew);
+            if (index > 0 && index % 25_000 == 0)
+            {
+                Console.WriteLine($"  wrote {index:N0} / {nodeModulesFileCount:N0}");
+            }
         }
 
         hazards["node-modules"] = new FixtureHazard(
