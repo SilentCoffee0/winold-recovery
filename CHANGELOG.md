@@ -12,7 +12,7 @@ All notable changes to WinOld Recovery will be documented here.
 - Classification path globs compile once and reuse the regex. Matching 1,000,000 scale-tree paths against the embedded globs no longer rebuilds a regex per node (the 15 Sep 2026 published `--scan` spent hours in `ClassifyAsync` after the walk finished in two minutes).
 - Published `--scan` reports `WalkSeconds` and `ClassifySeconds` so a 1M memory run can tell walk time from classify time.
 - RestoreHarness `--probe-disk-full` and `tools/run-disk-full-vhdx.ps1` attach a 200 MB VHDX destination, require the job to pause or preflight-block, and assert the destination marker and source files are left intact.
-- Published `--restore source dest --report` copies a tree without the WPF window (and resumes the newest interrupted copy session). `tools/run-kill-published-copy.ps1` is the elevated kill-and-resume probe. Interrupted restore discovery skips locked or corrupt session databases so a live `--scan` does not block resume.
+- Published `--restore` always opens a new session and does not call `FindLatest`, so a live `--scan` cannot hang headless copy. CopyTree still skips destination files that already match.
 - The file walker checkpoints SQLite on the 5,000-node insert batch, not after every top-level directory. A 1,000-folder scale-tree root was committing about a thousand transactions during `--scan`.
 - FixtureGen prints stage progress (including 25k node_modules checkpoints) so an elevated 100k run is not a silent hang.
 - CopyTree and verify skip the same Offline/EFS/reparse entries, so a restore of a mixed folder can complete and verify without requiring cloud placeholders.

@@ -40,28 +40,17 @@ public partial class App : Application
                 out string restoreSource,
                 out string restoreDest,
                 out string restoreReport);
-            InterruptedRestoreReport? interrupted = publishedScan
+            InterruptedRestoreReport? interrupted = (publishedScan || publishedRestore)
                 ? null
                 : InterruptedRestore.FindLatest(safeFs);
             SessionWorkspace workspace;
             if (publishedScan || publishedRestore)
             {
-                InterruptedRestoreReport? resume = publishedRestore ? interrupted : null;
-                // Open SQLite off the WPF STA thread. CreateSessionAsync().GetResult()
-                // on the dispatcher deadlocks the writer when OpenAsync completes inline.
+                // Headless --scan/--restore always use a fresh session so they do not
+                // OpenAsync the live 1M-scan database. CopyTree skips dest files that
+                // already match the source (kill-and-resume).
                 (workspace, sessionDatabase) = Task.Run(() =>
                     {
-                        if (resume is not null)
-                        {
-                            SessionWorkspace opened = SessionWorkspace.Open(
-                                resume.WorkspaceRoot,
-                                resume.SessionId);
-                            SessionDb existing = SessionDb.OpenAsync(opened.DatabasePath, safeFs)
-                                .GetAwaiter()
-                                .GetResult();
-                            return (opened, existing);
-                        }
-
                         SessionWorkspace created = SessionWorkspace.Create(safeFs, now: startedAt);
                         SessionDb database = SessionDb.OpenAsync(created.DatabasePath, safeFs)
                             .GetAwaiter()

@@ -32,6 +32,16 @@ public sealed class PublishedRestoreProbeTests
                 dest);
             Assert.Contains("Passed: true", report, StringComparison.Ordinal);
             Assert.Equal("hello", await File.ReadAllTextAsync(Path.Combine(dest, "note.txt")));
+
+            string again = await PublishedRestoreProbe.RunAsync(
+                database,
+                safeFs,
+                guard,
+                "session-1",
+                source,
+                dest);
+            Assert.Contains("Passed: true", again, StringComparison.Ordinal);
+            Assert.Equal("hello", await File.ReadAllTextAsync(Path.Combine(dest, "note.txt")));
         }
         finally
         {
