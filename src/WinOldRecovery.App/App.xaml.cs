@@ -97,6 +97,28 @@ public partial class App : Application
                 "Session {SessionId} initialized. Windows.old has not been touched.",
                 workspace.SessionId);
 
+            if (publishedScan)
+            {
+                SessionDb database = sessionDatabase
+                    ?? throw new InvalidOperationException("The session database was not opened.");
+                string report = Task.Run(
+                        () => PublishedScanProbe.RunAsync(
+                                database,
+                                safeFs,
+                                sourceGuard,
+                                workspace.SessionId,
+                                scanRoot,
+                                workspace.TemporaryPath)
+                            .GetAwaiter()
+                            .GetResult())
+                    .GetAwaiter()
+                    .GetResult();
+                File.WriteAllText(scanReport, report);
+                base.OnStartup(e);
+                Shutdown(report.Contains("Passed: true", StringComparison.Ordinal) ? 0 : 2);
+                return;
+            }
+
             ProcessRunner processRunner = new();
             SourceDiscovery discovery = new(new DriveInfoVolumeRootProvider(), processRunner);
             ScanOrchestrator orchestrator = new(sessionDatabase, safeFs, sourceGuard);
@@ -110,12 +132,7 @@ public partial class App : Application
                 sourceGuard,
                 RecipeCatalog.All,
                 folderPicker: new WpfFolderPicker());
-            if (!publishedScan)
-            {
-                // --scan must not enumerate every DriveInfo root: a disconnected
-                // network volume can stall startup before MainWindow.Loaded.
-                viewModel.LoadSourcesAsync().GetAwaiter().GetResult();
-            }
+            viewModel.LoadSourcesAsync().GetAwaiter().GetResult();
 
             if (interrupted is not null)
             {
@@ -123,27 +140,6 @@ public partial class App : Application
             }
 
             MainWindow window = new(viewModel);
-            if (publishedScan)
-            {
-                window.Loaded += async (_, _) =>
-                {
-                    try
-                    {
-                        string report = await viewModel.RunPublishedMemoryProbeAsync(scanRoot)
-                            .ConfigureAwait(true);
-                        File.WriteAllText(scanReport, report);
-                        Shutdown(report.Contains("Passed: true", StringComparison.Ordinal) ? 0 : 2);
-                    }
-                    catch (Exception exception)
-                    {
-                        File.WriteAllText(
-                            scanReport,
-                            "Passed: false" + Environment.NewLine + exception.Message);
-                        Shutdown(1);
-                    }
-                };
-            }
-
             window.Show();
         }
         catch (Exception exception)
