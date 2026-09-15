@@ -27,13 +27,17 @@ public sealed class GpgRecipe : IRecipe
                 continue;
             }
 
+            bool destExists = context.SafeFs.DirectoryExists(
+                Path.Combine(context.DestinationProfileRoot, "AppData", "Roaming", "gnupg"));
             cards.Add(
                 new RecipeCard(
                     Id,
                     "GPG keyring (" + context.ProfileName + ")",
                     "OpenPGP keys used to sign and decrypt. Passphrase-protected keys stay protected.",
                     "Without this ring you cannot decrypt old mail or verify your previous signatures.",
-                    "The gnupg folder except random_seed, sockets, locks, and crls.d. If a destination ring exists, the old one is written as gnupg.from-windows-old.",
+                    destExists
+                        ? "The gnupg folder except random_seed, sockets, locks, and crls.d. Destination already has a ring: restore as gnupg.from-windows-old, then gpg --import."
+                        : "The gnupg folder except random_seed, sockets, locks, and crls.d. If a destination ring exists, the old one is written as gnupg.from-windows-old.",
                     "Generate new keys and re-share them.",
                     "random_seed regenerates.",
                     "You lose keys that were never backed up elsewhere.",
@@ -41,7 +45,11 @@ public sealed class GpgRecipe : IRecipe
                         new RecipeComponent("ring", "GPG home", home, Decision.Restore, false, null, true),
                     ],
                     context.ProfileName + ":" + home,
-                    new Dictionary<string, string> { ["source"] = home }));
+                    new Dictionary<string, string>
+                    {
+                        ["source"] = home,
+                        ["mergeHint"] = destExists ? "gpg --import" : string.Empty,
+                    }));
             DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, home, "GPG", "keyring");
         }
 

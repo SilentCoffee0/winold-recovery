@@ -2126,6 +2126,7 @@ public sealed class RecipeTests
                 request.Arguments.Contains("--terminate"));
 
         RecipeCard gpgCard = Assert.Single(cards, card => card.RecipeId == "gpg");
+        Assert.Equal(string.Empty, gpgCard.Facts.GetValueOrDefault("mergeHint"));
         PlanResult gpgPlan = host.PlanCard(new GpgRecipe(), gpgCard, Dest(context));
         await host.ExecuteAsync("session-1", new GpgRecipe(), gpgPlan);
         Assert.True(new GpgRecipe().Verify(gpgPlan).Ok);
@@ -2138,6 +2139,39 @@ public sealed class RecipeTests
                 request.Environment.TryGetValue("GNUPGHOME", out string? home) &&
                 home is not null &&
                 home.EndsWith(Path.Combine("AppData", "Roaming", "gnupg"), StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Gpg_MergeHintWhenDestinationRingExists()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string gpg = Path.Combine(alice, "AppData", "Roaming", "gnupg");
+        Directory.CreateDirectory(Path.Combine(gpg, "private-keys-v1.d"));
+        await File.WriteAllTextAsync(Path.Combine(gpg, "pubring.kbx"), "pub");
+        Directory.CreateDirectory(Path.Combine(context.Destination, "AppData", "Roaming", "gnupg"));
+        await File.WriteAllTextAsync(
+            Path.Combine(context.Destination, "AppData", "Roaming", "gnupg", "pubring.kbx"),
+            "existing");
+
+        DetectResult detected = new GpgRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        RecipeCard card = Assert.Single(detected.Cards);
+        Assert.Equal("gpg --import", card.Facts["mergeHint"]);
+        Assert.Contains("gpg --import", card.WhatIsRestored, StringComparison.Ordinal);
+        PlanResult plan = new GpgRecipe().Plan(
+            new CardDecisions(card, new Dictionary<string, Decision> { ["ring"] = Decision.Restore }),
+            Dest(context));
+        Assert.Contains(
+            plan.Writes,
+            write => write.DestinationPath.Contains("gnupg.from-windows-old", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

@@ -94,6 +94,7 @@ Global definition of done for any milestone:
 - Syncthing CLI device-id verify complete on 15 Sep 2026. `VerifyAsync` runs `syncthing --home <dest> --device-id` through `IProcessRunner` when stdout is non-empty. Do not tag.
 - Chromium Local State transplant complete on 15 Sep 2026. Flagged restore copies Bookmarks into `Profile N`, backs up dest `Local State`, and registers `info_cache` as `<name> (recovered)`. Dest `os_crypt` is kept. Do not tag.
 - Chromium last-used fact complete on 15 Sep 2026. Cards store `History` mtime as `lastUsed`. Do not tag.
+- GPG dest-ring merge hint complete on 15 Sep 2026. When dest `gnupg` exists, the card records `gpg --import` and restores to `gnupg.from-windows-old`. Do not tag.
 - Firefox tabs/extensions export complete on 14 Sep 2026. `MozLz4` decodes `sessionstore.jsonlz4` (and backups) via K4os.Compression.LZ4; tabs.html uses the selected session entry; extensions.html lists profile add-ons with AMO guid search links. Do not tag.
 - Firefox `profiles.ini` / `installs.ini` discovery complete on 14 Sep 2026. Relative and absolute profile paths are resolved under the old user profile; empty profiles are shown and default to Leave Behind; `Profiles\*` remains a fallback. Do not tag.
 - Firefox L3 verify complete on 14 Sep 2026. Recovered `profiles.ini` must list the new profile; dest `places.sqlite` is copied to session exports for `PRAGMA integrity_check` and bookmark-count compare; `key4.db` must be paired with `logins.json` or `logins.db`. Do not tag.
