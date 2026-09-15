@@ -10,13 +10,23 @@
       "nameGlobs": ["*.pem", "*.key", "*.ppk", "*.pfx", "*.p12", "id_rsa", "id_ed25519", "id_ecdsa", "key.pem"]
     },
     {
+      "id": "cert-with-key",
+      "kind": "Sensitive",
+      "badge": "Sensitive",
+      "why": "Certificate next to a key file.",
+      "sensitive": true,
+      "suggestedDefault": "Undecided",
+      "nameGlobs": ["*.crt", "*.cer"],
+      "siblingGlobs": ["*.key", "*.pem"]
+    },
+    {
       "id": "env-secrets",
       "kind": "Sensitive",
       "badge": "Sensitive",
       "why": "Contains credentials; prefer re-issuing them.",
       "sensitive": true,
       "suggestedDefault": "Undecided",
-      "nameGlobs": [".env", ".env.*", "*.secret", "secrets.json", ".netrc", ".npmrc", ".pypirc", ".git-credentials"]
+      "nameGlobs": [".env", ".env.*", "*.secret", "secrets.json", ".netrc", ".npmrc", ".pypirc", ".yarnrc.yml", ".git-credentials"]
     },
     {
       "id": "cloud-cli",

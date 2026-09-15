@@ -137,6 +137,74 @@ public sealed class ClassificationEngineTests
         Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(scratch.Id));
     }
 
+    [Fact]
+    public async Task Classify_BadgesRemainingR9Detectors()
+    {
+        await using ClassifyContext context = await ClassifyContext.CreateAsync();
+        string alice = Path.Combine(context.Root, "Windows.old", "Users", "Alice");
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Roaming", "Joplin"));
+        Directory.CreateDirectory(Path.Combine(alice, "Notes", "graph", "logseq"));
+        Directory.CreateDirectory(Path.Combine(alice, ".nuget"));
+        Directory.CreateDirectory(Path.Combine(alice, ".m2"));
+        Directory.CreateDirectory(Path.Combine(alice, "certs"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "MyGame", "Saved", "SaveGames"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "GOG.com", "Galaxy", "Applications", "title"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Roaming", "Notion"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Roaming", "Joplin", "database.sqlite"), "joplin");
+        await File.WriteAllTextAsync(Path.Combine(alice, "Notes", "graph", "logseq", "config.edn"), "{:meta/version 1}");
+        await File.WriteAllTextAsync(Path.Combine(alice, ".nuget", "NuGet.Config"), "<configuration />");
+        await File.WriteAllTextAsync(Path.Combine(alice, ".m2", "settings.xml"), "<settings />");
+        await File.WriteAllTextAsync(Path.Combine(alice, "machine.vmx"), "guestOS = \"windows9-64\"");
+        await File.WriteAllTextAsync(Path.Combine(alice, ".yarnrc.yml"), "npmAuthToken: secret");
+        await File.WriteAllTextAsync(Path.Combine(alice, "certs", "site.crt"), "cert");
+        await File.WriteAllTextAsync(Path.Combine(alice, "certs", "site.key"), "key");
+        await File.WriteAllTextAsync(Path.Combine(alice, "lonely.crt"), "no-key");
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, "AppData", "Local", "MyGame", "Saved", "SaveGames", "slot.sav"),
+            "save");
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, "AppData", "Roaming", "Notion", "offline"),
+            "cache");
+
+        ScanOrchestrator orchestrator = new(context.Database, context.SafeFs, context.Guard);
+        await orchestrator.RunAsync(
+            context.SessionId,
+            Path.Combine(context.Root, "Windows.old"),
+            Path.Combine(context.Root, "tmp"));
+
+        DecisionEngine engine = new(context.Database, context.SessionId);
+        TreeNodeRow joplin = Find(context, @"Users\Alice\AppData\Roaming\Joplin\database.sqlite");
+        TreeNodeRow logseq = Find(context, @"Users\Alice\Notes\graph\logseq\config.edn");
+        TreeNodeRow nuget = Find(context, @"Users\Alice\.nuget\NuGet.Config");
+        TreeNodeRow maven = Find(context, @"Users\Alice\.m2\settings.xml");
+        TreeNodeRow vmx = Find(context, @"Users\Alice\machine.vmx");
+        TreeNodeRow yarn = Find(context, @"Users\Alice\.yarnrc.yml");
+        TreeNodeRow cert = Find(context, @"Users\Alice\certs\site.crt");
+        TreeNodeRow lonely = Find(context, @"Users\Alice\lonely.crt");
+        TreeNodeRow saves = Find(context, @"Users\Alice\AppData\Local\MyGame\Saved\SaveGames");
+        TreeNodeRow gog = Find(context, @"Users\Alice\AppData\Local\GOG.com\Galaxy\Applications");
+        TreeNodeRow notion = Find(context, @"Users\Alice\AppData\Roaming\Notion");
+
+        Assert.Contains("Joplin", joplin.BadgeText);
+        Assert.Contains("Logseq", logseq.BadgeText);
+        Assert.Contains("Dev config", nuget.BadgeText);
+        Assert.Contains("Dev config", maven.BadgeText);
+        Assert.Contains("VM disk", vmx.BadgeText);
+        Assert.Contains("Sensitive", yarn.BadgeText);
+        Assert.Contains("Sensitive", cert.BadgeText);
+        Assert.DoesNotContain("Sensitive", lonely.BadgeText);
+        Assert.Contains("Game save", saves.BadgeText);
+        Assert.Contains("Game save", gog.BadgeText);
+        Assert.Contains("Regeneratable", notion.BadgeText);
+        Assert.Equal(Decision.Restore, engine.GetEffectiveDecision(joplin.Id));
+        Assert.Equal(Decision.Restore, engine.GetEffectiveDecision(nuget.Id));
+        Assert.Equal(Decision.Restore, engine.GetEffectiveDecision(saves.Id));
+        Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(vmx.Id));
+        Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(yarn.Id));
+        Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(gog.Id));
+        Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(notion.Id));
+    }
+
     private static TreeNodeRow Find(ClassifyContext context, string relPath)
     {
         return new NodeBrowser(context.Database, context.SessionId).FindByRelPath(relPath)

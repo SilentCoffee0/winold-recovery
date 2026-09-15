@@ -57,7 +57,7 @@
       "badge": "VM disk",
       "why": "Copy only; re-register the disk in the hypervisor yourself.",
       "suggestedDefault": "Undecided",
-      "nameGlobs": ["*.vhd", "*.vhdx", "*.vmdk", "*.vdi", "*.qcow2", "*.ova"]
+      "nameGlobs": ["*.vhd", "*.vhdx", "*.vmdk", "*.vdi", "*.qcow2", "*.ova", "*.vbox", "*.vmx"]
     },
     {
       "id": "databases",
@@ -65,7 +65,7 @@
       "badge": "Database",
       "why": "Application or personal database file.",
       "suggestedDefault": "Undecided",
-      "nameGlobs": ["*.sqlite", "*.sqlite3", "*.mdb", "*.accdb", "*.fdb"],
+      "nameGlobs": ["*.sqlite", "*.sqlite3", "*.db", "*.mdb", "*.accdb", "*.fdb"],
       "minSize": 1048576
     },
     {
@@ -94,6 +94,35 @@
       "why": "Personal library with a catalog database.",
       "suggestedDefault": "Restore",
       "nameGlobs": ["zotero.sqlite", "metadata.db"]
+    },
+    {
+      "id": "joplin-db",
+      "kind": "HighValue",
+      "badge": "Joplin",
+      "why": "Joplin notes database.",
+      "suggestedDefault": "Restore",
+      "pathGlobs": ["**\\Joplin\\database.sqlite"]
+    },
+    {
+      "id": "logseq-graph",
+      "kind": "HighValue",
+      "badge": "Logseq",
+      "why": "Logseq graph configuration.",
+      "suggestedDefault": "Restore",
+      "pathGlobs": ["**\\logseq\\config.edn"]
+    },
+    {
+      "id": "dev-tool-config",
+      "kind": "HighValue",
+      "badge": "Dev config",
+      "why": "Package-manager or compiler settings. Tokens may be present.",
+      "suggestedDefault": "Restore",
+      "pathGlobs": [
+        "**\\.nuget\\NuGet.Config",
+        "**\\.m2\\settings.xml",
+        "**\\.gradle\\gradle.properties",
+        "**\\.cargo\\config.toml"
+      ]
     }
   ]
 }

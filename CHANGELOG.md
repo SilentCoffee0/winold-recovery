@@ -47,6 +47,7 @@ All notable changes to WinOld Recovery will be documented here.
 - Anki profile restore (WAL + media, no trash/media index), WSL VHDX copy with header verify, GPG keyring restore excluding `random_seed`.
 - Recipe detectors attach tree badges for Firefox, Chrome, Edge, KeePass, GPG, WSL/Docker, Anki, Outlook, Thunderbird, VS Code, Windows Terminal, and Obsidian. Syncthing folders under the old profile are `[Syncthing folder: <label>]`.
 - High-value classification badges PowerShell profile scripts under `Documents\PowerShell` / `Documents\WindowsPowerShell` and `.gitignore_global` / `.ideavimrc` as Dotfile.
+- R9 classification: `.vbox`/`.vmx`, `*.db` ≥ 1 MB, Joplin/Logseq, NuGet/Maven/Gradle/Cargo config, `.yarnrc.yml`, certs next to a key, Unreal `SaveGames`, GOG Galaxy Applications, Notion AppData as regeneratable.
 - Gated purge: I10 gates, `PurgeToken` minted only after they pass, preferred `cleanmgr /sagerun:777` via `IProcessRunner`, reparse-aware manual delete, session purge manifest and support bundle.
 - Preview conflict list with per-file overwrite confirmation (I2); copy resume after a leftover `.winold-partial`; runtime disk-full pause that does not delete existing destination files.
 - Chromium autofill CSV from `Web Data` (never `credit_cards`); optional bookmark transplant behind `WINOLD_RECOVERY_CHROMIUM_TRANSPLANT=1`.

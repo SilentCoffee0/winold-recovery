@@ -23,6 +23,23 @@
       "why": "Steam per-user save data.",
       "suggestedDefault": "Restore",
       "pathContains": ["\\Steam\\userdata"]
+    },
+    {
+      "id": "unreal-saves",
+      "kind": "GameSave",
+      "badge": "Game save",
+      "why": "Unreal Engine SaveGames folder.",
+      "suggestedDefault": "Restore",
+      "directoryNames": ["SaveGames"],
+      "pathContains": ["\\Saved\\SaveGames"]
+    },
+    {
+      "id": "gog-galaxy",
+      "kind": "GameSave",
+      "badge": "Game save",
+      "why": "GOG Galaxy application data. Leave Undecided unless you know the titles.",
+      "suggestedDefault": "Undecided",
+      "pathContains": ["\\GOG.com\\Galaxy\\Applications"]
     }
   ]
 }

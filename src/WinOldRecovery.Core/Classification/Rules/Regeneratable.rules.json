@@ -80,7 +80,9 @@
         "\\uv\\cache",
         "\\Package Cache",
         "\\INetCache",
-        "\\CrashDumps"
+        "\\CrashDumps",
+        "\\AppData\\Roaming\\Notion",
+        "\\AppData\\Local\\Notion"
       ]
     },
     {
