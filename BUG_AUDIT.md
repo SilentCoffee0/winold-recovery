@@ -142,7 +142,8 @@ destination junction is deleted). That mutation was applied, observed red, then 
   (`tools/RestoreHarness`). Killing the published elevated EXE mid-copy is still
   pending on an interactive desktop.
 - FlaUI scan→purge e2e still skipped without `RUN_FLAUI=1` and UAC.
-- Elevated deny-ACL FixtureGen, 200 MB VHDX disk-full, 1M-node memory, SignPath:
+- Elevated deny-ACL FixtureGen and the 200 MB VHDX *preflight* disk-full probe
+  passed 15 Sep 2026. 1M-node published `--scan` memory, SignPath, and the rest:
   see `docs/spikes/PENDING_MANUAL.md`.
 
 ## Still needs a disposable Windows 11 VM
