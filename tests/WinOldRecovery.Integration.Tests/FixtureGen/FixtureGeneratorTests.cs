@@ -187,12 +187,24 @@ public sealed class FixtureGeneratorTests
         Assert.Contains("AssignUnmappedOwner", source, StringComparison.Ordinal);
     }
 
-    private static string FindFixtureGeneratorSource()
+    [Fact]
+    public void FixtureSelfCheckSource_ArmsWatchdogOnFullHazards()
+    {
+        string source = File.ReadAllText(FindToolsSource("FixtureSelfCheck.cs"));
+        Assert.Contains("SelfCheckWatchdog", source, StringComparison.Ordinal);
+        Assert.Contains("FileSystemWatcher", source, StringComparison.Ordinal);
+        Assert.Contains("ReportIfSourceChanged", source, StringComparison.Ordinal);
+    }
+
+    private static string FindFixtureGeneratorSource() =>
+        FindToolsSource("FixtureGenerator.cs");
+
+    private static string FindToolsSource(string fileName)
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            string candidate = Path.Combine(directory.FullName, "tools", "FixtureGen", "FixtureGenerator.cs");
+            string candidate = Path.Combine(directory.FullName, "tools", "FixtureGen", fileName);
             if (File.Exists(candidate))
             {
                 return candidate;
@@ -201,6 +213,6 @@ public sealed class FixtureGeneratorTests
             directory = directory.Parent;
         }
 
-        throw new FileNotFoundException("Could not locate tools/FixtureGen/FixtureGenerator.cs from the test host.");
+        throw new FileNotFoundException($"Could not locate tools/FixtureGen/{fileName} from the test host.");
     }
 }

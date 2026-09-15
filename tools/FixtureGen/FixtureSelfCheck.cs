@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.IO.Enumeration;
 using System.Security.Principal;
@@ -70,7 +71,9 @@ public sealed class FixtureSelfCheck
                 errors.Add("Could not enable backup privilege for the full-hazard self-check: " + exception.Message);
             }
 
+            using SelfCheckWatchdog watchdog = new(root);
             CheckFullHazards(root, manifest, errors);
+            watchdog.ReportIfSourceChanged(errors);
         }
         else
         {
@@ -380,7 +383,7 @@ public sealed class FixtureSelfCheck
             }
             catch (IdentityNotMappedException)
             {
-                // Expected after the temporary local account has been removed.
+                // Expected for the unmapped fixture owner SID.
             }
         }
     }
@@ -414,6 +417,74 @@ public sealed class FixtureSelfCheck
         }
 
         return names;
+    }
+
+    private sealed class SelfCheckWatchdog : IDisposable
+    {
+        private readonly FileSystemWatcher watcher;
+        private readonly ConcurrentQueue<string> changes = new();
+        private bool disposed;
+
+        public SelfCheckWatchdog(string root)
+        {
+            watcher = new FileSystemWatcher(root)
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.FileName
+                    | NotifyFilters.DirectoryName
+                    | NotifyFilters.Size
+                    | NotifyFilters.Attributes
+                    | NotifyFilters.Security,
+                InternalBufferSize = 64 * 1024,
+            };
+            watcher.Changed += OnChanged;
+            watcher.Created += OnChanged;
+            watcher.Deleted += OnChanged;
+            watcher.Renamed += OnRenamed;
+            watcher.EnableRaisingEvents = true;
+        }
+
+        public void ReportIfSourceChanged(ICollection<string> errors)
+        {
+            Thread.Sleep(250);
+            if (changes.IsEmpty)
+            {
+                return;
+            }
+
+            string[] seen = [.. changes];
+            errors.Add(
+                "Source watchdog recorded writes under the fixture root: "
+                + string.Join("; ", seen.Take(8)));
+        }
+
+        public void Dispose()
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
+            watcher.EnableRaisingEvents = false;
+            watcher.Dispose();
+        }
+
+        private void OnChanged(object sender, FileSystemEventArgs args)
+        {
+            if (args.ChangeType == WatcherChangeTypes.Changed &&
+                Directory.Exists(args.FullPath))
+            {
+                return;
+            }
+
+            changes.Enqueue(args.ChangeType + " " + args.FullPath);
+        }
+
+        private void OnRenamed(object sender, RenamedEventArgs args)
+        {
+            changes.Enqueue("Renamed " + args.OldFullPath + " -> " + args.FullPath);
+        }
     }
 
     private sealed class ChildNameEnumerator : FileSystemEnumerator<string>

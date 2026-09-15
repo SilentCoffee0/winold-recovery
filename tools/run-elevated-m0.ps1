@@ -16,22 +16,31 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 
 $dotnet = "C:\Program Files\dotnet\dotnet.exe"
 $root = Split-Path -Parent $PSScriptRoot
-$target = Join-Path $env:TEMP ("WinOldRecovery-elevated-fixture-" + [guid]::NewGuid().ToString("N"))
+$stamp = [guid]::NewGuid().ToString("N")
+$target = Join-Path $env:TEMP ("WinOldRecovery-elevated-fixture-" + $stamp)
+$log = Join-Path $env:TEMP ("WinOldRecovery-elevated-m0-" + $stamp + ".log")
+Start-Transcript -Path $log | Out-Null
+try {
+    Write-Host "Building FixtureGen (Release)..."
+    & $dotnet build (Join-Path $root "tools\FixtureGen\FixtureGen.csproj") -c Release --nologo
+    if ($LASTEXITCODE -ne 0) { throw "FixtureGen build failed." }
 
-Write-Host "Building FixtureGen (Release)..."
-& $dotnet build (Join-Path $root "tools\FixtureGen\FixtureGen.csproj") -c Release --nologo
-if ($LASTEXITCODE -ne 0) { throw "FixtureGen build failed." }
+    $dll = Join-Path $root "tools\FixtureGen\bin\Release\net10.0-windows\FixtureGen.dll"
+    Write-Host "Generating elevated fixture at $target with $Files node_modules files..."
+    Write-Host "Stop any previous hung FixtureGen (Ctrl+C in that window) before this rebuild, or DLL copy will fail."
+    & $dotnet $dll $target --files $Files
+    if ($LASTEXITCODE -ne 0) { throw "FixtureGen failed." }
 
-$dll = Join-Path $root "tools\FixtureGen\bin\Release\net10.0-windows\FixtureGen.dll"
-Write-Host "Generating elevated fixture at $target with $Files node_modules files..."
-Write-Host "Stop any previous hung FixtureGen (Ctrl+C in that window) before this rebuild, or DLL copy will fail."
-& $dotnet $dll $target --files $Files
-if ($LASTEXITCODE -ne 0) { throw "FixtureGen failed." }
+    Write-Host "Self-check..."
+    & $dotnet $dll --self-check-only $target
+    if ($LASTEXITCODE -ne 0) { throw "Self-check failed." }
 
-Write-Host "Self-check..."
-& $dotnet $dll --self-check-only $target
-if ($LASTEXITCODE -ne 0) { throw "Self-check failed." }
-
-Write-Host "Elevated FixtureGen and self-check passed. Record the path in docs/spikes/PENDING_MANUAL.md:"
-Write-Host $target
-Write-Host "Self-check enabled backup privilege and used FileSystemEnumerator on deny-ACL and orphan-SID paths."
+    Write-Host "Elevated FixtureGen and self-check passed. Record the path in docs/spikes/PENDING_MANUAL.md:"
+    Write-Host $target
+    Write-Host "Self-check enabled backup privilege, used FileSystemEnumerator on deny-ACL and orphan-SID paths, BackupFile.OpenRead on the deny-ACL file, and a source watchdog on the fixture root."
+    Write-Host "Transcript:"
+    Write-Host $log
+}
+finally {
+    Stop-Transcript | Out-Null
+}
