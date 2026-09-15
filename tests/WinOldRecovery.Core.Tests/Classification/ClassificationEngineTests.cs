@@ -341,6 +341,61 @@ public sealed class ClassificationEngineTests
             "ClassifyAsync for 100,101 nodes took " + clock.Elapsed.TotalSeconds.ToString("0.000") + " s.");
     }
 
+    [Fact]
+    public async Task Classify_OneMillionScaleLikeNodesMatchUnderFiveSeconds()
+    {
+        await using ClassifyContext context = await ClassifyContext.CreateAsync();
+        const int directoryCount = 1000;
+        const int filesPerDirectory = 1000;
+        List<ClassificationNodeRow> nodes = new((directoryCount * filesPerDirectory) + directoryCount + 4);
+        nodes.Add(new ClassificationNodeRow(1, null, string.Empty, string.Empty, NodeKind.Directory, 0, 0, NodeProblem.None, false));
+        long id = 1;
+        for (int directory = 0; directory < directoryCount; directory++)
+        {
+            long directoryId = ++id;
+            string directoryName = "d" + directory.ToString("D4");
+            string directoryPath = @"Users\Alice\Scale\" + directoryName;
+            nodes.Add(
+                new ClassificationNodeRow(
+                    directoryId,
+                    1,
+                    directoryName,
+                    directoryPath,
+                    NodeKind.Directory,
+                    0,
+                    0,
+                    NodeProblem.None,
+                    false));
+            for (int file = 0; file < filesPerDirectory; file++)
+            {
+                string fileName = "f" + file.ToString("D4") + ".txt";
+                nodes.Add(
+                    new ClassificationNodeRow(
+                        ++id,
+                        directoryId,
+                        fileName,
+                        directoryPath + "\\" + fileName,
+                        NodeKind.File,
+                        0,
+                        0,
+                        NodeProblem.None,
+                        false));
+            }
+        }
+
+        ClassificationEngine classifier = new(context.Database, context.SafeFs);
+        Stopwatch clock = Stopwatch.StartNew();
+        int hits = classifier.CountMatchesForTests(nodes, context.Root);
+        clock.Stop();
+
+        Assert.Equal(0, hits);
+        Assert.True(
+            clock.Elapsed < TimeSpan.FromSeconds(5),
+            "In-memory classify for 1,001,001 scale-like nodes took " +
+                clock.Elapsed.TotalSeconds.ToString("0.000") +
+                " s.");
+    }
+
     private static TreeNodeRow Find(ClassifyContext context, string relPath)
     {
         return new NodeBrowser(context.Database, context.SessionId).FindByRelPath(relPath)

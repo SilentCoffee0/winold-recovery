@@ -13,6 +13,7 @@ public sealed class ClassificationEngine
     private readonly SessionDb sessionDb;
     private readonly SafeFs safeFs;
     private readonly IReadOnlyList<ClassificationRule> rules;
+    private readonly CompiledRule[] compiledRules;
 
     public ClassificationEngine(
         SessionDb sessionDb,
@@ -22,6 +23,7 @@ public sealed class ClassificationEngine
         this.sessionDb = sessionDb ?? throw new ArgumentNullException(nameof(sessionDb));
         this.safeFs = safeFs ?? throw new ArgumentNullException(nameof(safeFs));
         this.rules = rules ?? ClassificationRuleCatalog.LoadEmbedded();
+        compiledRules = Compile(this.rules);
     }
 
     public IReadOnlyList<ClassificationRule> Rules => rules;
@@ -36,71 +38,41 @@ public sealed class ClassificationEngine
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceRoot);
         ArgumentNullException.ThrowIfNull(profiles);
 
-        IReadOnlyList<ClassificationNodeRow> nodes = sessionDb.ListClassificationNodes(sessionId);
-        Dictionary<long, List<string>> siblings = new();
-        foreach (ClassificationNodeRow node in nodes)
-        {
-            if (node.ParentId is not long parentId)
+        MatchScratch scratch = new();
+        Dictionary<long, IReadOnlyList<string>> childNames = new();
+        int index = 0;
+        sessionDb.EnumerateClassificationNodes(
+            sessionId,
+            node =>
             {
-                continue;
-            }
-
-            if (!siblings.TryGetValue(parentId, out List<string>? names))
-            {
-                names = [];
-                siblings[parentId] = names;
-            }
-
-            names.Add(node.Name);
-        }
-
-        List<NodeBadgeRow> badges = [];
-        HashSet<long> sensitive = [];
-        Dictionary<string, (int Count, long Bytes, ClassificationRule Rule)> hits = new(StringComparer.Ordinal);
-        Dictionary<long, Decision> suggested = [];
-
-        foreach (ClassificationNodeRow node in nodes)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            foreach (ClassificationRule rule in rules)
-            {
-                if (!Matches(node, rule, siblings, sourceRoot))
+                if ((index++ & 4095) == 0)
                 {
-                    continue;
+                    cancellationToken.ThrowIfCancellationRequested();
                 }
 
-                badges.Add(new NodeBadgeRow(node.Id, rule.Kind.ToString(), rule.Badge));
-                if (rule.Sensitive)
-                {
-                    sensitive.Add(node.Id);
-                }
+                MatchNode(
+                    node,
+                    scratch,
+                    id =>
+                    {
+                        if (!childNames.TryGetValue(id, out IReadOnlyList<string>? names))
+                        {
+                            names = sessionDb.ListChildNames(sessionId, id);
+                            childNames[id] = names;
+                        }
 
-                if (!hits.TryGetValue(rule.Id, out (int Count, long Bytes, ClassificationRule Rule) hit))
-                {
-                    hit = (0, 0, rule);
-                }
-
-                hits[rule.Id] = (hit.Count + 1, hit.Bytes + node.AggSize, rule);
-
-                if (rule.Kind == ClassificationKind.Regeneratable)
-                {
-                    continue;
-                }
-
-                if (rule.SuggestedDefault is Decision.Restore)
-                {
-                    suggested[node.Id] = Decision.Restore;
-                }
-            }
-        }
+                        return names;
+                    },
+                    sourceRoot);
+            });
 
         DecisionEngine decisions = new(sessionDb, sessionId);
         NodeBrowser browser = new(sessionDb, sessionId);
         foreach (DetectedProfile profile in profiles)
         {
-            foreach (StandardFolderMatch folder in profile.StandardFolders.Where(static item => item.PresentInSource))
+            foreach (StandardFolderMatch folder in profile.StandardFolders)
             {
-                if (folder.RelativePathInSource is null)
+                if (!folder.PresentInSource || folder.RelativePathInSource is null)
                 {
                     continue;
                 }
@@ -113,7 +85,7 @@ public sealed class ClassificationEngine
 
                 if (SuggestedDefaultTable.IsRestoreStandardFolder(folder.KnownName))
                 {
-                    suggested[node.Id] = Decision.Restore;
+                    scratch.Suggested[node.Id] = Decision.Restore;
                 }
             }
 
@@ -121,14 +93,19 @@ public sealed class ClassificationEngine
             TreeNodeRow? appData = browser.FindByRelPath(appDataRel);
             if (appData is not null)
             {
-                suggested[appData.Id] = Decision.LeaveBehind;
+                scratch.Suggested[appData.Id] = Decision.LeaveBehind;
             }
         }
 
-        await sessionDb.InsertBadgesAsync(badges, cancellationToken).ConfigureAwait(false);
-        await sessionDb.MarkNodesSensitiveAsync(sensitive.ToArray(), cancellationToken).ConfigureAwait(false);
+        await sessionDb.InsertBadgesAsync(scratch.Badges, cancellationToken).ConfigureAwait(false);
+        if (scratch.Sensitive.Count > 0)
+        {
+            long[] sensitiveIds = new long[scratch.Sensitive.Count];
+            scratch.Sensitive.CopyTo(sensitiveIds);
+            await sessionDb.MarkNodesSensitiveAsync(sensitiveIds, cancellationToken).ConfigureAwait(false);
+        }
 
-        foreach ((long nodeId, Decision decision) in suggested)
+        foreach ((long nodeId, Decision decision) in scratch.Suggested)
         {
             cancellationToken.ThrowIfCancellationRequested();
             await decisions.SetSuggestedDefaultAsync(nodeId, decision, cancellationToken)
@@ -140,7 +117,7 @@ public sealed class ClassificationEngine
         int regenCount = 0;
         long regenBytes = 0;
         List<RuleHitCount> breakdown = [];
-        foreach ((string id, (int count, long bytes, ClassificationRule rule)) in hits.OrderBy(static pair => pair.Key))
+        foreach ((string id, (int count, long bytes, ClassificationRule rule)) in scratch.Hits.OrderBy(static pair => pair.Key))
         {
             breakdown.Add(new RuleHitCount(id, rule.Badge, rule.Kind, count, bytes));
             if (rule.Kind is ClassificationKind.HighValue or ClassificationKind.GameSave)
@@ -158,10 +135,97 @@ public sealed class ClassificationEngine
         return new ClassificationSummary(highCount, highBytes, regenCount, regenBytes, breakdown);
     }
 
+    internal int CountMatchesForTests(IReadOnlyList<ClassificationNodeRow> nodes, string sourceRoot)
+    {
+        return MatchAll(nodes, sourceRoot, CancellationToken.None).Badges.Count;
+    }
+
+    private MatchScratch MatchAll(
+        IReadOnlyList<ClassificationNodeRow> nodes,
+        string sourceRoot,
+        CancellationToken cancellationToken)
+    {
+        Dictionary<long, List<string>> siblings = new();
+        foreach (ClassificationNodeRow node in nodes)
+        {
+            if (node.ParentId is not long parentId)
+            {
+                continue;
+            }
+
+            if (!siblings.TryGetValue(parentId, out List<string>? names))
+            {
+                names = [];
+                siblings[parentId] = names;
+            }
+
+            names.Add(node.Name);
+        }
+
+        MatchScratch scratch = new();
+        for (int index = 0; index < nodes.Count; index++)
+        {
+            if ((index & 4095) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            MatchNode(
+                nodes[index],
+                scratch,
+                id => siblings.TryGetValue(id, out List<string>? names) ? names : null,
+                sourceRoot);
+        }
+
+        return scratch;
+    }
+
+    private void MatchNode(
+        ClassificationNodeRow node,
+        MatchScratch scratch,
+        Func<long, IReadOnlyList<string>?> childrenOf,
+        string sourceRoot)
+    {
+        string relPath = RuleGlob.NormalizeRelPath(node.RelPath);
+        for (int ruleIndex = 0; ruleIndex < compiledRules.Length; ruleIndex++)
+        {
+            CompiledRule compiled = compiledRules[ruleIndex];
+            if (!Matches(node, relPath, compiled, childrenOf, sourceRoot))
+            {
+                continue;
+            }
+
+            ClassificationRule rule = compiled.Rule;
+            scratch.Badges.Add(new NodeBadgeRow(node.Id, rule.Kind.ToString(), rule.Badge));
+            if (rule.Sensitive)
+            {
+                scratch.Sensitive.Add(node.Id);
+            }
+
+            if (!scratch.Hits.TryGetValue(rule.Id, out (int Count, long Bytes, ClassificationRule Rule) hit))
+            {
+                hit = (0, 0, rule);
+            }
+
+            scratch.Hits[rule.Id] = (hit.Count + 1, hit.Bytes + node.AggSize, rule);
+
+            if (rule.Kind == ClassificationKind.Regeneratable)
+            {
+                continue;
+            }
+
+            if (rule.SuggestedDefault is Decision.Restore)
+            {
+                scratch.Suggested[node.Id] = Decision.Restore;
+            }
+        }
+    }
+
     private bool Matches(
         ClassificationNodeRow node,
-        ClassificationRule rule,
-        IReadOnlyDictionary<long, List<string>> siblings,
+        string relPath,
+        CompiledRule rule,
+        Func<long, IReadOnlyList<string>?> childrenOf,
         string sourceRoot)
     {
         if (rule.MinSize is { } min && node.Size < min)
@@ -169,55 +233,48 @@ public sealed class ClassificationEngine
             return false;
         }
 
-        bool anyConstraint =
-            rule.NameGlobs.Count > 0 ||
-            rule.PathGlobs.Count > 0 ||
-            rule.DirectoryNames.Count > 0 ||
-            rule.PathContains.Count > 0;
-        if (!anyConstraint)
+        if (!rule.HasConstraint)
         {
             return false;
         }
 
-        if (rule.NameGlobs.Count > 0 &&
-            !rule.NameGlobs.Any(glob => RuleGlob.MatchesName(node.Name, glob)))
+        if (rule.DirectoryNames is not null)
         {
-            return false;
-        }
-
-        if (rule.PathGlobs.Count > 0 &&
-            !rule.PathGlobs.Any(glob => RuleGlob.MatchesPath(node.RelPath, glob)))
-        {
-            return false;
-        }
-
-        if (rule.DirectoryNames.Count > 0 &&
-            (node.Kind != NodeKind.Directory ||
-                !rule.DirectoryNames.Contains(node.Name, StringComparer.OrdinalIgnoreCase)))
-        {
-            return false;
-        }
-
-        if (rule.PathContains.Count > 0 &&
-            !rule.PathContains.Any(fragment => RuleGlob.ContainsSegment(node.RelPath, fragment)))
-        {
-            return false;
-        }
-
-        if (rule.SiblingGlobs.Count > 0)
-        {
-            if (node.ParentId is not long parentId ||
-                !siblings.TryGetValue(parentId, out List<string>? names) ||
-                !rule.SiblingGlobs.Any(glob => names.Any(name => RuleGlob.MatchesName(name, glob))))
+            if (node.Kind != NodeKind.Directory || !rule.DirectoryNames.Contains(node.Name))
             {
                 return false;
             }
         }
 
-        if (rule.ChildGlobs.Count > 0)
+        if (rule.Names.Any && !rule.Names.Matches(node.Name))
         {
-            if (!siblings.TryGetValue(node.Id, out List<string>? children) ||
-                !rule.ChildGlobs.Any(glob => children.Any(name => RuleGlob.MatchesName(name, glob))))
+            return false;
+        }
+
+        if (rule.PathContains.Length > 0 && !AnyPathContains(relPath, rule.PathContains))
+        {
+            return false;
+        }
+
+        if (rule.PathGlobs.Length > 0 && !AnyPathGlob(relPath, node.Name, rule.PathGlobs))
+        {
+            return false;
+        }
+
+        if (rule.SiblingGlobs.Length > 0)
+        {
+            if (node.ParentId is not long parentId ||
+                childrenOf(parentId) is not { Count: > 0 } names ||
+                !AnySiblingMatch(names, rule.SiblingGlobs))
+            {
+                return false;
+            }
+        }
+
+        if (rule.ChildGlobs.Length > 0)
+        {
+            if (childrenOf(node.Id) is not { Count: > 0 } children ||
+                !AnySiblingMatch(children, rule.ChildGlobs))
             {
                 return false;
             }
@@ -225,7 +282,7 @@ public sealed class ClassificationEngine
 
         if (rule.HeaderHex is { Length: > 0 } header)
         {
-            if (rule.Sensitive || node.Problem != NodeProblem.None || node.Kind != NodeKind.File)
+            if (rule.Rule.Sensitive || node.Problem != NodeProblem.None || node.Kind != NodeKind.File)
             {
                 return false;
             }
@@ -237,6 +294,106 @@ public sealed class ClassificationEngine
         }
 
         return true;
+    }
+
+    private static bool AnyNameGlob(string name, string[] globs)
+    {
+        for (int index = 0; index < globs.Length; index++)
+        {
+            if (RuleGlob.MatchesName(name, globs[index]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool AnyPathContains(string relPath, string[] fragments)
+    {
+        for (int index = 0; index < fragments.Length; index++)
+        {
+            if (relPath.Contains(fragments[index], StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool AnyPathGlob(string relPath, string nodeName, CompiledPathGlob[] globs)
+    {
+        for (int index = 0; index < globs.Length; index++)
+        {
+            if (globs[index].IsMatch(relPath, nodeName))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool AnySiblingMatch(IReadOnlyList<string> names, string[] globs)
+    {
+        for (int globIndex = 0; globIndex < globs.Length; globIndex++)
+        {
+            string glob = globs[globIndex];
+            for (int nameIndex = 0; nameIndex < names.Count; nameIndex++)
+            {
+                if (RuleGlob.MatchesName(names[nameIndex], glob))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static CompiledRule[] Compile(IReadOnlyList<ClassificationRule> rules)
+    {
+        CompiledRule[] compiled = new CompiledRule[rules.Count];
+        for (int index = 0; index < rules.Count; index++)
+        {
+            ClassificationRule rule = rules[index];
+            HashSet<string>? directoryNames = null;
+            if (rule.DirectoryNames.Count > 0)
+            {
+                directoryNames = new HashSet<string>(rule.DirectoryNames, StringComparer.OrdinalIgnoreCase);
+            }
+
+            string[] pathContains = new string[rule.PathContains.Count];
+            for (int fragment = 0; fragment < rule.PathContains.Count; fragment++)
+            {
+                pathContains[fragment] = RuleGlob.NormalizeRelPath(rule.PathContains[fragment]);
+            }
+
+            CompiledPathGlob[] pathGlobs = new CompiledPathGlob[rule.PathGlobs.Count];
+            for (int glob = 0; glob < rule.PathGlobs.Count; glob++)
+            {
+                pathGlobs[glob] = RuleGlob.GetPathGlob(rule.PathGlobs[glob]);
+            }
+
+            NameFilter names = NameFilter.FromGlobs(rule.NameGlobs);
+            compiled[index] = new CompiledRule(
+                rule,
+                names,
+                pathGlobs,
+                directoryNames,
+                pathContains,
+                rule.SiblingGlobs.ToArray(),
+                rule.ChildGlobs.ToArray(),
+                rule.MinSize,
+                rule.HeaderHex,
+                names.Any ||
+                    pathGlobs.Length > 0 ||
+                    directoryNames is not null ||
+                    pathContains.Length > 0);
+        }
+
+        return compiled;
     }
 
     private bool HeaderMatches(string path, string headerHex)
@@ -252,6 +409,119 @@ public sealed class ClassificationEngine
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             return false;
+        }
+    }
+
+    private sealed class MatchScratch
+    {
+        public List<NodeBadgeRow> Badges { get; } = [];
+
+        public HashSet<long> Sensitive { get; } = [];
+
+        public Dictionary<string, (int Count, long Bytes, ClassificationRule Rule)> Hits { get; } = new(StringComparer.Ordinal);
+
+        public Dictionary<long, Decision> Suggested { get; } = [];
+    }
+
+    private sealed record CompiledRule(
+        ClassificationRule Rule,
+        NameFilter Names,
+        CompiledPathGlob[] PathGlobs,
+        HashSet<string>? DirectoryNames,
+        string[] PathContains,
+        string[] SiblingGlobs,
+        string[] ChildGlobs,
+        long? MinSize,
+        string? HeaderHex,
+        bool HasConstraint);
+
+    private sealed class NameFilter
+    {
+        private readonly HashSet<string>? exactNames;
+        private readonly HashSet<string>? extensions;
+        private readonly string[] complexGlobs;
+
+        private NameFilter(HashSet<string>? exactNames, HashSet<string>? extensions, string[] complexGlobs, bool any)
+        {
+            this.exactNames = exactNames;
+            this.extensions = extensions;
+            this.complexGlobs = complexGlobs;
+            Any = any;
+        }
+
+        public bool Any { get; }
+
+        public static NameFilter FromGlobs(IReadOnlyList<string> globs)
+        {
+            if (globs.Count == 0)
+            {
+                return new NameFilter(null, null, [], false);
+            }
+
+            HashSet<string> exact = new(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> extensions = new(StringComparer.OrdinalIgnoreCase);
+            List<string> complex = [];
+            for (int index = 0; index < globs.Count; index++)
+            {
+                string glob = globs[index];
+                if (IsSimpleExtensionGlob(glob))
+                {
+                    extensions.Add(glob[1..]);
+                }
+                else if (glob.IndexOfAny(['*', '?']) < 0)
+                {
+                    exact.Add(glob);
+                }
+                else
+                {
+                    complex.Add(glob);
+                }
+            }
+
+            return new NameFilter(
+                exact.Count == 0 ? null : exact,
+                extensions.Count == 0 ? null : extensions,
+                complex.Count == 0 ? [] : complex.ToArray(),
+                true);
+        }
+
+        public bool Matches(string name)
+        {
+            if (exactNames is not null && exactNames.Contains(name))
+            {
+                return true;
+            }
+
+            if (extensions is not null)
+            {
+                int dot = name.LastIndexOf('.');
+                if (dot > 0 &&
+                    extensions.GetAlternateLookup<ReadOnlySpan<char>>().Contains(name.AsSpan(dot)))
+                {
+                    return true;
+                }
+            }
+
+            return AnyNameGlob(name, complexGlobs);
+        }
+
+        private static bool IsSimpleExtensionGlob(string glob)
+        {
+            if (glob.Length < 3 || glob[0] != '*' || glob[1] != '.')
+            {
+                return false;
+            }
+
+            for (int index = 2; index < glob.Length; index++)
+            {
+                char character = glob[index];
+                if (character is '*' or '?' or '.')
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 }

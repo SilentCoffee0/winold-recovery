@@ -90,7 +90,7 @@ CI expands a 100k-child node in under 300 ms, pages 1M synthetic SQLite children
 
 ## Attempt log — 15 Sep 2026 (1M published `--scan`)
 
-Not a pass. A glob-cache published EXE (`%TEMP%\wor-publish-1m-globcache\WinOldRecovery.exe`, pid 23244, started 17:30) is still running after 20+ minutes at ~380 MB working set with no `%TEMP%\WinOldRecovery-1m-scan-globcache.txt`. Session `2026-09-15_173025_45d5e4d9` has a ~360 MB `session.db`. Leftover elevated EXEs from earlier hung `--scan` attempts (pids 3420, 10968, 15528) are still alive; Medium IL cannot stop them.
+Not a pass. After the walk, `session.db` sat at ~360 MB while the EXE burned CPU for tens of minutes with no report: every scale-tree `.txt` still ran path-glob regexes and `FileSystemName` against every `*.ext` rule, plus a full in-memory node list. Code now suffix-rejects path globs, matches `*.ext` / exact names with a hash set, streams classify rows, and loads sibling names only when a rule needs them. Pid 2536 (pre-name-filter) was replaced by `%TEMP%\wor-publish-8.2-namefilter\WinOldRecovery.exe` (pid 31084); report `%TEMP%\WinOldRecovery-1m-scan-namefilter.txt`.
 
 Do not mark the 1M memory ceiling complete until the report contains `Passed: true`.
 

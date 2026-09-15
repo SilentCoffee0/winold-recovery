@@ -383,7 +383,15 @@ public sealed class SessionDb : IAsyncDisposable
 
     public IReadOnlyList<ClassificationNodeRow> ListClassificationNodes(string sessionId)
     {
+        List<ClassificationNodeRow> rows = [];
+        EnumerateClassificationNodes(sessionId, rows.Add);
+        return rows;
+    }
+
+    public void EnumerateClassificationNodes(string sessionId, Action<ClassificationNodeRow> visit)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentNullException.ThrowIfNull(visit);
 
         using SqliteConnection connection = OpenReadConnection();
         using SqliteCommand command = connection.CreateCommand();
@@ -391,28 +399,85 @@ public sealed class SessionDb : IAsyncDisposable
             """
             SELECT id, parent_id, name, rel_path, kind, size, agg_size, problem, sensitive
             FROM nodes
-            WHERE session_id = $sessionId
-            ORDER BY id;
+            WHERE session_id = $sessionId;
             """;
         command.Parameters.AddWithValue("$sessionId", sessionId);
-        List<ClassificationNodeRow> rows = [];
         using SqliteDataReader reader = command.ExecuteReader();
         while (reader.Read())
         {
-            rows.Add(
-                new ClassificationNodeRow(
-                    reader.GetInt64(0),
-                    reader.IsDBNull(1) ? null : reader.GetInt64(1),
-                    reader.GetString(2),
-                    reader.GetString(3),
-                    Enum.Parse<NodeKind>(reader.GetString(4)),
-                    reader.GetInt64(5),
-                    reader.GetInt64(6),
-                    Enum.Parse<NodeProblem>(reader.GetString(7)),
-                    reader.GetInt64(8) != 0));
+            visit(ReadClassificationNodeRow(reader));
+        }
+    }
+
+    public IReadOnlyList<string> ListChildNames(string sessionId, long parentId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT name FROM nodes
+            WHERE session_id = $sessionId AND parent_id = $parentId;
+            """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        command.Parameters.AddWithValue("$parentId", parentId);
+        List<string> names = [];
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            names.Add(reader.GetString(0));
         }
 
-        return rows;
+        return names;
+    }
+
+    private static ClassificationNodeRow ReadClassificationNodeRow(SqliteDataReader reader)
+    {
+        return new ClassificationNodeRow(
+            reader.GetInt64(0),
+            reader.IsDBNull(1) ? null : reader.GetInt64(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            ParseNodeKind(reader.GetString(4)),
+            reader.GetInt64(5),
+            reader.GetInt64(6),
+            ParseNodeProblem(reader.GetString(7)),
+            reader.GetInt64(8) != 0);
+    }
+
+    private static NodeKind ParseNodeKind(string value)
+    {
+        return value.Length == 0
+            ? NodeKind.Unknown
+            : value[0] switch
+            {
+                'F' => NodeKind.File,
+                'D' => NodeKind.Directory,
+                'J' => NodeKind.Junction,
+                'S' => NodeKind.Symlink,
+                'M' => NodeKind.MountPoint,
+                'C' => NodeKind.CloudPlaceholder,
+                'U' => NodeKind.Unknown,
+                _ => Enum.Parse<NodeKind>(value),
+            };
+    }
+
+    private static NodeProblem ParseNodeProblem(string value)
+    {
+        return value.Length == 0
+            ? NodeProblem.None
+            : value[0] switch
+            {
+                'N' => NodeProblem.None,
+                'A' => NodeProblem.AccessDenied,
+                'E' => NodeProblem.EfsEncrypted,
+                'C' => NodeProblem.CloudOnly,
+                'L' => NodeProblem.LongPath,
+                'I' => NodeProblem.InvalidDestName,
+                'Z' => NodeProblem.ZeroByteStub,
+                _ => Enum.Parse<NodeProblem>(value),
+            };
     }
 
     public Task MarkNodesSensitiveAsync(
