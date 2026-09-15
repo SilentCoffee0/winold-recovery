@@ -121,7 +121,7 @@ public sealed class ChromiumRecipe : IRecipe
                         "bookmarks-transplant",
                         "Bookmarks file into a new profile folder",
                         allowed
-                            ? "Feature-flagged copy of Bookmarks.json into Recovered-from-Windows.old"
+                            ? "New Profile N with Bookmarks; Local State backup then info_cache register"
                             : reason ?? "Disabled",
                         allowed ? Decision.Undecided : Decision.LeaveBehind,
                         !allowed,
@@ -253,22 +253,50 @@ public sealed class ChromiumRecipe : IRecipe
 
         if (NewProfileTransplantEnabled &&
             RecipeDecisions.ShouldRestore(decisions, "bookmarks-transplant") &&
-            DestBrowserIsNewEnough(
+            DestTransplantAllowed(
                 destination,
                 decisions.Card.Facts.GetValueOrDefault("browserVersion")))
         {
-            string source = Path.Combine(decisions.Card.Facts["profileDir"], "Bookmarks");
-            string dest = Path.Combine(
-                destination.DestinationProfileRoot,
-                relativeUserData,
-                "Recovered-from-Windows.old",
-                "Bookmarks");
-            if (destination.SafeFs.FileExists(dest))
+            string userData = Path.Combine(destination.DestinationProfileRoot, relativeUserData);
+            string localState = Path.Combine(userData, "Local State");
+            string originalJson;
+            try
             {
-                dest = RecipeDecisions.ConflictName(dest);
+                originalJson = destination.SafeFs.ReadAllText(localState);
+            }
+            catch (IOException)
+            {
+                return new PlanResult(decisions.Card, writes);
             }
 
-            writes.Add(new RecipeWrite(RecipeWriteKind.CopyFile, source, dest, null, 1, "bookmarks-transplant"));
+            string folder = ChromiumLocalState.NextProfileDirectory(destination.SafeFs, userData);
+            string backup = Path.Combine(userData, "Local State.winold-bak");
+            if (destination.SafeFs.FileExists(backup))
+            {
+                backup = RecipeDecisions.ConflictName(backup);
+            }
+
+            writes.Add(new RecipeWrite(RecipeWriteKind.CopyFile, localState, backup, null, 1, "bookmarks-transplant"));
+            writes.Add(
+                new RecipeWrite(
+                    RecipeWriteKind.CopyFile,
+                    Path.Combine(decisions.Card.Facts["profileDir"], "Bookmarks"),
+                    Path.Combine(userData, folder, "Bookmarks"),
+                    null,
+                    1,
+                    "bookmarks-transplant"));
+            string registered = ChromiumLocalState.RegisterRecoveredProfile(
+                originalJson,
+                folder,
+                decisions.Card.Facts.GetValueOrDefault("displayName") ?? folder);
+            writes.Add(
+                new RecipeWrite(
+                    RecipeWriteKind.WriteContent,
+                    null,
+                    localState,
+                    registered,
+                    registered.Length,
+                    "bookmarks-transplant"));
         }
 
         return new PlanResult(decisions.Card, writes);
@@ -281,8 +309,39 @@ public sealed class ChromiumRecipe : IRecipe
 
     public RecipeVerifyResult Verify(PlanResult plan)
     {
-        bool ok = plan.Writes.All(static write => File.Exists(write.DestinationPath) && new FileInfo(write.DestinationPath).Length > 0);
-        return new RecipeVerifyResult(ok, ok ? "Chromium exports present" : "Chromium export missing");
+        if (!plan.Writes.All(static write => File.Exists(write.DestinationPath) && new FileInfo(write.DestinationPath).Length > 0))
+        {
+            return new RecipeVerifyResult(false, "Chromium export missing");
+        }
+
+        RecipeWrite? localState = plan.Writes.FirstOrDefault(static write =>
+            write.ComponentKey == "bookmarks-transplant" &&
+            write.Kind == RecipeWriteKind.WriteContent &&
+            write.DestinationPath.EndsWith("Local State", StringComparison.OrdinalIgnoreCase));
+        if (localState is not null)
+        {
+            string json = File.ReadAllText(localState.DestinationPath);
+            if (!json.Contains("(recovered)", StringComparison.Ordinal))
+            {
+                return new RecipeVerifyResult(false, "Local State missing recovered profile");
+            }
+
+            RecipeWrite? bookmarks = plan.Writes.FirstOrDefault(static write =>
+                write.ComponentKey == "bookmarks-transplant" &&
+                write.Kind == RecipeWriteKind.CopyFile &&
+                write.DestinationPath.EndsWith("Bookmarks", StringComparison.OrdinalIgnoreCase));
+            if (bookmarks?.SourcePath is string source &&
+                File.Exists(source) &&
+                !Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(source)))
+                    .Equals(
+                        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(bookmarks.DestinationPath))),
+                        StringComparison.OrdinalIgnoreCase))
+            {
+                return new RecipeVerifyResult(false, "Transplanted Bookmarks hash does not match the source");
+            }
+        }
+
+        return new RecipeVerifyResult(true, "Chromium exports present");
     }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
@@ -290,16 +349,34 @@ public sealed class ChromiumRecipe : IRecipe
 
     private (bool Allowed, string? Reason) TransplantAvailability(ProfileContext context, string sourceVersion)
     {
-        return EvaluateDestVersion(
-            ReadLastVersion(context.SafeFs, Path.Combine(context.DestinationProfileRoot, relativeUserData)),
+        return EvaluateTransplant(
+            context.SafeFs,
+            Path.Combine(context.DestinationProfileRoot, relativeUserData),
             sourceVersion);
     }
 
-    private bool DestBrowserIsNewEnough(DestinationContext destination, string? sourceVersion)
+    private bool DestTransplantAllowed(DestinationContext destination, string? sourceVersion)
     {
-        return EvaluateDestVersion(
-            ReadLastVersion(destination.SafeFs, Path.Combine(destination.DestinationProfileRoot, relativeUserData)),
+        return EvaluateTransplant(
+            destination.SafeFs,
+            Path.Combine(destination.DestinationProfileRoot, relativeUserData),
             sourceVersion).Allowed;
+    }
+
+    private (bool Allowed, string? Reason) EvaluateTransplant(SafeFs safeFs, string destUserData, string? sourceVersion)
+    {
+        (bool allowed, string? reason) = EvaluateDestVersion(ReadLastVersion(safeFs, destUserData), sourceVersion);
+        if (!allowed)
+        {
+            return (allowed, reason);
+        }
+
+        if (!safeFs.FileExists(Path.Combine(destUserData, "Local State")))
+        {
+            return (false, product + " has no Local State on this PC.");
+        }
+
+        return (true, null);
     }
 
     private (bool Allowed, string? Reason) EvaluateDestVersion(string destVersion, string? sourceVersion)

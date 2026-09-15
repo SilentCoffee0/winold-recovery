@@ -1,4 +1,6 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using WinOldRecovery.Core.IO;
 
 namespace WinOldRecovery.Recipes;
@@ -55,6 +57,45 @@ internal static class ChromiumLocalState
         }
 
         return new ChromiumUserDataMeta(version, profiles);
+    }
+
+    public static string NextProfileDirectory(SafeFs safeFs, string userData)
+    {
+        for (int n = 1; n < 10_000; n++)
+        {
+            string name = "Profile " + n;
+            if (!safeFs.DirectoryExists(Path.Combine(userData, name)) &&
+                !safeFs.FileExists(Path.Combine(userData, name)))
+            {
+                return name;
+            }
+        }
+
+        return "Profile 10000";
+    }
+
+    public static string RegisterRecoveredProfile(string localStateJson, string folder, string displayName)
+    {
+        JsonNode root = JsonNode.Parse(string.IsNullOrWhiteSpace(localStateJson) ? "{}" : localStateJson)
+            ?? new JsonObject();
+        JsonObject profileObject = root["profile"] as JsonObject ?? new JsonObject();
+        root["profile"] = profileObject;
+        JsonObject cache = profileObject["info_cache"] as JsonObject ?? new JsonObject();
+        profileObject["info_cache"] = cache;
+        string name = displayName.Trim();
+        if (name.Length == 0)
+        {
+            name = folder;
+        }
+
+        if (!name.EndsWith(" (recovered)", StringComparison.Ordinal))
+        {
+            name += " (recovered)";
+        }
+
+        cache[folder] = new JsonObject { ["name"] = name };
+        return root.ToJsonString(
+            new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
     }
 
     private static ChromiumProfileLabel ReadLabel(JsonElement value)

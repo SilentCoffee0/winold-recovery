@@ -2201,6 +2201,9 @@ public sealed class RecipeTests
             await File.WriteAllTextAsync(
                 Path.Combine(context.Destination, "AppData", "Local", "Google", "Chrome", "User Data", "Last Version"),
                 "131.0.6778.86\n");
+            await File.WriteAllTextAsync(
+                Path.Combine(context.Destination, "AppData", "Local", "Google", "Chrome", "User Data", "Local State"),
+                """{"profile":{"info_cache":{"Default":{"name":"Person 1"}}},"os_crypt":{"encrypted_key":"DEST_OS_CRYPT"}}""");
             IReadOnlyList<RecipeCard> flagged = await host.DetectAsync(
                 "session-1",
                 [
@@ -2225,17 +2228,21 @@ public sealed class RecipeTests
                 static component => component.Key == "bookmarks-transplant" ? Decision.Restore : Decision.Undecided);
             PlanResult transplantPlan = recipe.Plan(new CardDecisions(flaggedCard, transplant), Dest(context));
             await host.ExecuteAsync("session-1", recipe, transplantPlan with { Destination = Dest(context) });
-            Assert.True(
-                File.Exists(
-                    Path.Combine(
-                        context.Destination,
-                        "AppData",
-                        "Local",
-                        "Google",
-                        "Chrome",
-                        "User Data",
-                        "Recovered-from-Windows.old",
-                        "Bookmarks")));
+            string destUserData = Path.Combine(
+                context.Destination,
+                "AppData",
+                "Local",
+                "Google",
+                "Chrome",
+                "User Data");
+            Assert.True(File.Exists(Path.Combine(destUserData, "Profile 1", "Bookmarks")));
+            Assert.True(File.Exists(Path.Combine(destUserData, "Local State.winold-bak")));
+            Assert.Equal("Default", flaggedCard.Facts["displayName"]);
+            string destLocalState = await File.ReadAllTextAsync(Path.Combine(destUserData, "Local State"));
+            Assert.Contains("Default (recovered)", destLocalState, StringComparison.Ordinal);
+            Assert.Contains("DEST_OS_CRYPT", destLocalState, StringComparison.Ordinal);
+            Assert.DoesNotContain(Canary, destLocalState, StringComparison.Ordinal);
+            Assert.True(recipe.Verify(transplantPlan).Ok);
         }
         finally
         {

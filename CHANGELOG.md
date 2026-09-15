@@ -67,6 +67,7 @@ All notable changes to WinOld Recovery will be documented here.
 - Chromium bookmark transplant stays disabled when the destination `Last Version` is missing or older than the source.
 - WSL cards list default-user commands (`wsl.conf`, `getent`, `--set-default-user`, `--terminate`) without launching them.
 - Syncthing verify optionally compares `syncthing --home --device-id` through the process runner when the CLI returns a device ID.
+- Chromium bookmark transplant (feature-flagged) creates `Profile N`, writes `Local State.winold-bak`, and registers `info_cache` without copying `os_crypt`.
 - Gated purge: I10 gates, `PurgeToken` minted only after they pass, preferred `cleanmgr /sagerun:777` via `IProcessRunner`, reparse-aware manual delete, session purge manifest and support bundle.
 - Preview conflict list with per-file overwrite confirmation (I2); copy resume after a leftover `.winold-partial`; runtime disk-full pause that does not delete existing destination files.
 - Chromium autofill CSV from `Web Data` (never `credit_cards`); optional bookmark transplant behind `WINOLD_RECOVERY_CHROMIUM_TRANSPLANT=1`.
