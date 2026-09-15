@@ -217,19 +217,62 @@ public sealed class SyncthingRecipe : IRecipe
         RecipeWrite? config = plan.Writes.FirstOrDefault(static write =>
             write.DestinationPath.EndsWith("config.xml", StringComparison.OrdinalIgnoreCase) &&
             write.Kind == RecipeWriteKind.WriteContent);
-        if (config?.Utf8Content is string xml && !SyncthingConfig.AllFoldersPaused(xml))
-        {
-            return new RecipeVerifyResult(false, "Not every Syncthing folder is paused");
-        }
-
         if (plan.Writes.Any(static write =>
                 write.DestinationPath.Contains("index-v", StringComparison.OrdinalIgnoreCase)))
         {
             return new RecipeVerifyResult(false, "Index must never be restored");
         }
 
-        bool ok = plan.Writes.All(static write => File.Exists(write.DestinationPath));
-        return new RecipeVerifyResult(ok, ok ? "Syncthing identity present, folders paused, index omitted" : "Syncthing destination missing");
+        if (!plan.Writes.All(static write => File.Exists(write.DestinationPath)))
+        {
+            return new RecipeVerifyResult(false, "Syncthing destination missing");
+        }
+
+        if (config is not null)
+        {
+            string destXml = File.ReadAllText(config.DestinationPath);
+            if (!SyncthingConfig.AllFoldersPaused(destXml))
+            {
+                return new RecipeVerifyResult(false, "Not every Syncthing folder is paused");
+            }
+
+            XDocument destDocument = SyncthingConfig.Load(destXml);
+            if (!int.TryParse(plan.Card.Facts.GetValueOrDefault("folders"), out int folders) ||
+                SyncthingConfig.FolderCount(destDocument) != folders)
+            {
+                return new RecipeVerifyResult(false, "Folder count does not match the source");
+            }
+
+            if (!int.TryParse(plan.Card.Facts.GetValueOrDefault("devices"), out int devices) ||
+                SyncthingConfig.DeviceCount(destDocument) != devices)
+            {
+                return new RecipeVerifyResult(false, "Device count does not match the source");
+            }
+        }
+
+        RecipeWrite? cert = plan.Writes.FirstOrDefault(static write =>
+            write.DestinationPath.EndsWith("cert.pem", StringComparison.OrdinalIgnoreCase) &&
+            write.ComponentKey == "identity");
+        if (cert is not null)
+        {
+            string destId = SyncthingDeviceId.FromCertificatePem(File.ReadAllText(cert.DestinationPath));
+            if (!destId.Equals(plan.Card.Facts.GetValueOrDefault("deviceId"), StringComparison.Ordinal))
+            {
+                return new RecipeVerifyResult(false, "Restored device ID does not match the source");
+            }
+        }
+
+        RecipeWrite? key = plan.Writes.FirstOrDefault(static write =>
+            write.DestinationPath.EndsWith("key.pem", StringComparison.OrdinalIgnoreCase) &&
+            write.ComponentKey == "identity");
+        if (key?.SourcePath is string sourceKey &&
+            File.Exists(sourceKey) &&
+            !Sha256(sourceKey).SequenceEqual(Sha256(key.DestinationPath)))
+        {
+            return new RecipeVerifyResult(false, "Restored key.pem hash does not match the source");
+        }
+
+        return new RecipeVerifyResult(true, "Syncthing identity present, folders paused, index omitted");
     }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
@@ -237,6 +280,11 @@ public sealed class SyncthingRecipe : IRecipe
         new Prerequisite("syncthing", "Syncthing must be closed before the identity is restored."),
         new Prerequisite("SyncTrayzor", "SyncTrayzor must be closed before the identity is restored."),
     ];
+
+    private static byte[] Sha256(string path)
+    {
+        return System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path));
+    }
 
     private static RecipeWrite Copy(string sourceHome, string destHome, string name, string component)
     {

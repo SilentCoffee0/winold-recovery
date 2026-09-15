@@ -1866,6 +1866,9 @@ public sealed class RecipeTests
         Assert.False(File.Exists(Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "https-key.pem")));
         Assert.False(Directory.Exists(Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "index-v2")));
         Assert.Contains("SUPERSECRETAPIKEY", destConfig, StringComparison.Ordinal);
+        string destCert = Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "cert.pem");
+        await File.WriteAllTextAsync(destCert, staleCert);
+        Assert.False(new SyncthingRecipe().Verify(plan).Ok);
     }
 
     [Fact]
