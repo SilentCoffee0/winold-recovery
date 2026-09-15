@@ -98,6 +98,14 @@ public sealed class RecipeTests
         await File.WriteAllTextAsync(Path.Combine(alice, ".ssh", "id_ed25519.pub"), "ssh-ed25519 FIXTURE");
         string chrome = Path.Combine(alice, "AppData", "Local", "Google", "Chrome", "User Data", "Default");
         Directory.CreateDirectory(Path.Combine(chrome, "Sessions"));
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, "AppData", "Local", "Google", "Chrome", "User Data", "Last Version"),
+            "131.0.6778.86\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, "AppData", "Local", "Google", "Chrome", "User Data", "Local State"),
+            """
+            {"profile":{"info_cache":{"Default":{"name":"Work","gaia_name":"Alice","user_name":"alice@example.invalid"}}},"os_crypt":{"encrypted_key":"WINOLD_RECOVERY_CANARY_DO_NOT_LOG_7F3A91"}}
+            """);
         Directory.CreateDirectory(Path.Combine(chrome, "Extensions", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "1.0"));
         await File.WriteAllTextAsync(
             Path.Combine(chrome, "Bookmarks"),
@@ -181,7 +189,11 @@ public sealed class RecipeTests
             context.Exports);
 
         Assert.Contains(cards, card => card.RecipeId == "ssh");
-        Assert.Contains(cards, card => card.RecipeId == "chrome");
+        RecipeCard chromeCard = cards.Single(card => card.RecipeId == "chrome");
+        Assert.Equal("Google Chrome — Work (alice@example.invalid)", chromeCard.Title);
+        Assert.Equal("131.0.6778.86", chromeCard.Facts["browserVersion"]);
+        Assert.Equal("Work", chromeCard.Facts["displayName"]);
+        Assert.DoesNotContain("encrypted_key", string.Join(';', chromeCard.Facts.Values), StringComparison.Ordinal);
         Assert.Contains(cards, card => card.RecipeId == "firefox");
         Assert.Equal(
             "Firefox — fixture (default)",
@@ -205,7 +217,7 @@ public sealed class RecipeTests
             Path.Combine("AppData", "Local", "Google", "Chrome", "User Data")).Detect(profile);
         Assert.Contains(
             chromeDetected.Badges,
-            badge => badge.Kind == "Chrome" && badge.Detail == "Default");
+            badge => badge.Kind == "Chrome" && badge.Detail == "Work");
         DetectResult firefoxDetected = new FirefoxRecipe().Detect(profile);
         Assert.Contains(
             firefoxDetected.Badges,
@@ -229,7 +241,6 @@ public sealed class RecipeTests
         Assert.True(File.Exists(Path.Combine(context.Destination, ".ssh", "id_ed25519.pub")));
         Assert.Contains(context.Runner.Requests, request => request.FileName == "ssh.exe" && request.Arguments.Contains("-G"));
 
-        RecipeCard chromeCard = cards.Single(card => card.RecipeId == "chrome");
         PlanResult chromePlan = host.PlanCard(
             RecipeCatalog.All.Single(recipe => recipe.Id == "chrome"),
             chromeCard,

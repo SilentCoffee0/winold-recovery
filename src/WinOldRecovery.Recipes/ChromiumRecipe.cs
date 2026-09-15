@@ -36,6 +36,7 @@ public sealed class ChromiumRecipe : IRecipe
 
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
+        ChromiumUserDataMeta localState = ChromiumLocalState.Read(context.SafeFs, userData);
         foreach (string entry in context.SafeFs.EnumerateFileSystemEntries(userData))
         {
             string name = Path.GetFileName(entry);
@@ -122,10 +123,21 @@ public sealed class ChromiumRecipe : IRecipe
                         false));
             }
 
+            ChromiumProfileLabel label = localState.Profiles.TryGetValue(name, out ChromiumProfileLabel? found)
+                ? found
+                : new ChromiumProfileLabel(string.Empty, string.Empty);
+            string display = string.IsNullOrWhiteSpace(label.DisplayName) ? name : label.DisplayName;
+            string title = product + " — " + display;
+            if (!string.IsNullOrWhiteSpace(label.Account) &&
+                !label.Account.Equals(display, StringComparison.OrdinalIgnoreCase))
+            {
+                title += " (" + label.Account + ")";
+            }
+
             cards.Add(
                 new RecipeCard(
                     Id,
-                    product + " — " + name,
+                    title,
                     "Bookmarks, browsing history, the tabs that were open, and the list of installed extensions.",
                     "These are the everyday traces of how you used " + product + ".",
                     "Bookmarks exported as HTML. Passwords, cookies and payment cards cannot be recovered after a clean reinstall.",
@@ -145,13 +157,16 @@ public sealed class ChromiumRecipe : IRecipe
                         ["historyCsv"] = historyCsv,
                         ["tabsHtml"] = tabsHtml,
                         ["autofillCsv"] = autofillCsv,
+                        ["folder"] = name,
+                        ["displayName"] = display,
+                        ["browserVersion"] = localState.BrowserVersion,
                     }));
             DetectorWalk.AddTreeBadge(
                 badges,
                 context.OldProfileRoot,
                 entry,
                 Id.Equals("edge", StringComparison.Ordinal) ? "Edge" : "Chrome",
-                name);
+                display);
         }
 
         return new DetectResult(cards, badges);

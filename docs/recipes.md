@@ -4,7 +4,7 @@ Smart cards explain what was found in Windows.old. Leave Behind never deletes; o
 
 | App | What comes back | Honest limit |
 |---|---|---|
-| Chrome / Edge | Bookmarks HTML, history, open tabs, extensions list, autofill CSV | Passwords and cookies cannot be recovered |
+| Chrome / Edge | Bookmarks HTML, history, open tabs, extensions list, autofill CSV. Cards use the Local State profile name and browser version | Passwords and cookies cannot be recovered |
 | Firefox | Profile transplant (`*-recovered`) including session backups, extensions, and site storage; bookmarks; history; open tabs; extensions list; logins | Close Firefox first |
 | SSH | Keys with keep-both naming and tight ACLs | Unencrypted keys stay unencrypted |
 | Git | Scrubbed `.gitconfig`, repository trees | Credential helpers are stripped from the restored config |

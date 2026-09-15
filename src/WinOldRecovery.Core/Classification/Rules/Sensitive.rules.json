@@ -53,7 +53,7 @@
       "why": "Browser passwords, cookies, or Firefox key material. Contents are never displayed.",
       "sensitive": true,
       "suggestedDefault": "Undecided",
-      "nameGlobs": ["Login Data", "Login Data For Account", "Cookies", "cookies.sqlite", "key4.db", "logins.json"]
+      "nameGlobs": ["Login Data", "Login Data For Account", "Cookies", "cookies.sqlite", "key4.db", "logins.json", "Local State"]
     },
     {
       "id": "ntuser-hive",
