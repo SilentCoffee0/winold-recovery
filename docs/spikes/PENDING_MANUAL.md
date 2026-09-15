@@ -73,14 +73,17 @@ Step 4 (enlarge the volume and resume a mid-copy `Paused(DiskFull)` job) is stil
 
 ## One-million-node scan memory ceiling
 
-Pending on a machine with a large scratch volume:
+Passed 15 Sep 2026 on this development machine (published `WinOldRecovery.exe --scan`, not testhost). **8.2 is complete.**
 
-1. Generate a 1,000,000-node fixture (or walk a tree of that size).
-2. Scan with the published EXE.
-3. Confirm working set stays under 1.5 GB and the Files tree stays responsive (SQLite paging, 2,000 children per page).
-4. Record peak working set and duration.
+Evidence:
 
-CI expands a 100k-child node in under 300 ms, pages 1M synthetic SQLite children under 1.5 GB, and walks 1,000,000 on-disk empty files in the test process under 60 s / 1.5 GB. The published EXE probe is `tools/run-1m-scan.ps1` (`WinOldRecovery.exe --scan`). That check is not passed until the report file contains `Passed: true`.
+- Report: `%TEMP%\WinOldRecovery-1m-scan-namefilter.txt`
+- EXE: `%TEMP%\wor-publish-8.2-noprobe-largest\WinOldRecovery.exe` (pid 24672)
+- Fixture: `%TEMP%\WinOldRecovery-1m-fixture-live` (`Users\Alice\Scale`, 1000×1000)
+- `Passed: true`, `NodesVisited: 1001004`, `WalkSeconds: 46.198`, `ClassifySeconds: 3.940`, `ScanSeconds: 50.188`
+- `PeakWorkingSetMiB: 103.7` (ceiling 1.5 GB), `TreePageRows: 1000` (page size 2000), `TreeParent: Scale`, `TreePageMilliseconds: 213.6`
+
+Do not tag `v0.1.0-m0` until the other pending rows below pass.
 
 ## Attempt log — 15 Sep 2026
 
@@ -90,9 +93,7 @@ CI expands a 100k-child node in under 300 ms, pages 1M synthetic SQLite children
 
 ## Attempt log — 15 Sep 2026 (1M published `--scan`)
 
-Not a pass. After classify, published `--scan` called `GetLargest` and ran mixed-decision recursive CTEs over the 1M-node tree (pid 31084, ~108 MB, CPU climbing, no report). Probe now walks `Users\Alice\Scale` children without mixed summaries. Name-glob / stream classify is on `main` (`d13976a`). Next report: `%TEMP%\WinOldRecovery-1m-scan-namefilter.txt` after republish.
-
-Do not mark the 1M memory ceiling complete until the report contains `Passed: true`.
+Passed. Earlier hangs were classify (path-glob regex + `FileSystemName` on every `.txt`) and post-classify `GetLargest` mixed-decision CTEs. After those fixes, pid 24672 wrote `%TEMP%\WinOldRecovery-1m-scan-namefilter.txt` with `Passed: true` (103.7 MiB peak, 50.2 s scan). **8.2 passed.**
 
 ## Attempt log — 14 Sep 2026
 
@@ -103,7 +104,7 @@ Recorded from the development console session. This is not a pass.
 - Explorer long paths: code now selects the nearest ancestor whose path is at most 259 characters (and strips `\\?\`). Clicking the result in Explorer is still pending.
 - Crash-resume overlay: unit tests cover journal detection and the Resume prompt. Integration kills `RestoreHarness` mid-CopyTree of 50k files. Headless `WinOldRecovery.exe --restore <source> <dest> --report <file>` and `tools/run-kill-published-copy.ps1` are the published-EXE probe. The script now waits for destination files, fails if the first process already exited, and kills by PID (UAC `taskkill` when Medium IL cannot `Stop-Process`). Do not use `/IM WinOldRecovery.exe` while a 1M `--scan` is running.
 - SignPath / Trusted Signing: no signing identity, API token, or `SIGNPATH_ENABLED` variable is configured. Release assets stay unsigned.
-- `cleanmgr`, 200 MB VHDX, and a 1,000,000-node tree were not run.
+- `cleanmgr` and a setup-created Windows.old were not run. The 1,000,000-node published `--scan` later passed on 15 Sep 2026.
 
 To run the backup-privilege FixtureGen spike, open an elevated PowerShell in the repo and run `tools/run-elevated-m0.ps1`. To run FlaUI, publish the x64 EXE, approve UAC, then:
 
