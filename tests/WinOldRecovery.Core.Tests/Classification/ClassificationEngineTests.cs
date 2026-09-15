@@ -205,6 +205,63 @@ public sealed class ClassificationEngineTests
         Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(notion.Id));
     }
 
+    [Fact]
+    public async Task Classify_BadgesBrowserCachesAndSafetyModelSecrets()
+    {
+        await using ClassifyContext context = await ClassifyContext.CreateAsync();
+        string alice = Path.Combine(context.Root, "Windows.old", "Users", "Alice");
+        string chromeCache = Path.Combine(alice, "AppData", "Local", "Google", "Chrome", "User Data", "Default", "Cache");
+        string decoyCache = Path.Combine(alice, "Documents", "Cache");
+        Directory.CreateDirectory(chromeCache);
+        Directory.CreateDirectory(decoyCache);
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "D3DSCache"));
+        Directory.CreateDirectory(Path.Combine(alice, ".ollama", "models"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Roaming", "Microsoft", "Protect"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "Microsoft", "Credentials"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "NTUSER.DAT"), "hive");
+        await File.WriteAllTextAsync(Path.Combine(chromeCache, "data_0"), "cache");
+        await File.WriteAllTextAsync(Path.Combine(decoyCache, "notes.txt"), "not a browser cache");
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, "AppData", "Local", "Google", "Chrome", "User Data", "Default", "Login Data"),
+            "dpapi");
+        await File.WriteAllTextAsync(Path.Combine(alice, ".ollama", "models", "blob"), "weights");
+
+        ScanOrchestrator orchestrator = new(context.Database, context.SafeFs, context.Guard);
+        await orchestrator.RunAsync(
+            context.SessionId,
+            Path.Combine(context.Root, "Windows.old"),
+            Path.Combine(context.Root, "tmp"));
+
+        TreeNodeRow cache = Find(
+            context,
+            @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default\Cache");
+        TreeNodeRow decoy = Find(context, @"Users\Alice\Documents\Cache");
+        TreeNodeRow login = Find(
+            context,
+            @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default\Login Data");
+        TreeNodeRow hive = Find(context, @"Users\Alice\NTUSER.DAT");
+        TreeNodeRow d3d = Find(context, @"Users\Alice\AppData\Local\D3DSCache");
+        TreeNodeRow ollama = Find(context, @"Users\Alice\.ollama\models");
+        TreeNodeRow protect = Find(context, @"Users\Alice\AppData\Roaming\Microsoft\Protect");
+        TreeNodeRow creds = Find(context, @"Users\Alice\AppData\Local\Microsoft\Credentials");
+
+        Assert.Contains("Regeneratable", cache.BadgeText);
+        Assert.DoesNotContain("Regeneratable", decoy.BadgeText);
+        Assert.Contains("Regeneratable", d3d.BadgeText);
+        Assert.Contains("Regeneratable", ollama.BadgeText);
+        Assert.Contains("Sensitive", login.BadgeText);
+        Assert.Contains("Sensitive", hive.BadgeText);
+        Assert.Contains("Sensitive", protect.BadgeText);
+        Assert.Contains("Sensitive", creds.BadgeText);
+        Assert.True(context.Database.ListClassificationNodes(context.SessionId)
+            .Single(row => row.Id == login.Id)
+            .Sensitive);
+        DecisionEngine engine = new(context.Database, context.SessionId);
+        Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(cache.Id));
+        Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(login.Id));
+        Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(hive.Id));
+    }
+
     private static TreeNodeRow Find(ClassifyContext context, string relPath)
     {
         return new NodeBrowser(context.Database, context.SessionId).FindByRelPath(relPath)

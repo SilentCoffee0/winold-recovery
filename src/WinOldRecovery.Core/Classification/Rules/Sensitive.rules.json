@@ -45,6 +45,44 @@
       "sensitive": true,
       "suggestedDefault": "Restore",
       "directoryNames": ["gnupg", ".gnupg"]
+    },
+    {
+      "id": "browser-secrets",
+      "kind": "Sensitive",
+      "badge": "Sensitive",
+      "why": "Browser passwords, cookies, or Firefox key material. Contents are never displayed.",
+      "sensitive": true,
+      "suggestedDefault": "Undecided",
+      "nameGlobs": ["Login Data", "Login Data For Account", "Cookies", "cookies.sqlite", "key4.db", "logins.json"]
+    },
+    {
+      "id": "ntuser-hive",
+      "kind": "Sensitive",
+      "badge": "Sensitive",
+      "why": "Old user hive. Parsed offline; contents are not shown.",
+      "sensitive": true,
+      "suggestedDefault": "Undecided",
+      "nameGlobs": ["NTUSER.DAT", "ntuser.dat.LOG1", "ntuser.dat.LOG2", "NTUSER.DAT.LOG1", "NTUSER.DAT.LOG2"]
+    },
+    {
+      "id": "dpapi-protect",
+      "kind": "Sensitive",
+      "badge": "Sensitive",
+      "why": "DPAPI Protect folder. Machine-bound; copying it does not unlock secrets.",
+      "sensitive": true,
+      "suggestedDefault": "Undecided",
+      "directoryNames": ["Protect"],
+      "pathContains": ["\\Microsoft\\Protect"]
+    },
+    {
+      "id": "credential-vault",
+      "kind": "Sensitive",
+      "badge": "Sensitive",
+      "why": "Windows Credential Manager vault files.",
+      "sensitive": true,
+      "suggestedDefault": "Undecided",
+      "directoryNames": ["Credentials"],
+      "pathContains": ["\\Microsoft\\Credentials"]
     }
   ]
 }

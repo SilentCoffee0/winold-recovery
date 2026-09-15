@@ -86,6 +86,28 @@
       ]
     },
     {
+      "id": "browser-caches",
+      "kind": "Regeneratable",
+      "badge": "Regeneratable",
+      "why": "Browser cache; pages and images are re-downloaded.",
+      "directoryNames": ["Cache", "Code Cache", "GPUCache", "CacheStorage", "cache2"],
+      "pathContains": ["\\User Data\\", "\\Mozilla\\Firefox\\", "\\Service Worker\\CacheStorage"]
+    },
+    {
+      "id": "gpu-driver-caches",
+      "kind": "Regeneratable",
+      "badge": "Regeneratable",
+      "why": "GPU driver shader cache.",
+      "directoryNames": ["D3DSCache", "DXCache"]
+    },
+    {
+      "id": "ollama-models",
+      "kind": "Regeneratable",
+      "badge": "Regeneratable",
+      "why": "Ollama models can be re-downloaded.",
+      "pathContains": ["\\.ollama\\models"]
+    },
+    {
       "id": "iso-images",
       "kind": "Regeneratable",
       "badge": "Installer",

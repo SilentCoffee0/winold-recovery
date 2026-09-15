@@ -3,9 +3,9 @@
 WinOld Recovery badges files from four embedded JSON files in `src/WinOldRecovery.Core/Classification/Rules/`:
 
 - `HighValue.rules.json` — vaults, mail stores, databases, VM disks, editor settings, PowerShell profiles, Joplin/Logseq, NuGet/Maven/Gradle/Cargo config
-- `Regeneratable.rules.json` — caches, `node_modules`, installers, Notion AppData caches (badge only)
+- `Regeneratable.rules.json` — caches, `node_modules`, installers, Notion AppData, browser Cache/Code Cache/GPUCache/cache2, D3DSCache/DXCache, `.ollama\models` (badge only)
 - `GameSaves.rules.json` — Saved Games, My Games, Steam userdata, Unreal `Saved\SaveGames`, GOG Galaxy Applications
-- `Sensitive.rules.json` — keys, `.env`, `.yarnrc.yml`, certs next to a key, cloud CLI credentials, GPG
+- `Sensitive.rules.json` — keys, `.env`, `.yarnrc.yml`, certs next to a key, cloud CLI credentials, GPG, browser Login Data/Cookies/key4/logins, NTUSER.DAT, DPAPI Protect, Credential vault
 
 Badges never decide. Regeneratable and unclassified nodes must not receive a suggested **Leave Behind**. The only built-in Leave Behind suggestion is the whole `Users\<name>\AppData` folder (individual folders under it can still be restored by the user).
 
