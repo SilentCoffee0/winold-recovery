@@ -50,4 +50,4 @@ Do not call `net.exe`. Assign an unmapped SID with `FileSecurity.SetOwner` (`Ass
 
 Regression: `ProcessRunnerTests.RunAsync_NetUserAddWithLongPasswordPromptsForYN` and `FixtureGeneratorSource_DoesNotInvokeNetExe`.
 
-This does **not** pass the elevated 100k self-check by itself. Re-run `tools/run-elevated-m0.ps1` on an Administrator console after this code is built.
+This does **not** by itself pass the elevated 100k self-check. That check passed on 15 Sep 2026 after this fix; see `docs/spikes/PENDING_MANUAL.md`.

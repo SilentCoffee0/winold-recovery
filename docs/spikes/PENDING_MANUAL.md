@@ -4,22 +4,26 @@ The M0 tag `v0.1.0-m0` must not be created until the checks below are completed
 or explicitly accepted as blocked. CI and the tag-release workflow exist, but
 they do not substitute for these tests.
 
-These checks are not marked passed. The current agent process is not elevated
-and no disposable clean Windows 11 VM is attached.
+The backup-privilege 100k FixtureGen self-check passed 15 Sep 2026 on this
+development machine. The remaining rows still need a disposable Windows 11 VM,
+an interactive desktop, or signing credentials. The current agent process is
+not elevated (`S-1-16-8192`).
 
 ## Backup-privilege enumeration and read
 
-Pending:
+Passed 15 Sep 2026 on this development machine (not a clean VM). Two elevated
+`tools/run-elevated-m0.ps1` runs (100,000 `node_modules` files) printed
+`Elevated FixtureGen and self-check passed.` Build SHA `d3a17e1`.
 
-1. Run full elevated `FixtureGen` on NTFS with the default 100,000-file count.
-2. Confirm the self-check creates the deny-ACL and orphan-SID hazards.
-3. Enumerate both directories using `FileSystemEnumerator` after
-   `Privileges.EnableBackupAndRestore()`.
-4. Read their protected files through `BackupFile.OpenRead`.
-5. Confirm a source watcher reports no changes.
+Evidence:
 
-Portable fixture tests do not create these privileged hazards and therefore do
-not satisfy this spike.
+- Transcript: `%TEMP%\WinOldRecovery-elevated-m0-771b81a389904c61ab69a0c82a7c5809.log`
+- Fixture: `%TEMP%\WinOldRecovery-elevated-fixture-771b81a389904c61ab69a0c82a7c5809`
+- Earlier same-day pass: `%TEMP%\WinOldRecovery-elevated-m0-3920d38c3bfe4dec894efb66a1d830ed.log`
+- Manifest: `FullHazardsRequested: true`, `NodeModulesFileCount: 100000`, deny-ACL / EFS / orphan-SID (`S-1-5-21-2147483647-1-1-1001`) all `Created`.
+- Self-check enabled backup privilege, listed deny-ACL and orphan-SID children with `FileSystemEnumerator`, read `protected.txt` through `BackupFile.OpenRead`, and armed a source `FileSystemWatcher`.
+
+Portable fixture tests still do not substitute for this spike. **8.1 is complete.** Do not tag `v0.1.0-m0` until the other pending rows below pass.
 
 ## Windows Previous Installations cleanup handler
 
@@ -78,8 +82,9 @@ CI expands a 100k-child node in under 300 ms, pages 1M synthetic SQLite children
 
 ## Attempt log — 15 Sep 2026
 
-- Elevated `run-elevated-m0.ps1` failed at generate: `Child process 'net.exe' exceeded its 00:02:00 timeout` (script line 28). Cause: `net user /add` with a >14-character password prompts Y/N; redirected IO never answers. See `docs/spikes/NET_USER_ADD_PROMPT.md`. FixtureGen no longer invokes `net.exe`. Full-hazard self-check now arms a `FileSystemWatcher` on the fixture root. **8.1 is not passed** until a new elevated 100k self-check succeeds.
-- Integrity: Medium (`S-1-16-8192`) for the agent console. The hung generate was in a separate Administrator window.
+- Elevated `run-elevated-m0.ps1` failed at generate: `Child process 'net.exe' exceeded its 00:02:00 timeout` (script line 28). Cause: `net user /add` with a >14-character password prompts Y/N; redirected IO never answers. See `docs/spikes/NET_USER_ADD_PROMPT.md`.
+- After removing `net.exe` and closing `ProcessRunner` stdin, two elevated 100k runs passed self-check (transcripts `WinOldRecovery-elevated-m0-3920d38c3bfe4dec894efb66a1d830ed.log` and `771b81a389904c61ab69a0c82a7c5809.log`). **8.1 passed.**
+- Integrity: Medium (`S-1-16-8192`) for the agent console; the passing generate ran in an Administrator window (UAC RunAs).
 
 ## Attempt log — 14 Sep 2026
 
