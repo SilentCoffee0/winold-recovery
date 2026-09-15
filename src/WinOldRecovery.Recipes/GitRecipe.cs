@@ -21,7 +21,7 @@ public sealed class GitRecipe : IRecipe
         if (context.SafeFs.FileExists(gitconfig))
         {
             string text = context.SafeFs.ReadAllText(gitconfig);
-            cards.Add(ConfigCard(context, gitconfig, Scrub(text)));
+            cards.Add(ConfigCard(context, gitconfig, Scrub(text), GitConfigFacts.Read(text)));
         }
 
         string cred = Path.Combine(context.OldProfileRoot, ".git-credentials");
@@ -298,15 +298,24 @@ public sealed class GitRecipe : IRecipe
             string trimmed = lines[i].Trim();
             if (trimmed.StartsWith('[') && trimmed.EndsWith(']'))
             {
-                credentialSection = trimmed.Equals("[credential]", StringComparison.OrdinalIgnoreCase);
+                credentialSection = trimmed.StartsWith("[credential", StringComparison.OrdinalIgnoreCase);
+                if (trimmed.Contains('@'))
+                {
+                    lines[i] = "[url \"***\"]";
+                }
+
+                continue;
             }
 
-            if (trimmed.StartsWith("token", StringComparison.OrdinalIgnoreCase) ||
+            bool secretKey = trimmed.StartsWith("token", StringComparison.OrdinalIgnoreCase) ||
                 trimmed.StartsWith("password", StringComparison.OrdinalIgnoreCase) ||
-                credentialSection && trimmed.Contains('=', StringComparison.Ordinal))
+                trimmed.StartsWith("username", StringComparison.OrdinalIgnoreCase);
+            bool insteadOfSecret = trimmed.Contains("insteadof", StringComparison.OrdinalIgnoreCase) &&
+                trimmed.Contains('@');
+            if (secretKey || insteadOfSecret || (credentialSection && secretKey))
             {
                 int equals = lines[i].IndexOf('=', StringComparison.Ordinal);
-                lines[i] = equals < 0 ? "    helper = ***" : lines[i][..equals] + "= ***";
+                lines[i] = equals < 0 ? "    *** = ***" : lines[i][..equals] + "= ***";
             }
         }
 
@@ -343,14 +352,29 @@ public sealed class GitRecipe : IRecipe
         DetectorWalk.CopyFileKeepBoth(destination.SafeFs, source, destinationPath, "config", writes);
     }
 
-    private static RecipeCard ConfigCard(ProfileContext context, string path, string scrubbed)
+    private static RecipeCard ConfigCard(
+        ProfileContext context,
+        string path,
+        string scrubbed,
+        IReadOnlyDictionary<string, string> extracted)
     {
+        Dictionary<string, string> facts = new(StringComparer.Ordinal)
+        {
+            ["source"] = path,
+            ["preview"] = scrubbed,
+            ["kind"] = "config",
+        };
+        foreach ((string key, string value) in extracted)
+        {
+            facts[key] = value;
+        }
+
         return new RecipeCard(
             "git",
             "Git configuration (" + context.ProfileName + ")",
             "Your Git user name, email and local settings.",
             "Without this, new clones do not know who you are.",
-            "Copy of .gitconfig with credential helper values hidden. Existing files are kept; the old copy is named .gitconfig.from-windows-old.",
+            "Copy of .gitconfig with credential secrets hidden. Existing files are kept; the old copy is named .gitconfig.from-windows-old.",
             "Re-enter your name and sign in to Git Credential Manager again.",
             "A new .gitconfig can be written by hand.",
             "You keep typing your name on the first commit.",
@@ -366,12 +390,7 @@ public sealed class GitRecipe : IRecipe
                     true),
             ],
             context.ProfileName,
-            new Dictionary<string, string>
-            {
-                ["source"] = path,
-                ["preview"] = scrubbed,
-                ["kind"] = "config",
-            });
+            facts);
     }
 
     private static string? ResolveGitDir(SafeFs safeFs, string workTree)

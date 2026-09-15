@@ -490,7 +490,9 @@ public sealed class RecipeTests
         await host.ExecuteAsync("session-1", new GitRecipe(), gitConfigPlan);
         string restoredConfig = await File.ReadAllTextAsync(Path.Combine(context.Destination, ".gitconfig"));
         Assert.Contains("Alice", restoredConfig, StringComparison.Ordinal);
-        Assert.DoesNotContain("store", restoredConfig, StringComparison.Ordinal);
+        Assert.Contains("helper = store", restoredConfig, StringComparison.Ordinal);
+        Assert.Equal("Alice", gitConfig.Facts["userName"]);
+        Assert.Equal("store", gitConfig.Facts["credentialHelper"]);
 
         RecipeCard gitRepo = cards.Single(card => card.Title.Contains("repository", StringComparison.Ordinal));
         PlanResult gitRepoPlan = host.PlanCard(new GitRecipe(), gitRepo, Dest(context));
@@ -500,11 +502,29 @@ public sealed class RecipeTests
     }
 
     [Fact]
-    public void GitScrub_HidesCredentialHelperValues()
+    public void GitScrub_HidesCredentialSecretsAndInsteadOfUserinfo()
     {
-        string scrubbed = GitRecipe.Scrub("[credential]\n\thelper = store\n");
-        Assert.Contains("***", scrubbed, StringComparison.Ordinal);
-        Assert.DoesNotContain("store", scrubbed, StringComparison.Ordinal);
+        string scrubbed = GitRecipe.Scrub(
+            """
+            [credential]
+            	helper = store
+            	username = alice
+            [url "https://alice:token@github.com/"]
+            	insteadOf = https://alice@example.invalid/
+            [user]
+            	name = Alice
+            """);
+        Assert.Contains("helper = store", scrubbed, StringComparison.Ordinal);
+        Assert.Contains("Alice", scrubbed, StringComparison.Ordinal);
+        Assert.DoesNotContain("username = alice", scrubbed, StringComparison.Ordinal);
+        Assert.Contains("[url \"***\"]", scrubbed, StringComparison.Ordinal);
+        Assert.Contains("insteadOf = ***", scrubbed, StringComparison.Ordinal);
+        Dictionary<string, string> facts = GitConfigFacts.Read(
+            "[user]\n\tname = Alice\n\temail = alice@example.invalid\n[core]\n\tsshCommand = ssh -i ~/.ssh/id_ed25519\n[credential]\n\thelper = store\n");
+        Assert.Equal("Alice", facts["userName"]);
+        Assert.Equal("alice@example.invalid", facts["userEmail"]);
+        Assert.Equal("ssh -i ~/.ssh/id_ed25519", facts["sshCommand"]);
+        Assert.Equal("store", facts["credentialHelper"]);
     }
 
     [Fact]
