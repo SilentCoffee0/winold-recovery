@@ -138,6 +138,61 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public void OpenSshPrivateKeyHeader_ReadsCipherWithoutTheKeyBody()
+    {
+        Assert.True(OpenSshPrivateKeyHeader.IsUnencrypted(OpenSshPem("none")));
+        Assert.False(OpenSshPrivateKeyHeader.IsUnencrypted(OpenSshPem("aes256-ctr")));
+        Assert.True(OpenSshPrivateKeyHeader.TryReadCipherName(OpenSshPem("aes256-ctr"), out string cipher));
+        Assert.Equal("aes256-ctr", cipher);
+    }
+
+    [Fact]
+    public async Task Ssh_Detect_MarksUnencryptedOpenSshKeysAndCountsHosts()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string ssh = Path.Combine(alice, ".ssh");
+        Directory.CreateDirectory(ssh);
+        await File.WriteAllBytesAsync(Path.Combine(ssh, "id_ed25519"), OpenSshPem("none"));
+        await File.WriteAllTextAsync(Path.Combine(ssh, "id_ed25519.pub"), "ssh-ed25519 AAAA-not-a-secret");
+        await File.WriteAllBytesAsync(Path.Combine(ssh, "id_rsa"), OpenSshPem("aes256-ctr"));
+        await File.WriteAllTextAsync(
+            Path.Combine(ssh, "config"),
+            """
+            Host github.com
+              HostName github.com
+            Host *
+              IdentityFile ~/.ssh/id_ed25519
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(ssh, "known_hosts"),
+            """
+            # comment
+            github.com ssh-ed25519 AAAA-not-a-secret
+            """);
+
+        DetectResult detected = new SshRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        RecipeCard card = Assert.Single(detected.Cards);
+        Assert.Equal("1", card.Facts["unencrypted"]);
+        Assert.Equal("1", card.Facts["unencryptedCount"]);
+        Assert.Equal("2", card.Facts["configHosts"]);
+        Assert.Equal("1", card.Facts["knownHosts"]);
+        Assert.Equal("ed25519", card.Facts["keyTypes"]);
+        Assert.Contains("passphrase", card.WhatIsRestored, StringComparison.OrdinalIgnoreCase);
+        string joined = string.Join(';', card.Facts.Values);
+        Assert.DoesNotContain("b3BlbnNzaC", joined, StringComparison.Ordinal);
+        Assert.DoesNotContain("AAAA-not-a-secret", joined, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SshAndChromeAndFirefoxAndGit_DetectWithoutLeakingCanaries()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
@@ -2179,6 +2234,27 @@ public sealed class RecipeTests
                 File.Delete(path);
             }
         }
+    }
+
+    private static byte[] OpenSshPem(string cipher)
+    {
+        using MemoryStream payload = new();
+        payload.Write("openssh-key-v1\0"u8);
+        WriteSshString(payload, cipher);
+        WriteSshString(payload, cipher == "none" ? "none" : "bcrypt");
+        WriteSshString(payload, string.Empty);
+        string b64 = Convert.ToBase64String(payload.ToArray());
+        return System.Text.Encoding.ASCII.GetBytes(
+            "-----BEGIN OPENSSH PRIVATE KEY-----\n" + b64 + "\n-----END OPENSSH PRIVATE KEY-----\n");
+    }
+
+    private static void WriteSshString(Stream stream, string value)
+    {
+        byte[] bytes = System.Text.Encoding.ASCII.GetBytes(value);
+        Span<byte> length = stackalloc byte[4];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(length, (uint)bytes.Length);
+        stream.Write(length);
+        stream.Write(bytes);
     }
 
     private static void WriteSqlite(string path, string sql)

@@ -53,6 +53,7 @@ All notable changes to WinOld Recovery will be documented here.
 - Chrome/Edge extension lists resolve `__MSG_*__` names from `_locales\<default_locale>\messages.json`. Syncthing cards record last activity, mark the newest home probably active, and store the SyncTrayzor `syncthing.exe` file version.
 - OpenSSH Server host keys from `ProgramData\ssh` appear as a separate Undecided card and restore to `Recovered\OpenSSH-Server`. WSL cards record VHDX file size and last-modified time.
 - Anki detect reads `-b` bases from Start-menu `.lnk` files and `ANKI_BASE` from the old hive, and records schema, backup count, and add-on count.
+- SSH cards flag OpenSSH private keys whose header cipher is `none`, and record key types plus `config` / `known_hosts` counts without storing key material.
 - Gated purge: I10 gates, `PurgeToken` minted only after they pass, preferred `cleanmgr /sagerun:777` via `IProcessRunner`, reparse-aware manual delete, session purge manifest and support bundle.
 - Preview conflict list with per-file overwrite confirmation (I2); copy resume after a leftover `.winold-partial`; runtime disk-full pause that does not delete existing destination files.
 - Chromium autofill CSV from `Web Data` (never `credit_cards`); optional bookmark transplant behind `WINOLD_RECOVERY_CHROMIUM_TRANSPLANT=1`.

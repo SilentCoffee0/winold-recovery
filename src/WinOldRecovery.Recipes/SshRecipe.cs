@@ -17,7 +17,7 @@ public sealed class SshRecipe : IRecipe
         List<(string RelativePath, string Kind, string Detail)> badges = [];
         string ssh = Path.Combine(context.OldProfileRoot, ".ssh");
         if (context.SafeFs.DirectoryExists(ssh) &&
-            TryListFiles(context.SafeFs, ssh, out List<string> names, out List<string> fingerprints))
+            TryListFiles(context.SafeFs, ssh, out SshFolderFacts userFacts))
         {
             cards.Add(
                 new RecipeCard(
@@ -25,27 +25,24 @@ public sealed class SshRecipe : IRecipe
                     "SSH keys (" + context.ProfileName + ")",
                     "Your SSH identities and the hosts you have trusted.",
                     "Without these keys you cannot log in to servers that trust this computer.",
-                    "Private keys, public keys, config and known_hosts. Existing destination files are never overwritten; a conflict is saved as *.from-windows-old. Private key material is never shown.",
+                    "Private keys, public keys, config and known_hosts. Existing destination files are never overwritten; a conflict is saved as *.from-windows-old. Private key material is never shown." +
+                        (userFacts.Unencrypted > 0
+                            ? " At least one private key has no passphrase; consider adding one with ssh-keygen -p."
+                            : string.Empty),
                     "Create new keys and update every server.",
                     "Keys do not regenerate.",
                     "You lose SSH access until you replace the keys on every host.",
                     [
-                        new RecipeComponent("files", "SSH files", names.Count + " files", Decision.Restore, false, null, true),
+                        new RecipeComponent("files", "SSH files", userFacts.Names.Count + " files", Decision.Restore, false, null, true),
                     ],
                     context.ProfileName,
-                    new Dictionary<string, string>
-                    {
-                        ["source"] = ssh,
-                        ["names"] = string.Join("|", names),
-                        ["fingerprints"] = string.Join(", ", fingerprints),
-                        ["component"] = "files",
-                    }));
+                    UserFacts(ssh, userFacts)));
             badges.Add((".ssh", "SSH", "keys"));
         }
 
         string server = Path.GetFullPath(Path.Combine(context.OldProfileRoot, "..", "..", "ProgramData", "ssh"));
         if (context.SafeFs.DirectoryExists(server) &&
-            TryListFiles(context.SafeFs, server, out List<string> hostNames, out _))
+            TryListFiles(context.SafeFs, server, out SshFolderFacts hostFacts))
         {
             cards.Add(
                 new RecipeCard(
@@ -61,7 +58,7 @@ public sealed class SshRecipe : IRecipe
                         new RecipeComponent(
                             "host-keys",
                             "OpenSSH Server",
-                            hostNames.Count + " files",
+                            hostFacts.Names.Count + " files",
                             Decision.Undecided,
                             false,
                             null,
@@ -71,7 +68,7 @@ public sealed class SshRecipe : IRecipe
                     new Dictionary<string, string>
                     {
                         ["source"] = server,
-                        ["names"] = string.Join("|", hostNames),
+                        ["names"] = string.Join("|", hostFacts.Names),
                         ["component"] = "host-keys",
                     }));
         }
@@ -177,14 +174,30 @@ public sealed class SshRecipe : IRecipe
         file.SetAccessControl(security);
     }
 
-    private static bool TryListFiles(
-        SafeFs safeFs,
-        string directory,
-        out List<string> names,
-        out List<string> fingerprints)
+    private static Dictionary<string, string> UserFacts(string source, SshFolderFacts facts)
     {
-        names = [];
-        fingerprints = [];
+        return new Dictionary<string, string>
+        {
+            ["source"] = source,
+            ["names"] = string.Join("|", facts.Names),
+            ["fingerprints"] = string.Join(", ", facts.Fingerprints),
+            ["keyTypes"] = string.Join(", ", facts.KeyTypes),
+            ["unencrypted"] = facts.Unencrypted > 0 ? "1" : "0",
+            ["unencryptedCount"] = facts.Unencrypted.ToString(),
+            ["configHosts"] = facts.ConfigHosts.ToString(),
+            ["knownHosts"] = facts.KnownHosts.ToString(),
+            ["component"] = "files",
+        };
+    }
+
+    private static bool TryListFiles(SafeFs safeFs, string directory, out SshFolderFacts facts)
+    {
+        List<string> names = [];
+        List<string> fingerprints = [];
+        List<string> keyTypes = [];
+        int unencrypted = 0;
+        int configHosts = 0;
+        int knownHosts = 0;
         foreach (string entry in safeFs.EnumerateFileSystemEntries(directory))
         {
             if (safeFs.DirectoryExists(entry))
@@ -194,17 +207,132 @@ public sealed class SshRecipe : IRecipe
 
             string name = Path.GetFileName(entry);
             names.Add(name);
-            if (!name.EndsWith(".pub", StringComparison.OrdinalIgnoreCase))
+            if (name.EndsWith(".pub", StringComparison.OrdinalIgnoreCase))
+            {
+                byte[] pub = ReadBytes(safeFs, entry, 4096);
+                fingerprints.Add("SHA256:" + Convert.ToBase64String(SHA256.HashData(pub)).TrimEnd('='));
+                string type = KeyTypeFromPub(pub, name);
+                if (type.Length > 0 && !keyTypes.Contains(type, StringComparer.OrdinalIgnoreCase))
+                {
+                    keyTypes.Add(type);
+                }
+
+                continue;
+            }
+
+            if (name.Equals("config", StringComparison.OrdinalIgnoreCase))
+            {
+                configHosts = CountConfigHosts(ReadBytes(safeFs, entry, 64 * 1024));
+                continue;
+            }
+
+            if (name.Equals("known_hosts", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("known_hosts.old", StringComparison.OrdinalIgnoreCase))
+            {
+                knownHosts += CountKnownHosts(ReadBytes(safeFs, entry, 64 * 1024));
+                continue;
+            }
+
+            byte[] head = ReadBytes(safeFs, entry, 512);
+            if (!LooksLikePrivateKey(name, head))
             {
                 continue;
             }
 
-            byte[] bytes = ReadBytes(safeFs, entry, 4096);
-            fingerprints.Add("SHA256:" + Convert.ToBase64String(SHA256.HashData(bytes)).TrimEnd('='));
+            if (OpenSshPrivateKeyHeader.IsUnencrypted(head))
+            {
+                unencrypted++;
+            }
         }
 
+        facts = new SshFolderFacts(names, fingerprints, keyTypes, unencrypted, configHosts, knownHosts);
         return names.Count > 0;
     }
+
+    private static bool LooksLikePrivateKey(string name, ReadOnlySpan<byte> head)
+    {
+        if (name.Equals("id_rsa", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("id_ecdsa", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("id_ed25519", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("id_dsa", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        string text = System.Text.Encoding.ASCII.GetString(head);
+        return text.Contains("BEGIN", StringComparison.OrdinalIgnoreCase) &&
+            text.Contains("PRIVATE KEY", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string KeyTypeFromPub(ReadOnlySpan<byte> pub, string name)
+    {
+        string text = System.Text.Encoding.ASCII.GetString(pub);
+        if (text.StartsWith("ssh-ed25519", StringComparison.Ordinal))
+        {
+            return "ed25519";
+        }
+
+        if (text.StartsWith("ssh-rsa", StringComparison.Ordinal))
+        {
+            return "rsa";
+        }
+
+        if (text.StartsWith("ecdsa-", StringComparison.Ordinal))
+        {
+            return "ecdsa";
+        }
+
+        if (text.StartsWith("ssh-dss", StringComparison.Ordinal))
+        {
+            return "dsa";
+        }
+
+        if (name.Contains("ed25519", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ed25519";
+        }
+
+        return string.Empty;
+    }
+
+    private static int CountConfigHosts(ReadOnlySpan<byte> bytes)
+    {
+        int count = 0;
+        foreach (string line in System.Text.Encoding.UTF8.GetString(bytes).Split('\n'))
+        {
+            string trimmed = line.Trim();
+            if (trimmed.StartsWith("Host ", StringComparison.OrdinalIgnoreCase) &&
+                !trimmed.StartsWith("HostName", StringComparison.OrdinalIgnoreCase))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static int CountKnownHosts(ReadOnlySpan<byte> bytes)
+    {
+        int count = 0;
+        foreach (string line in System.Text.Encoding.UTF8.GetString(bytes).Split('\n'))
+        {
+            string trimmed = line.Trim();
+            if (trimmed.Length > 0 && !trimmed.StartsWith('#'))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private readonly record struct SshFolderFacts(
+        List<string> Names,
+        List<string> Fingerprints,
+        List<string> KeyTypes,
+        int Unencrypted,
+        int ConfigHosts,
+        int KnownHosts);
 
     private static byte[] ReadBytes(SafeFs safeFs, string path, int max)
     {
