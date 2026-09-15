@@ -1578,6 +1578,10 @@ public sealed class RecipeTests
         await File.WriteAllTextAsync(Path.Combine(home, "cert.pem"), certPem);
         await File.WriteAllTextAsync(Path.Combine(home, "key.pem"), Canary);
         await File.WriteAllTextAsync(Path.Combine(home, "index-v2", "index.db"), "index-must-not-copy");
+        await File.WriteAllTextAsync(Path.Combine(home, "https-cert.pem"), "gui-cert");
+        await File.WriteAllTextAsync(Path.Combine(home, "https-key.pem"), Canary);
+        Directory.CreateDirectory(Path.Combine(home, "gui"));
+        await File.WriteAllTextAsync(Path.Combine(home, "gui", "theme.css"), "custom-gui");
         string syncPath = Path.Combine(alice, "Sync");
         await File.WriteAllTextAsync(
             Path.Combine(home, "config.xml"),
@@ -1641,6 +1645,12 @@ public sealed class RecipeTests
         Assert.Contains("***", dump, StringComparison.Ordinal);
         Assert.Equal(SyncthingDeviceId.FromCertificatePem(certPem), card.Facts["deviceId"]);
         Assert.Contains(card.Components, component => component.Fixed && component.Key == "index");
+        Assert.Equal(
+            Decision.LeaveBehind,
+            card.Components.Single(component => component.Key == "gui-tls").SuggestedDefault);
+        Assert.Equal(Decision.Restore, card.Components.Single(component => component.Key == "gui").SuggestedDefault);
+        Assert.Equal("1", card.Facts["guiTls"]);
+        Assert.Equal("1", card.Facts["hasGui"]);
 
         DetectResult synDetected = new SyncthingRecipe().Detect(
             new ProfileContext(
@@ -1665,6 +1675,20 @@ public sealed class RecipeTests
 
         PlanResult plan = host.PlanCard(new SyncthingRecipe(), card, Dest(context));
         Assert.DoesNotContain(plan.Writes, write => write.DestinationPath.Contains("index", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(
+            plan.Writes,
+            write => write.DestinationPath.Contains("https-key.pem", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            plan.Writes,
+            write => write.DestinationPath.EndsWith(Path.Combine("gui", "theme.css"), StringComparison.OrdinalIgnoreCase));
+        await context.Database.SetKvAsync(
+            "session-1",
+            StoredRecipeDecisions.KvKey(card.InstanceKey, "gui-tls"),
+            nameof(Decision.Restore));
+        PlanResult tlsPlan = host.PlanCard(new SyncthingRecipe(), card, Dest(context), "session-1");
+        Assert.Contains(
+            tlsPlan.Writes,
+            write => write.DestinationPath.EndsWith("https-key.pem", StringComparison.OrdinalIgnoreCase));
         await host.ExecuteAsync("session-1", new SyncthingRecipe(), plan);
         Assert.True(new SyncthingRecipe().Verify(plan).Ok);
 
@@ -1673,6 +1697,8 @@ public sealed class RecipeTests
         Assert.Contains(Path.Combine(context.Destination, "Sync"), destConfig, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(@"D:\Sync", destConfig, StringComparison.OrdinalIgnoreCase);
         Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "key.pem")));
+        Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "gui", "theme.css")));
+        Assert.False(File.Exists(Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "https-key.pem")));
         Assert.False(Directory.Exists(Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "index-v2")));
         Assert.Contains("SUPERSECRETAPIKEY", destConfig, StringComparison.Ordinal);
     }

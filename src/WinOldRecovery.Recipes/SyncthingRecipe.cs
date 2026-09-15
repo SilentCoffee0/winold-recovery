@@ -41,28 +41,60 @@ public sealed class SyncthingRecipe : IRecipe
             int devices = SyncthingConfig.DeviceCount(document);
             string scrubbed = SyncthingConfig.ScrubSecrets(xml);
             DateTimeOffset activity = LastActivity(context.SafeFs, home);
+            bool guiTls = context.SafeFs.FileExists(Path.Combine(home, "https-cert.pem")) ||
+                context.SafeFs.FileExists(Path.Combine(home, "https-key.pem"));
+            bool hasGui = context.SafeFs.DirectoryExists(Path.Combine(home, "gui"));
+            List<RecipeComponent> components =
+            [
+                new RecipeComponent("identity", "Identity", "cert.pem and key.pem", Decision.Restore, false, null, true),
+                new RecipeComponent("config", "Configuration", folders + " folders, version " + version, Decision.Restore, false, null, true),
+            ];
+            if (guiTls)
+            {
+                components.Add(
+                    new RecipeComponent(
+                        "gui-tls",
+                        "GUI TLS certificate",
+                        "https-cert.pem and https-key.pem regenerate for the local GUI",
+                        Decision.LeaveBehind,
+                        false,
+                        null,
+                        true));
+            }
+
+            if (hasGui)
+            {
+                components.Add(
+                    new RecipeComponent(
+                        "gui",
+                        "Custom GUI assets",
+                        "gui folder",
+                        Decision.Restore,
+                        false,
+                        null,
+                        false));
+            }
+
+            components.Add(
+                new RecipeComponent(
+                    "index",
+                    "Index database",
+                    "Never restored — missing files would look like deletions",
+                    Decision.Undecided,
+                    true,
+                    "Syncthing rebuilds the index. Restoring it with incomplete folder data can delete files on peers.",
+                    false));
             pending.Add((
                 new RecipeCard(
                     Id,
                     "Syncthing — " + deviceId,
                     "This computer's Syncthing identity and folder list. Other devices trust this ID.",
                     "If you start fresh, every peer must be re-paired and every folder re-shared.",
-                    "cert.pem, key.pem, and a rewritten config.xml with every folder paused. The index is never restored.",
+                    "cert.pem, key.pem, and a rewritten config.xml with every folder paused. The index is never restored. GUI HTTPS certificates stay behind unless you restore them.",
                     "Start a new device ID and re-share folders.",
-                    "The index database regenerates. The device ID does not.",
+                    "The index database and GUI TLS certificate regenerate. The device ID does not.",
                     "Peers stop recognizing this PC. Folders are added paused so nothing syncs or deletes until you have checked the paths.",
-                    [
-                        new RecipeComponent("identity", "Identity", "cert.pem and key.pem", Decision.Restore, false, null, true),
-                        new RecipeComponent("config", "Configuration", folders + " folders, version " + version, Decision.Restore, false, null, true),
-                        new RecipeComponent(
-                            "index",
-                            "Index database",
-                            "Never restored — missing files would look like deletions",
-                            Decision.Undecided,
-                            true,
-                            "Syncthing rebuilds the index. Restoring it with incomplete folder data can delete files on peers.",
-                            false),
-                    ],
+                    components,
                     home,
                     new Dictionary<string, string>
                     {
@@ -75,6 +107,8 @@ public sealed class SyncthingRecipe : IRecipe
                         ["oldProfile"] = context.OldProfileRoot,
                         ["lastActivity"] = activity.ToString("O"),
                         ["syncthingExeVersion"] = exeVersion,
+                        ["guiTls"] = guiTls ? "1" : "0",
+                        ["hasGui"] = hasGui ? "1" : "0",
                     }),
                 activity));
             DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, home, "Syncthing", deviceId);
@@ -139,6 +173,35 @@ public sealed class SyncthingRecipe : IRecipe
                     rewritten,
                     rewritten.Length,
                     "config"));
+        }
+
+        if (RecipeDecisions.ShouldRestore(decisions, "gui-tls"))
+        {
+            if (destination.SafeFs.FileExists(Path.Combine(source, "https-cert.pem")))
+            {
+                writes.Add(Copy(source, dest, "https-cert.pem", "gui-tls"));
+            }
+
+            if (destination.SafeFs.FileExists(Path.Combine(source, "https-key.pem")))
+            {
+                writes.Add(Copy(source, dest, "https-key.pem", "gui-tls"));
+            }
+        }
+
+        if (RecipeDecisions.ShouldRestore(decisions, "gui"))
+        {
+            string gui = Path.Combine(source, "gui");
+            if (destination.SafeFs.DirectoryExists(gui))
+            {
+                AnkiRecipe.AddTree(
+                    destination.SafeFs,
+                    gui,
+                    Path.Combine(dest, "gui"),
+                    gui,
+                    "gui",
+                    writes,
+                    static _ => false);
+            }
         }
 
         return new PlanResult(decisions.Card, writes);
