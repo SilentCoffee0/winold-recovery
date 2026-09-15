@@ -74,7 +74,18 @@
       "badge": "Dotfile",
       "why": "Shell and editor configuration.",
       "suggestedDefault": "Restore",
-      "nameGlobs": [".bashrc", ".zshrc", ".profile", ".vimrc", ".editorconfig", ".wslconfig", ".condarc"]
+      "nameGlobs": [".bashrc", ".zshrc", ".profile", ".vimrc", ".editorconfig", ".wslconfig", ".condarc", ".gitignore_global", ".ideavimrc"]
+    },
+    {
+      "id": "powershell-profiles",
+      "kind": "HighValue",
+      "badge": "PowerShell",
+      "why": "PowerShell profile scripts. They restore with Documents.",
+      "suggestedDefault": "Restore",
+      "pathGlobs": [
+        "**\\Documents\\PowerShell\\*.ps1",
+        "**\\Documents\\WindowsPowerShell\\*.ps1"
+      ]
     },
     {
       "id": "zotero-calibre",

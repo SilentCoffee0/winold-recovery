@@ -96,6 +96,47 @@ public sealed class ClassificationEngineTests
             .GetEffectiveDecision(pem.Id));
     }
 
+    [Fact]
+    public async Task Classify_BadgesPowerShellProfileScriptsAsHighValue()
+    {
+        await using ClassifyContext context = await ClassifyContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        string powershell = Path.Combine(source, "Users", "Alice", "Documents", "PowerShell");
+        string windowsPowerShell = Path.Combine(source, "Users", "Alice", "Documents", "WindowsPowerShell");
+        Directory.CreateDirectory(powershell);
+        Directory.CreateDirectory(windowsPowerShell);
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(powershell, "Microsoft.PowerShell_profile.ps1"),
+            "Set-Alias ll Get-ChildItem");
+        await File.WriteAllTextAsync(
+            Path.Combine(windowsPowerShell, "Microsoft.PowerShell_profile.ps1"),
+            "Write-Host hi");
+        await File.WriteAllTextAsync(Path.Combine(source, "Users", "Alice", "scratch.ps1"), "not a profile");
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", ".gitignore_global"),
+            "*~");
+
+        ScanOrchestrator orchestrator = new(context.Database, context.SafeFs, context.Guard);
+        await orchestrator.RunAsync(context.SessionId, source, Path.Combine(context.Root, "tmp"));
+
+        TreeNodeRow pwsh = Find(context, @"Users\Alice\Documents\PowerShell\Microsoft.PowerShell_profile.ps1");
+        TreeNodeRow windows = Find(
+            context,
+            @"Users\Alice\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1");
+        TreeNodeRow scratch = Find(context, @"Users\Alice\scratch.ps1");
+        TreeNodeRow ignore = Find(context, @"Users\Alice\.gitignore_global");
+
+        Assert.Contains("PowerShell", pwsh.BadgeText);
+        Assert.Contains("PowerShell", windows.BadgeText);
+        Assert.DoesNotContain("PowerShell", scratch.BadgeText);
+        Assert.Contains("Dotfile", ignore.BadgeText);
+        DecisionEngine engine = new(context.Database, context.SessionId);
+        Assert.Equal(Decision.Restore, engine.GetEffectiveDecision(pwsh.Id));
+        Assert.Equal(Decision.Restore, engine.GetEffectiveDecision(ignore.Id));
+        Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(scratch.Id));
+    }
+
     private static TreeNodeRow Find(ClassifyContext context, string relPath)
     {
         return new NodeBrowser(context.Database, context.SessionId).FindByRelPath(relPath)

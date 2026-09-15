@@ -2,7 +2,7 @@
 
 WinOld Recovery badges files from four embedded JSON files in `src/WinOldRecovery.Core/Classification/Rules/`:
 
-- `HighValue.rules.json` — vaults, mail stores, databases, VM disks, editor settings
+- `HighValue.rules.json` — vaults, mail stores, databases, VM disks, editor settings, PowerShell profiles
 - `Regeneratable.rules.json` — caches, `node_modules`, installers (badge only)
 - `GameSaves.rules.json` — Saved Games, My Games, Steam userdata
 - `Sensitive.rules.json` — keys, `.env`, cloud CLI credentials, GPG
