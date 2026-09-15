@@ -144,10 +144,11 @@ destination junction is deleted). That mutation was applied, observed red, then 
   2000 files, `%TEMP%\WinOldRecovery-kill-copy-e2b2930055f4487dab397a387aef55cc.log`).
   The WPF Resume overlay still needs FlaUI.
 - FlaUI scan→purge e2e still skipped without `RUN_FLAUI=1` and UAC.
-- Elevated deny-ACL FixtureGen and the 200 MB VHDX *preflight* disk-full probe
-  passed 15 Sep 2026. Published 1M-node `--scan` memory passed the same day
-  (`Passed: true`, 103.7 MiB peak, report `%TEMP%\WinOldRecovery-1m-scan-namefilter.txt`).
-  SignPath and the rest: see `docs/spikes/PENDING_MANUAL.md`.
+- Elevated deny-ACL FixtureGen, the 200 MB VHDX *preflight* disk-full probe, and
+  the 1400 MB runtime disk-full pause/resume passed 15 Sep 2026. Published 1M-node
+  `--scan` memory passed the same day (`Passed: true`, 103.7 MiB peak, report
+  `%TEMP%\WinOldRecovery-1m-scan-namefilter.txt`). SignPath and the rest: see
+  `docs/spikes/PENDING_MANUAL.md`.
 
 ## Still needs a disposable Windows 11 VM
 

@@ -5,11 +5,11 @@ or explicitly accepted as blocked. CI and the tag-release workflow exist, but
 they do not substitute for these tests.
 
 The backup-privilege 100k FixtureGen self-check passed 15 Sep 2026 on this
-development machine. The 200 MB VHDX preflight disk-full probe, published 1M
-`--scan` memory ceiling, and published mid-copy kill-and-resume also passed
-the same day. The remaining rows still need a disposable Windows 11 VM,
-an interactive desktop, or signing credentials. The current agent process is
-not elevated (`S-1-16-8192`).
+development machine. The 200 MB VHDX preflight disk-full probe, 1400 MB runtime
+disk-full pause/resume, published 1M `--scan` memory ceiling, and published
+mid-copy kill-and-resume also passed the same day. The remaining rows still need
+a disposable Windows 11 VM, an interactive desktop, or signing credentials. The
+current agent process is not elevated (`S-1-16-8192`).
 
 ## Backup-privilege enumeration and read
 
@@ -70,7 +70,14 @@ Evidence:
 - Probe: `Passed: true`, `Mode: PreflightBlocked`, `MarkerIntact: true`, `SourceUntouched: true`
 - Volume free 196,231,168 bytes vs required 1,117,782,056 bytes (plan + 5 % + 1 GB I16 margin). Restore did not start and did not delete `keep-me.txt`.
 
-Step 4 (enlarge the volume and resume a mid-copy `Paused(DiskFull)` job) is still uncovered: a 200 MB disk cannot pass preflight, so runtime `ERROR_DISK_FULL` during CopyTree was not reached.
+Step 4 passed 15 Sep 2026 (`tools/run-runtime-disk-full-vhdx.ps1`). A 1400 MB VHDX passed I16 preflight (1.45 GB free vs 1.16 GB required), a filler then left 2 MB free, CopyTree paused `DiskFull`, the filler was deleted, and resume completed. `keep-me.txt` and the source were untouched.
+
+Evidence:
+
+- Transcript: `%TEMP%\WinOldRecovery-runtime-diskfull-8adf34fe4bd6482f8e045b659f267d62.log`
+- Probe: `Passed: true`, `Mode: RuntimePausedThenResumed`, `PausedDiskFull: True`, `ResumedCompleted: True`, `MarkerIntact: True`, `SourceUntouched: True`
+
+**8.3 preflight and runtime paths are complete.** Do not tag.
 
 ## Published kill-and-resume mid-copy
 
