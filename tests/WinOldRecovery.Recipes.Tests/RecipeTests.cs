@@ -144,6 +144,8 @@ public sealed class RecipeTests
         Assert.False(OpenSshPrivateKeyHeader.IsUnencrypted(OpenSshPem("aes256-ctr")));
         Assert.True(OpenSshPrivateKeyHeader.TryReadCipherName(OpenSshPem("aes256-ctr"), out string cipher));
         Assert.Equal("aes256-ctr", cipher);
+        Assert.True(SshRecipe.HasEfsAttribute(FileAttributes.Encrypted));
+        Assert.False(SshRecipe.HasEfsAttribute(FileAttributes.Normal));
     }
 
     [Fact]
@@ -229,6 +231,7 @@ public sealed class RecipeTests
         Assert.Equal("2", card.Facts["configHosts"]);
         Assert.Equal("1", card.Facts["knownHosts"]);
         Assert.Equal("ed25519", card.Facts["keyTypes"]);
+        Assert.Equal("0", card.Facts["efsKeys"]);
         Assert.Contains("passphrase", card.WhatIsRestored, StringComparison.OrdinalIgnoreCase);
         string joined = string.Join(';', card.Facts.Values);
         Assert.DoesNotContain("b3BlbnNzaC", joined, StringComparison.Ordinal);
@@ -1407,6 +1410,60 @@ public sealed class RecipeTests
                 [General]
                 StartWithLastProfile=1
                 """)));
+    }
+
+    [Fact]
+    public async Task Firefox_Detect_SkipsProfilesIniWhenStoreIdMarksProfileGroups()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string firefox = Path.Combine(alice, "AppData", "Roaming", "Mozilla", "Firefox");
+        string profile = Path.Combine(firefox, "Profiles", "abcd.default");
+        Directory.CreateDirectory(profile);
+        WriteSqlite(
+            Path.Combine(profile, "places.sqlite"),
+            """
+            CREATE TABLE moz_places(id INTEGER PRIMARY KEY, url TEXT, title TEXT, hidden INTEGER DEFAULT 0);
+            CREATE TABLE moz_bookmarks(id INTEGER PRIMARY KEY, type INTEGER, fk INTEGER, title TEXT, parent INTEGER);
+            INSERT INTO moz_places(id, url, title) VALUES (1, 'https://groups.firefox.example', 'Fx');
+            INSERT INTO moz_bookmarks(id, type, fk, title, parent) VALUES (1, 1, 1, 'Fx', 0);
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(firefox, "profiles.ini"),
+            """
+            [Profile0]
+            Name=default
+            IsRelative=1
+            Path=Profiles/abcd.default
+            StoreID=abc123
+
+            [General]
+            StartWithLastProfile=1
+            Version=2
+            """);
+        Assert.True(FirefoxProfileGroups.HasStoreId(await File.ReadAllTextAsync(Path.Combine(firefox, "profiles.ini"))));
+
+        FirefoxRecipe recipe = new();
+        DetectResult detected = recipe.Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        RecipeCard card = Assert.Single(detected.Cards);
+        Assert.Equal("1", card.Facts["profileGroups"]);
+        Assert.Contains("about:profiles", card.WhatIsRestored, StringComparison.OrdinalIgnoreCase);
+        PlanResult plan = new RecipeHost(context.Database, context.SafeFs, context.Runner, [recipe])
+            .PlanCard(recipe, card, Dest(context));
+        Assert.DoesNotContain(
+            plan.Writes,
+            write => write.DestinationPath.EndsWith("profiles.ini", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            plan.Writes,
+            write => write.DestinationPath.EndsWith("places.sqlite", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

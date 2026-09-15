@@ -38,7 +38,7 @@ The development machine's `C:\Windows.old` was inspected read-only (directory st
 - `%APPDATA%\Mozilla\Firefox\profiles.ini` + `installs.ini`; profiles under `Profiles\`. Mozilla supports Windows→Windows profile transplant by copying the profile while Firefox is closed. **[verified]** https://support.mozilla.org/en-US/kb/back-and-restore-information-firefox-profiles , https://support.mozilla.org/en-US/kb/profiles-where-firefox-stores-user-data
 - **Firefox does not use DPAPI**; `key4.db` + `logins.json` are protected by the Primary Password (empty by default), so copying both recovers passwords. The DPAPI request (Bugzilla 719548) was never implemented. **[verified]** https://bugzilla.mozilla.org/show_bug.cgi?id=719548
 - mozLz4 = `mozLz40\0` + uint32 LE size + LZ4 block (sessions, bookmark backups, `search.json.mozlz4`). **[secondary]** https://blog.dend.ro/decoding-firefox-session-store-data/
-- Open item **[unverified]**: Firefox 135+ "profile groups" may change `profiles.ini` semantics; the observed 2026 profile still used classic sections.
+- Firefox 135+ profile groups: a `StoreID=` line in `profiles.ini` or `installs.ini` is treated as groups mode. Transplant still copies the profile folder; `profiles.ini` is not appended. The user registers it in `about:profiles`. **[verified in-product]** Mozilla's current KB still documents classic `[ProfileN]` registration; groups UI remains **[secondary]**.
 
 ## 3. Syncthing
 

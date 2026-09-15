@@ -28,6 +28,9 @@ public sealed class SshRecipe : IRecipe
                     "Private keys, public keys, config and known_hosts. Existing destination files are never overwritten; a conflict is saved as *.from-windows-old. Private key material is never shown." +
                         (userFacts.Unencrypted > 0
                             ? " At least one private key has no passphrase; consider adding one with ssh-keygen -p."
+                            : string.Empty) +
+                        (userFacts.Efs > 0
+                            ? " At least one private key has the EFS attribute and may be unreadable after copy."
                             : string.Empty),
                     "Create new keys and update every server.",
                     "Keys do not regenerate.",
@@ -186,6 +189,7 @@ public sealed class SshRecipe : IRecipe
             ["unencryptedCount"] = facts.Unencrypted.ToString(),
             ["configHosts"] = facts.ConfigHosts.ToString(),
             ["knownHosts"] = facts.KnownHosts.ToString(),
+            ["efsKeys"] = facts.Efs.ToString(),
             ["component"] = "files",
         };
     }
@@ -196,6 +200,7 @@ public sealed class SshRecipe : IRecipe
         List<string> fingerprints = [];
         List<string> keyTypes = [];
         int unencrypted = 0;
+        int efs = 0;
         int configHosts = 0;
         int knownHosts = 0;
         foreach (string entry in safeFs.EnumerateFileSystemEntries(directory))
@@ -243,10 +248,32 @@ public sealed class SshRecipe : IRecipe
             {
                 unencrypted++;
             }
+
+            if (HasEfsAttribute(entry))
+            {
+                efs++;
+            }
         }
 
-        facts = new SshFolderFacts(names, fingerprints, keyTypes, unencrypted, configHosts, knownHosts);
+        facts = new SshFolderFacts(names, fingerprints, keyTypes, unencrypted, efs, configHosts, knownHosts);
         return names.Count > 0;
+    }
+
+    internal static bool HasEfsAttribute(string path)
+    {
+        try
+        {
+            return HasEfsAttribute(File.GetAttributes(path));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    internal static bool HasEfsAttribute(FileAttributes attributes)
+    {
+        return (attributes & FileAttributes.Encrypted) != 0;
     }
 
     private static bool LooksLikePrivateKey(string name, ReadOnlySpan<byte> head)
@@ -331,6 +358,7 @@ public sealed class SshRecipe : IRecipe
         List<string> Fingerprints,
         List<string> KeyTypes,
         int Unencrypted,
+        int Efs,
         int ConfigHosts,
         int KnownHosts);
 

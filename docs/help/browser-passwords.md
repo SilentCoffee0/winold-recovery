@@ -7,3 +7,5 @@ Sign in to the same Google account (Chrome) or Microsoft account (Edge) if sync 
 Firefox is different: `logins.json` and `key4.db` are restored together into a new profile. The card reports whether a Primary Password is set, not set, or could not be determined from `key4.db` metadata. If one is set, Firefox will ask for it after restore. The tool never exports those passwords as text.
 
 Open tabs are listed in `tabs.html` from the newest `sessionstore*.jsonlz4`. Installed add-ons are listed in `extensions.html` with addons.mozilla.org search links. Builtin Firefox add-ons are omitted.
+
+If the old or new `profiles.ini` has a `StoreID` (Firefox 135+ profile groups), WinOld Recovery still copies the recovered profile folder but does not edit `profiles.ini`. Use **about:profiles → Create a new profile**, then point it at the recovered folder or copy the files in.

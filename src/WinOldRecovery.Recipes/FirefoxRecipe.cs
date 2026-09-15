@@ -58,6 +58,14 @@ public sealed class FirefoxRecipe : IRecipe
             context.SafeFs,
             firefox,
             context.OldProfileRoot);
+        string destFirefox = Path.Combine(
+            context.DestinationProfileRoot,
+            "AppData",
+            "Roaming",
+            "Mozilla",
+            "Firefox");
+        bool profileGroups = FirefoxProfileGroups.Detected(context.SafeFs, firefox) ||
+            FirefoxProfileGroups.Detected(context.SafeFs, destFirefox);
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
         foreach (DiscoveredFirefoxProfile discovered in profiles)
@@ -124,7 +132,10 @@ public sealed class FirefoxRecipe : IRecipe
                     "Everything Firefox knows: bookmarks, history, open tabs, saved passwords, cookies, add-ons and settings.",
                     "Firefox does not tie passwords to the Windows account, so they can come back.",
                     "Copied as a new profile so nothing in your current Firefox is touched. " +
-                    PrimaryPasswordRestoreCopy(primaryPassword),
+                    PrimaryPasswordRestoreCopy(primaryPassword) +
+                    (profileGroups
+                        ? " Firefox 135+ profile groups (StoreID) were found, so profiles.ini is not edited. Use about:profiles → Create, then copy the recovered folder in."
+                        : string.Empty),
                     "Firefox Account sync, if it was enabled.",
                     "Caches regenerate. The profile does not.",
                     "You keep the current Firefox profile and lose the old bookmarks, passwords and tabs.",
@@ -185,6 +196,7 @@ public sealed class FirefoxRecipe : IRecipe
                         ["primaryPassword"] = primaryPassword,
                         ["tabsHtml"] = tabsHtml,
                         ["extensionsHtml"] = extensionsHtml,
+                        ["profileGroups"] = profileGroups ? "1" : "0",
                     }));
             DetectorWalk.AddTreeBadge(
                 badges,
@@ -240,21 +252,25 @@ public sealed class FirefoxRecipe : IRecipe
                 }
             }
 
-            string iniPath = Path.Combine(
+            string destFirefox = Path.Combine(
                 destination.DestinationProfileRoot,
                 "AppData",
                 "Roaming",
                 "Mozilla",
-                "Firefox",
-                "profiles.ini");
-            writes.Add(
-                new RecipeWrite(
-                    RecipeWriteKind.WriteContent,
-                    null,
-                    iniPath,
-                    BuildProfilesIni(destination, folder),
-                    1,
-                    "transplant"));
+                "Firefox");
+            bool skipIni = decisions.Card.Facts.GetValueOrDefault("profileGroups") == "1" ||
+                FirefoxProfileGroups.Detected(destination.SafeFs, destFirefox);
+            if (!skipIni)
+            {
+                writes.Add(
+                    new RecipeWrite(
+                        RecipeWriteKind.WriteContent,
+                        null,
+                        Path.Combine(destFirefox, "profiles.ini"),
+                        BuildProfilesIni(destination, folder),
+                        1,
+                        "transplant"));
+            }
         }
 
         string exportRoot = Path.Combine(
