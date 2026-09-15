@@ -33,6 +33,7 @@ public sealed class PublishedScanProbeTests
             Assert.Contains("WalkSeconds:", report, StringComparison.Ordinal);
             Assert.Contains("ClassifySeconds:", report, StringComparison.Ordinal);
             Assert.Contains("TreePageRows:", report, StringComparison.Ordinal);
+            Assert.Contains("TreeParent: Scale", report, StringComparison.Ordinal);
         }
         finally
         {

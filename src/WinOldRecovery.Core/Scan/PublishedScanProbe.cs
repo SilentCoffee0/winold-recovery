@@ -63,13 +63,10 @@ public static class PublishedScanProbe
         peakWorkingSet = Math.Max(peakWorkingSet, process.WorkingSet64);
         NodeBrowser browser = new(sessionDb, sessionId);
         Stopwatch treeClock = Stopwatch.StartNew();
-        NodePage folders = browser.GetLargest(null, folders: true);
-        TreeNodeRow? scale = folders.Rows.FirstOrDefault(
-            static row => string.Equals(row.Name, "Scale", StringComparison.OrdinalIgnoreCase))
-            ?? folders.Rows.FirstOrDefault();
+        TreeNodeRow? scale = FindNamedDescendant(browser, ["Users", "Alice", "Scale"]);
         NodePage page = scale is null
-            ? browser.GetChildren(null)
-            : browser.GetChildren(scale.Id);
+            ? browser.GetChildren(null, mixedSummaries: false)
+            : browser.GetChildren(scale.Id, mixedSummaries: false);
         treeClock.Stop();
 
         bool passed = result.Walk.Completed &&
@@ -90,6 +87,47 @@ public static class PublishedScanProbe
                 "TreePageMilliseconds: " + treeClock.Elapsed.TotalMilliseconds.ToString("0.0", CultureInfo.InvariantCulture),
                 "TreeParent: " + (scale?.Name ?? "(root)"),
             ]);
+    }
+
+    private static TreeNodeRow? FindNamedDescendant(NodeBrowser browser, IReadOnlyList<string> names)
+    {
+        TreeNodeRow? found = WalkNamed(browser, null, names);
+        if (found is not null)
+        {
+            return found;
+        }
+
+        NodePage roots = browser.GetChildren(null, mixedSummaries: false);
+        for (int index = 0; index < roots.Rows.Count; index++)
+        {
+            found = WalkNamed(browser, roots.Rows[index].Id, names);
+            if (found is not null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    private static TreeNodeRow? WalkNamed(NodeBrowser browser, long? parentId, IReadOnlyList<string> names)
+    {
+        TreeNodeRow? current = null;
+        long? id = parentId;
+        for (int index = 0; index < names.Count; index++)
+        {
+            NodePage page = browser.GetChildren(id, mixedSummaries: false);
+            current = page.Rows.FirstOrDefault(
+                row => string.Equals(row.Name, names[index], StringComparison.OrdinalIgnoreCase));
+            if (current is null)
+            {
+                return null;
+            }
+
+            id = current.Id;
+        }
+
+        return current;
     }
 
     private static async Task SampleWorkingSetAsync(

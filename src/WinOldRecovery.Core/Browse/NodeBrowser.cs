@@ -22,7 +22,11 @@ public sealed class NodeBrowser
         this.sessionId = sessionId;
     }
 
-    public NodePage GetChildren(long? parentId, int offset = 0, int limit = ChildPageSize)
+    public NodePage GetChildren(
+        long? parentId,
+        int offset = 0,
+        int limit = ChildPageSize,
+        bool mixedSummaries = true)
     {
         return Query(
             parentFilter: parentId is null
@@ -32,7 +36,8 @@ public sealed class NodeBrowser
             orderBy: "name COLLATE NOCASE",
             offset,
             limit,
-            parentId);
+            parentId,
+            mixedSummaries: mixedSummaries);
     }
 
     public NodePage GetLargest(long? underNodeId, bool folders)
@@ -237,7 +242,8 @@ public sealed class NodeBrowser
         long? parentId,
         string? relPrefix = null,
         DateTimeOffset? cutoffUtc = null,
-        string? search = null)
+        string? search = null,
+        bool mixedSummaries = true)
     {
         string where = "session_id = $sessionId AND " + parentFilter;
         if (!string.IsNullOrWhiteSpace(extraFilter))
@@ -312,7 +318,9 @@ public sealed class NodeBrowser
 
         Dictionary<long, IReadOnlyList<string>> badges = LoadBadges(connection, pending);
         Dictionary<long, int> childCounts = LoadChildCounts(connection, pending);
-        HashSet<long> mixedIds = LoadMixedDirectoryIds(connection, pending, childCounts);
+        HashSet<long> mixedIds = mixedSummaries
+            ? LoadMixedDirectoryIds(connection, pending, childCounts)
+            : [];
 
         List<TreeNodeRow> rows = new(pending.Count);
         foreach (PendingRow item in pending)
