@@ -11,29 +11,31 @@ public sealed class OutlookRecipe : IRecipe
     {
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
-        foreach (string pst in DetectorWalk.EnumerateFiles(
-                     context.SafeFs,
-                     Path.Combine(context.OldProfileRoot, "Documents"),
-                     6))
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string root in PstSearchRoots(context.OldProfileRoot))
         {
-            if (!Path.GetExtension(pst).Equals(".pst", StringComparison.OrdinalIgnoreCase))
+            foreach (string pst in DetectorWalk.EnumerateFiles(context.SafeFs, root, 6))
             {
-                continue;
-            }
+                if (!Path.GetExtension(pst).Equals(".pst", StringComparison.OrdinalIgnoreCase) ||
+                    !seen.Add(Path.GetFullPath(pst)))
+                {
+                    continue;
+                }
 
-            string name = Path.GetFileName(pst);
-            cards.Add(
-                CreateCard(
-                    context,
-                    "Outlook PST — " + name,
-                    "pst",
-                    pst,
-                    Decision.Restore,
-                    "Open PST in Outlook: File → Open & Export → Open Outlook Data File",
-                    "The PST data file.",
-                    "A copy on another computer or the server mailbox.",
-                    "The archive is unique; Outlook will not recreate it."));
-            DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, pst, "Outlook", name);
+                string name = Path.GetFileName(pst);
+                cards.Add(
+                    CreateCard(
+                        context,
+                        "Outlook PST — " + name,
+                        "pst",
+                        pst,
+                        Decision.Restore,
+                        "Open PST in Outlook: File → Open & Export → Open Outlook Data File",
+                        "The PST data file.",
+                        "A copy on another computer or the server mailbox.",
+                        "The archive is unique; Outlook will not recreate it."));
+                DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, pst, "Outlook", name);
+            }
         }
 
         string ostRoot = Path.Combine(
@@ -131,5 +133,14 @@ public sealed class OutlookRecipe : IRecipe
                 ["kind"] = kind,
                 ["profileRoot"] = context.OldProfileRoot,
             });
+    }
+
+    private static IEnumerable<string> PstSearchRoots(string profileRoot)
+    {
+        yield return Path.Combine(profileRoot, "Documents");
+        yield return Path.Combine(profileRoot, "Desktop");
+        yield return Path.Combine(profileRoot, "Downloads");
+        yield return Path.Combine(profileRoot, "AppData", "Local", "Microsoft", "Outlook");
+        yield return Path.Combine(profileRoot, "AppData", "Roaming", "Microsoft", "Outlook");
     }
 }

@@ -2072,7 +2072,13 @@ public sealed class RecipeTests
         Assert.True(new GpgRecipe().Verify(gpgPlan).Ok);
         Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "gnupg", "private-keys-v1.d", "key")));
         Assert.False(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "gnupg", "random_seed")));
-        Assert.Contains(context.Runner.Requests, request => request.FileName == "gpg.exe");
+        Assert.Contains(
+            context.Runner.Requests,
+            request => request.FileName == "gpg.exe" &&
+                request.Environment is not null &&
+                request.Environment.TryGetValue("GNUPGHOME", out string? home) &&
+                home is not null &&
+                home.EndsWith(Path.Combine("AppData", "Roaming", "gnupg"), StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -2220,6 +2226,8 @@ public sealed class RecipeTests
             """{"profiles":{}}""");
         Directory.CreateDirectory(Path.Combine(alice, "Documents", "Notes", ".obsidian"));
         await File.WriteAllTextAsync(Path.Combine(alice, "Documents", "Notes", "welcome.md"), "hello");
+        Directory.CreateDirectory(Path.Combine(alice, "Desktop"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "Desktop", "backup.pst"), "desktop-pst");
         Directory.CreateDirectory(Path.Combine(alice, "Documents", "Outlook Files"));
         await File.WriteAllTextAsync(Path.Combine(alice, "Documents", "Outlook Files", "archive.pst"), "pst");
         Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "Microsoft", "Outlook"));
@@ -2279,6 +2287,9 @@ public sealed class RecipeTests
             badge => badge.Kind == "Outlook" && badge.Detail == "archive.pst");
         Assert.Contains(
             outlookDetected.Badges,
+            badge => badge.Kind == "Outlook" && badge.Detail == "backup.pst");
+        Assert.Contains(
+            outlookDetected.Badges,
             badge => badge.Kind == "Outlook" && badge.Detail == "user.ost");
         string highValueBadgeDump = string.Join(
             ';',
@@ -2324,11 +2335,20 @@ public sealed class RecipeTests
         Assert.True(new ObsidianRecipe().Verify(obsidianPlan).Ok);
         Assert.True(File.Exists(Path.Combine(context.Destination, "Documents", "Notes", "welcome.md")));
 
-        RecipeCard pst = Assert.Single(cards, card => card.Title.Contains("PST", StringComparison.Ordinal));
-        PlanResult pstPlan = host.PlanCard(new OutlookRecipe(), pst, Dest(context));
+        Assert.Equal(2, cards.Count(card => card.RecipeId == "outlook" && card.Facts["kind"] == "pst"));
+        RecipeCard archivePst = Assert.Single(
+            cards,
+            card => card.Title.Contains("archive.pst", StringComparison.OrdinalIgnoreCase));
+        PlanResult pstPlan = host.PlanCard(new OutlookRecipe(), archivePst, Dest(context));
         await host.ExecuteAsync("session-1", new OutlookRecipe(), pstPlan);
         Assert.True(new OutlookRecipe().Verify(pstPlan).Ok);
         Assert.True(File.Exists(Path.Combine(context.Destination, "Documents", "Outlook Files", "archive.pst")));
+        RecipeCard desktopPst = Assert.Single(
+            cards,
+            card => card.Title.Contains("backup.pst", StringComparison.OrdinalIgnoreCase));
+        PlanResult desktopPlan = host.PlanCard(new OutlookRecipe(), desktopPst, Dest(context));
+        await host.ExecuteAsync("session-1", new OutlookRecipe(), desktopPlan);
+        Assert.True(File.Exists(Path.Combine(context.Destination, "Desktop", "backup.pst")));
 
         RecipeCard ost = Assert.Single(cards, card => card.Title.Contains("OST", StringComparison.Ordinal));
         PlanResult ostPlan = host.PlanCard(new OutlookRecipe(), ost, Dest(context));

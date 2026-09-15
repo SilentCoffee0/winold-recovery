@@ -74,10 +74,18 @@ public sealed class GpgRecipe : IRecipe
             return;
         }
 
+        string? home = DestinationHome(plan);
+        Dictionary<string, string?> environment = [];
+        if (!string.IsNullOrEmpty(home))
+        {
+            environment["GNUPGHOME"] = home;
+        }
+
         await plan.Destination.ProcessRunner.RunAsync(
                 new WinOldRecovery.Core.Processes.ProcessRequest(
                     "gpg.exe",
                     ["--list-secret-keys"],
+                    Environment: environment.Count == 0 ? null : environment,
                     Timeout: TimeSpan.FromSeconds(30)),
                 cancellationToken)
             .ConfigureAwait(false);
@@ -97,6 +105,27 @@ public sealed class GpgRecipe : IRecipe
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite("gpg-agent", "Stop gpg-agent (gpgconf --kill all) before restoring the keyring.")];
+
+    private static string? DestinationHome(PlanResult plan)
+    {
+        foreach (RecipeWrite write in plan.Writes)
+        {
+            string? current = Path.GetDirectoryName(write.DestinationPath);
+            while (!string.IsNullOrEmpty(current))
+            {
+                string name = Path.GetFileName(current);
+                if (name.Equals("gnupg", StringComparison.OrdinalIgnoreCase) ||
+                    name.Equals("gnupg.from-windows-old", StringComparison.OrdinalIgnoreCase))
+                {
+                    return current;
+                }
+
+                current = Path.GetDirectoryName(current);
+            }
+        }
+
+        return null;
+    }
 
     private static IEnumerable<string> CandidateHomes(ProfileContext context)
     {
