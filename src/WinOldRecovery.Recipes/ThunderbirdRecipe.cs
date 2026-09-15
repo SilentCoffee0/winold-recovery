@@ -38,6 +38,7 @@ public sealed class ThunderbirdRecipe : IRecipe
         }
 
         List<RecipeCard> cards = [];
+        List<(string RelativePath, string Kind, string Detail)> badges = [];
         foreach (string profile in context.SafeFs.EnumerateFileSystemEntries(profilesDir))
         {
             if (!context.SafeFs.DirectoryExists(profile) || DetectorWalk.IsReparse(profile))
@@ -89,9 +90,10 @@ public sealed class ThunderbirdRecipe : IRecipe
                         ["files"] = string.Join('|', present),
                         ["folder"] = folder,
                     }));
+            DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, profile, "Thunderbird", folder);
         }
 
-        return new DetectResult(cards, []);
+        return new DetectResult(cards, badges);
     }
 
     public PlanResult Plan(CardDecisions decisions, DestinationContext destination)

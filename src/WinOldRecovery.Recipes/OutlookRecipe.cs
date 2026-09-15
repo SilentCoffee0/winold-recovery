@@ -10,6 +10,7 @@ public sealed class OutlookRecipe : IRecipe
     public DetectResult Detect(ProfileContext context)
     {
         List<RecipeCard> cards = [];
+        List<(string RelativePath, string Kind, string Detail)> badges = [];
         foreach (string pst in DetectorWalk.EnumerateFiles(
                      context.SafeFs,
                      Path.Combine(context.OldProfileRoot, "Documents"),
@@ -32,6 +33,7 @@ public sealed class OutlookRecipe : IRecipe
                     "The PST data file.",
                     "A copy on another computer or the server mailbox.",
                     "The archive is unique; Outlook will not recreate it."));
+            DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, pst, "Outlook", name);
         }
 
         string ostRoot = Path.Combine(
@@ -58,9 +60,15 @@ public sealed class OutlookRecipe : IRecipe
                     "Nothing by default. OST is regenerable from the server.",
                     "Sign in to the same mailbox.",
                     "Cached mail regenerates after you connect."));
+            DetectorWalk.AddTreeBadge(
+                badges,
+                context.OldProfileRoot,
+                ost,
+                "Outlook",
+                Path.GetFileName(ost));
         }
 
-        return new DetectResult(cards, []);
+        return new DetectResult(cards, badges);
     }
 
     public PlanResult Plan(CardDecisions decisions, DestinationContext destination)

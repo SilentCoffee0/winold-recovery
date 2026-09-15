@@ -11,6 +11,7 @@ public sealed class WslRecipe : IRecipe
     public DetectResult Detect(ProfileContext context)
     {
         List<RecipeCard> cards = [];
+        List<(string RelativePath, string Kind, string Detail)> badges = [];
         foreach (string disk in FindDisks(context.SafeFs, Path.Combine(context.OldProfileRoot, "AppData", "Local")))
         {
             string name = DistroName(disk);
@@ -60,6 +61,12 @@ public sealed class WslRecipe : IRecipe
                         ["name"] = name,
                         ["docker"] = docker ? "1" : "0",
                     }));
+            DetectorWalk.AddTreeBadge(
+                badges,
+                context.OldProfileRoot,
+                disk,
+                docker ? "Docker" : "WSL",
+                name);
         }
 
         string wsl1 = Path.Combine(context.OldProfileRoot, "AppData", "Local", "lxss");
@@ -87,9 +94,10 @@ public sealed class WslRecipe : IRecipe
                     ],
                     context.ProfileName + ":wsl1",
                     new Dictionary<string, string> { ["source"] = wsl1, ["wsl1"] = "1" }));
+            DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, wsl1, "WSL", "WSL 1 (manual)");
         }
 
-        return new DetectResult(cards, []);
+        return new DetectResult(cards, badges);
     }
 
     public PlanResult Plan(CardDecisions decisions, DestinationContext destination)

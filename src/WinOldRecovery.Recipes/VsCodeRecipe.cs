@@ -19,6 +19,7 @@ public sealed class VsCodeRecipe : IRecipe
     public DetectResult Detect(ProfileContext context)
     {
         List<RecipeCard> cards = [];
+        List<(string RelativePath, string Kind, string Detail)> badges = [];
         foreach ((string idSuffix, string title, string userRelative, string extensionsRelative) in Products)
         {
             string user = Path.Combine(context.OldProfileRoot, userRelative);
@@ -80,9 +81,10 @@ public sealed class VsCodeRecipe : IRecipe
                         ["cli"] = idSuffix == "cursor" ? "cursor" : idSuffix == "vscodium" ? "codium" : "code",
                         ["extensions"] = string.Join('|', extensionIds),
                     }));
+            DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, user, title, "settings");
         }
 
-        return new DetectResult(cards, []);
+        return new DetectResult(cards, badges);
     }
 
     public PlanResult Plan(CardDecisions decisions, DestinationContext destination)

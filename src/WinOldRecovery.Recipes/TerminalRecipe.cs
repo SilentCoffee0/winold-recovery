@@ -16,6 +16,7 @@ public sealed class TerminalRecipe : IRecipe
         }
 
         List<RecipeCard> cards = [];
+        List<(string RelativePath, string Kind, string Detail)> badges = [];
         foreach (string package in context.SafeFs.EnumerateFileSystemEntries(packages))
         {
             if (!context.SafeFs.DirectoryExists(package) || DetectorWalk.IsReparse(package))
@@ -54,9 +55,10 @@ public sealed class TerminalRecipe : IRecipe
                         ["source"] = settings,
                         ["package"] = name,
                     }));
+            DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, settings, "Windows Terminal", "settings");
         }
 
-        return new DetectResult(cards, []);
+        return new DetectResult(cards, badges);
     }
 
     public PlanResult Plan(CardDecisions decisions, DestinationContext destination)

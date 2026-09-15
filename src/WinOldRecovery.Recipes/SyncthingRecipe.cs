@@ -70,7 +70,16 @@ public sealed class SyncthingRecipe : IRecipe
                         ["preview"] = scrubbed,
                         ["oldProfile"] = context.OldProfileRoot,
                     }));
-            badges.Add((Path.GetRelativePath(context.OldProfileRoot, home), "Syncthing", deviceId));
+            DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, home, "Syncthing", deviceId);
+            foreach (SyncthingFolder folder in SyncthingConfig.ListFolders(xml))
+            {
+                DetectorWalk.AddTreeBadge(
+                    badges,
+                    context.OldProfileRoot,
+                    folder.Path,
+                    "Syncthing folder",
+                    folder.Label);
+            }
         }
 
         return new DetectResult(cards, badges);

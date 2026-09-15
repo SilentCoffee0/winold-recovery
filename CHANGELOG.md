@@ -45,7 +45,7 @@ All notable changes to WinOld Recovery will be documented here.
 - Chromium History/SNSS/extension-store exports and Firefox `places.sqlite` bookmark/history exports via read-only SQLite copies in the session temp folder; `ssh -G` and git.exe analyze requests through `IProcessRunner`; help pages under `docs/help/`.
 - Syncthing recipe: device ID from cert DER, rewritten config with every folder paused and old-profile paths remapped, GUI secrets scrubbed from cards, index never restored.
 - Anki profile restore (WAL + media, no trash/media index), WSL VHDX copy with header verify, GPG keyring restore excluding `random_seed`.
-- R9 detector cards: KeePass vault+keyfile copy, Outlook PST restore / OST leave, Thunderbird allow-list transplant (no panacea/global-messages-db), VS Code settings plus `install-extensions.cmd`, Windows Terminal `settings.from-windows-old.json`, Obsidian vault copy.
+- Recipe detectors attach tree badges for Firefox, Chrome, Edge, KeePass, GPG, WSL/Docker, Anki, Outlook, Thunderbird, VS Code, Windows Terminal, and Obsidian. Syncthing folders under the old profile are `[Syncthing folder: <label>]`.
 - Gated purge: I10 gates, `PurgeToken` minted only after they pass, preferred `cleanmgr /sagerun:777` via `IProcessRunner`, reparse-aware manual delete, session purge manifest and support bundle.
 - Preview conflict list with per-file overwrite confirmation (I2); copy resume after a leftover `.winold-partial`; runtime disk-full pause that does not delete existing destination files.
 - Chromium autofill CSV from `Web Data` (never `credit_cards`); optional bookmark transplant behind `WINOLD_RECOVERY_CHROMIUM_TRANSPLANT=1`.

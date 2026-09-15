@@ -191,6 +191,31 @@ public sealed class RecipeTests
         Assert.DoesNotContain(Canary, dump, StringComparison.Ordinal);
         Assert.Contains(cards.Single(card => card.RecipeId == "chrome").Components, c => c.Fixed && c.Key == "passwords");
 
+        ProfileContext profile = new(
+            "Alice",
+            alice,
+            context.Destination,
+            context.Temp,
+            context.Exports,
+            context.SafeFs,
+            context.Runner);
+        DetectResult chromeDetected = new ChromiumRecipe(
+            "chrome",
+            "Google Chrome",
+            Path.Combine("AppData", "Local", "Google", "Chrome", "User Data")).Detect(profile);
+        Assert.Contains(
+            chromeDetected.Badges,
+            badge => badge.Kind == "Chrome" && badge.Detail == "Default");
+        DetectResult firefoxDetected = new FirefoxRecipe().Detect(profile);
+        Assert.Contains(
+            firefoxDetected.Badges,
+            badge => badge.Kind == "Firefox" && badge.Detail == "fixture");
+        string badgeDump = string.Join(
+            ';',
+            chromeDetected.Badges.Concat(firefoxDetected.Badges)
+                .Select(badge => badge.RelativePath + badge.Kind + badge.Detail));
+        Assert.DoesNotContain(Canary, badgeDump, StringComparison.Ordinal);
+
         RecipeCard ssh = cards.Single(card => card.RecipeId == "ssh");
         PlanResult sshPlan = host.PlanCard(new SshRecipe(), ssh, Dest(context));
         await context.Database.SetKvAsync(
@@ -913,6 +938,98 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task RecipeDetectors_PersistTreeBadgesOntoScanNodes()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        Directory.CreateDirectory(Path.Combine(alice, "Documents", "Passwords"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "Documents", "Passwords", "vault.kdbx"), "keepass");
+        Directory.CreateDirectory(Path.Combine(alice, "Sync"));
+        string home = Path.Combine(alice, "AppData", "Local", "Syncthing");
+        Directory.CreateDirectory(home);
+        string certPem = CreateCertificatePem();
+        await File.WriteAllTextAsync(Path.Combine(home, "cert.pem"), certPem);
+        await File.WriteAllTextAsync(Path.Combine(home, "key.pem"), "key");
+        await File.WriteAllTextAsync(
+            Path.Combine(home, "config.xml"),
+            $"""
+            <configuration version="37">
+              <folder id="default" label="Photos" path="{Path.Combine(alice, "Sync")}" paused="false" />
+            </configuration>
+            """);
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "vault.kdbx",
+                @"Users\Alice\Documents\Passwords\vault.kdbx",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                2,
+                "session-1",
+                null,
+                null,
+                "Sync",
+                @"Users\Alice\Sync",
+                NodeKind.Directory,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+
+        RecipeHost host = new(
+            context.Database,
+            context.SafeFs,
+            context.Runner,
+            [new KeePassRecipe(), new SyncthingRecipe()]);
+        await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+
+        using SqliteConnection connection = new(
+            new SqliteConnectionStringBuilder { DataSource = Path.Combine(context.Root, "session.db") }.ConnectionString);
+        connection.Open();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = "SELECT kind || ':' || detail FROM badges ORDER BY kind;";
+        List<string> stored = [];
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            stored.Add(reader.GetString(0));
+        }
+
+        Assert.Contains(stored, row => row.StartsWith("KeePass:", StringComparison.Ordinal) && row.Contains("vault.kdbx", StringComparison.Ordinal));
+        Assert.Contains(stored, row => row == "Syncthing folder:Photos");
+        Assert.DoesNotContain(stored, row => row.Contains(Canary, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Git_ConfigPlanCopiesIgnoreAndGlobalIgnore()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
@@ -1382,6 +1499,27 @@ public sealed class RecipeTests
         Assert.Equal(SyncthingDeviceId.FromCertificatePem(certPem), card.Facts["deviceId"]);
         Assert.Contains(card.Components, component => component.Fixed && component.Key == "index");
 
+        DetectResult synDetected = new SyncthingRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        Assert.Contains(
+            synDetected.Badges,
+            badge => badge.Kind == "Syncthing folder" && badge.Detail == "Default Folder");
+        Assert.Contains(
+            synDetected.Badges,
+            badge => badge.Kind == "Syncthing folder" && badge.Detail == "Docs");
+        Assert.DoesNotContain(synDetected.Badges, badge => badge.Detail == "External");
+        Assert.DoesNotContain(
+            Canary,
+            string.Join(';', synDetected.Badges.Select(badge => badge.RelativePath + badge.Kind + badge.Detail)),
+            StringComparison.Ordinal);
+
         PlanResult plan = host.PlanCard(new SyncthingRecipe(), card, Dest(context));
         Assert.DoesNotContain(plan.Writes, write => write.DestinationPath.Contains("index", StringComparison.OrdinalIgnoreCase));
         await host.ExecuteAsync("session-1", new SyncthingRecipe(), plan);
@@ -1741,6 +1879,42 @@ public sealed class RecipeTests
 
         string dump = string.Join('\n', cards.Select(card => card.Title + string.Join(';', card.Facts.Values)));
         Assert.DoesNotContain(Canary, dump, StringComparison.Ordinal);
+
+        ProfileContext profile = new(
+            "Alice",
+            alice,
+            context.Destination,
+            context.Temp,
+            context.Exports,
+            context.SafeFs,
+            context.Runner);
+        DetectResult keepassDetected = new KeePassRecipe().Detect(profile);
+        Assert.Contains(
+            keepassDetected.Badges,
+            badge => badge.Kind == "KeePass" && badge.Detail == "fixture.kdbx");
+        Assert.Contains(new VsCodeRecipe().Detect(profile).Badges, badge => badge.Kind == "VS Code");
+        Assert.Contains(
+            new ThunderbirdRecipe().Detect(profile).Badges,
+            badge => badge.Kind == "Thunderbird" && badge.Detail == "mail.default");
+        Assert.Contains(
+            new TerminalRecipe().Detect(profile).Badges,
+            badge => badge.Kind == "Windows Terminal" && badge.Detail == "settings");
+        Assert.Contains(
+            new ObsidianRecipe().Detect(profile).Badges,
+            badge => badge.Kind == "Obsidian" && badge.Detail == "Notes");
+        DetectResult outlookDetected = new OutlookRecipe().Detect(profile);
+        Assert.Contains(
+            outlookDetected.Badges,
+            badge => badge.Kind == "Outlook" && badge.Detail == "archive.pst");
+        Assert.Contains(
+            outlookDetected.Badges,
+            badge => badge.Kind == "Outlook" && badge.Detail == "user.ost");
+        string highValueBadgeDump = string.Join(
+            ';',
+            keepassDetected.Badges
+                .Concat(outlookDetected.Badges)
+                .Select(badge => badge.RelativePath + badge.Kind + badge.Detail));
+        Assert.DoesNotContain(Canary, highValueBadgeDump, StringComparison.Ordinal);
 
         RecipeCard keepass = Assert.Single(cards, card => card.RecipeId == "keepass");
         PlanResult keepassPlan = host.PlanCard(new KeePassRecipe(), keepass, Dest(context));

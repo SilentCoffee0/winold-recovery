@@ -11,6 +11,7 @@ public sealed class GpgRecipe : IRecipe
     public DetectResult Detect(ProfileContext context)
     {
         List<RecipeCard> cards = [];
+        List<(string RelativePath, string Kind, string Detail)> badges = [];
         foreach (string home in CandidateHomes(context))
         {
             if (!context.SafeFs.DirectoryExists(home))
@@ -41,9 +42,10 @@ public sealed class GpgRecipe : IRecipe
                     ],
                     context.ProfileName + ":" + home,
                     new Dictionary<string, string> { ["source"] = home }));
+            DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, home, "GPG", "keyring");
         }
 
-        return new DetectResult(cards, []);
+        return new DetectResult(cards, badges);
     }
 
     public PlanResult Plan(CardDecisions decisions, DestinationContext destination)

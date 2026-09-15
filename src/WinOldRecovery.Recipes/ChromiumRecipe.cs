@@ -35,6 +35,7 @@ public sealed class ChromiumRecipe : IRecipe
         }
 
         List<RecipeCard> cards = [];
+        List<(string RelativePath, string Kind, string Detail)> badges = [];
         foreach (string entry in context.SafeFs.EnumerateFileSystemEntries(userData))
         {
             string name = Path.GetFileName(entry);
@@ -145,9 +146,15 @@ public sealed class ChromiumRecipe : IRecipe
                         ["tabsHtml"] = tabsHtml,
                         ["autofillCsv"] = autofillCsv,
                     }));
+            DetectorWalk.AddTreeBadge(
+                badges,
+                context.OldProfileRoot,
+                entry,
+                Id.Equals("edge", StringComparison.Ordinal) ? "Edge" : "Chrome",
+                name);
         }
 
-        return new DetectResult(cards, []);
+        return new DetectResult(cards, badges);
     }
 
     public PlanResult Plan(CardDecisions decisions, DestinationContext destination)

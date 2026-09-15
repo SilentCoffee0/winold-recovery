@@ -59,6 +59,7 @@ public sealed class FirefoxRecipe : IRecipe
             firefox,
             context.OldProfileRoot);
         List<RecipeCard> cards = [];
+        List<(string RelativePath, string Kind, string Detail)> badges = [];
         foreach (DiscoveredFirefoxProfile discovered in profiles)
         {
             string profile = discovered.Directory;
@@ -185,9 +186,15 @@ public sealed class FirefoxRecipe : IRecipe
                         ["tabsHtml"] = tabsHtml,
                         ["extensionsHtml"] = extensionsHtml,
                     }));
+            DetectorWalk.AddTreeBadge(
+                badges,
+                context.OldProfileRoot,
+                profile,
+                "Firefox",
+                string.IsNullOrWhiteSpace(discovered.Name) ? folder : discovered.Name);
         }
 
-        return new DetectResult(cards, []);
+        return new DetectResult(cards, badges);
     }
 
     public PlanResult Plan(CardDecisions decisions, DestinationContext destination)

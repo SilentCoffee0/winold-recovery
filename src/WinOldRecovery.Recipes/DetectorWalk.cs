@@ -262,6 +262,31 @@ internal static class DetectorWalk
         return Path.GetRelativePath(StripExtended(root), StripExtended(path));
     }
 
+    public static void AddTreeBadge(
+        List<(string RelativePath, string Kind, string Detail)> badges,
+        string oldProfileRoot,
+        string path,
+        string kind,
+        string detail)
+    {
+        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(kind))
+        {
+            return;
+        }
+
+        string relative = RelativeUnder(oldProfileRoot, path);
+        if (string.IsNullOrWhiteSpace(relative) ||
+            relative is "." or ".." ||
+            relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+            relative.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal) ||
+            Path.IsPathRooted(relative))
+        {
+            return;
+        }
+
+        badges.Add((relative, kind, detail));
+    }
+
     public static void CopyFileKeepBoth(
         SafeFs safeFs,
         string source,

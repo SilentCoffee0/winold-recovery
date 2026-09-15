@@ -12,6 +12,7 @@ public sealed class AnkiRecipe : IRecipe
     public DetectResult Detect(ProfileContext context)
     {
         List<RecipeCard> cards = [];
+        List<(string RelativePath, string Kind, string Detail)> badges = [];
         foreach (string baseFolder in CandidateBases(context))
         {
             if (!context.SafeFs.DirectoryExists(baseFolder))
@@ -93,10 +94,16 @@ public sealed class AnkiRecipe : IRecipe
                             ["media"] = media.ToString(),
                             ["integrity"] = integrity,
                         }));
+                DetectorWalk.AddTreeBadge(
+                    badges,
+                    context.OldProfileRoot,
+                    profile,
+                    "Anki",
+                    Path.GetFileName(profile));
             }
         }
 
-        return new DetectResult(cards, []);
+        return new DetectResult(cards, badges);
     }
 
     public PlanResult Plan(CardDecisions decisions, DestinationContext destination)

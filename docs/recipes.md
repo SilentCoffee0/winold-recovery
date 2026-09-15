@@ -1,6 +1,6 @@
 # App recipes
 
-Smart cards explain what was found in Windows.old. Leave Behind never deletes; only Purge does.
+Smart cards explain what was found in Windows.old. Leave Behind never deletes; only Purge does. Detected apps also badge matching tree nodes (`[Firefox: fixture]`, `[KeePass: vault.kdbx]`, `[Syncthing folder: Photos]`).
 
 | App | What comes back | Honest limit |
 |---|---|---|

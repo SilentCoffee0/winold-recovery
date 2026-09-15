@@ -10,6 +10,7 @@ public sealed class ObsidianRecipe : IRecipe
     public DetectResult Detect(ProfileContext context)
     {
         List<RecipeCard> cards = [];
+        List<(string RelativePath, string Kind, string Detail)> badges = [];
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
         string[] roots =
         [
@@ -47,10 +48,11 @@ public sealed class ObsidianRecipe : IRecipe
                             ["source"] = vault,
                             ["relative"] = DetectorWalk.RelativeUnder(context.OldProfileRoot, vault),
                         }));
+                DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, vault, "Obsidian", name);
             }
         }
 
-        return new DetectResult(cards, []);
+        return new DetectResult(cards, badges);
     }
 
     public PlanResult Plan(CardDecisions decisions, DestinationContext destination)

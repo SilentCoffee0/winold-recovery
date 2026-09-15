@@ -10,6 +10,7 @@ public sealed class KeePassRecipe : IRecipe
     public DetectResult Detect(ProfileContext context)
     {
         List<RecipeCard> cards = [];
+        List<(string RelativePath, string Kind, string Detail)> badges = [];
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
         foreach (string vault in FindVaults(context))
         {
@@ -51,9 +52,10 @@ public sealed class KeePassRecipe : IRecipe
                         ["keys"] = string.Join('|', keys),
                         ["relative"] = DetectorWalk.RelativeUnder(context.OldProfileRoot, vault),
                     }));
+            DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, vault, "KeePass", name);
         }
 
-        return new DetectResult(cards, []);
+        return new DetectResult(cards, badges);
     }
 
     public PlanResult Plan(CardDecisions decisions, DestinationContext destination)
