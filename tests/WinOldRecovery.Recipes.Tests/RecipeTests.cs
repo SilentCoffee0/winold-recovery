@@ -90,6 +90,54 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Ssh_DetectsOpenSshServerHostKeysAsUndecided()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        Directory.CreateDirectory(Path.Combine(alice, ".ssh"));
+        await File.WriteAllTextAsync(Path.Combine(alice, ".ssh", "id_ed25519"), "user-key");
+        string server = Path.Combine(context.Source, "ProgramData", "ssh");
+        Directory.CreateDirectory(server);
+        await File.WriteAllTextAsync(Path.Combine(server, "ssh_host_ed25519_key"), Canary);
+        await File.WriteAllTextAsync(Path.Combine(server, "ssh_host_ed25519_key.pub"), "ssh-ed25519 HOST");
+        await File.WriteAllTextAsync(Path.Combine(server, "sshd_config"), "Port 22");
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, [new SshRecipe()]);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+
+        RecipeCard serverCard = Assert.Single(cards, card => card.InstanceKey == "openssh-server");
+        Assert.Equal(Decision.Undecided, serverCard.Components.Single(component => component.Key == "host-keys").SuggestedDefault);
+        Assert.DoesNotContain(Canary, string.Join(';', serverCard.Facts.Values), StringComparison.Ordinal);
+        Assert.Empty(host.PlanCard(new SshRecipe(), serverCard, Dest(context)).Writes);
+
+        await context.Database.SetKvAsync(
+            "session-1",
+            StoredRecipeDecisions.KvKey(serverCard.InstanceKey, "host-keys"),
+            nameof(Decision.Restore));
+        PlanResult plan = host.PlanCard(new SshRecipe(), serverCard, Dest(context), "session-1");
+        await host.ExecuteAsync("session-1", new SshRecipe(), plan);
+        Assert.True(new SshRecipe().Verify(plan).Ok);
+        Assert.True(File.Exists(Path.Combine(context.Destination, "Recovered", "OpenSSH-Server", "sshd_config")));
+        Assert.True(File.Exists(Path.Combine(context.Destination, "Recovered", "OpenSSH-Server", "ssh_host_ed25519_key")));
+    }
+
+    [Fact]
     public async Task SshAndChromeAndFirefoxAndGit_DetectWithoutLeakingCanaries()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
@@ -1726,6 +1774,8 @@ public sealed class RecipeTests
         Assert.False(Directory.Exists(Path.Combine(destAnki, "collection.media", "media.trash")));
 
         RecipeCard wslCard = Assert.Single(cards, card => card.RecipeId == "wsl");
+        Assert.Equal("512", wslCard.Facts["fileSize"]);
+        Assert.False(string.IsNullOrWhiteSpace(wslCard.Facts["lastModified"]));
         PlanResult wslPlan = host.PlanCard(new WslRecipe(), wslCard, Dest(context));
         await host.ExecuteAsync("session-1", new WslRecipe(), wslPlan);
         Assert.True(new WslRecipe().Verify(wslPlan).Ok);

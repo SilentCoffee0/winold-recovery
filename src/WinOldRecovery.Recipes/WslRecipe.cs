@@ -18,9 +18,12 @@ public sealed class WslRecipe : IRecipe
             bool docker = disk.Contains("Docker", StringComparison.OrdinalIgnoreCase) ||
                 name.Contains("docker", StringComparison.OrdinalIgnoreCase);
             long size = 0;
+            string lastModified = string.Empty;
             try
             {
-                size = new FileInfo(disk).Length;
+                FileInfo info = new(disk);
+                size = info.Length;
+                lastModified = info.LastWriteTimeUtc.ToString("O");
             }
             catch (IOException)
             {
@@ -60,6 +63,8 @@ public sealed class WslRecipe : IRecipe
                         ["source"] = disk,
                         ["name"] = name,
                         ["docker"] = docker ? "1" : "0",
+                        ["fileSize"] = size.ToString(),
+                        ["lastModified"] = lastModified,
                     }));
             DetectorWalk.AddTreeBadge(
                 badges,
