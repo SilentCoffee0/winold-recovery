@@ -7,10 +7,11 @@ they do not substitute for these tests.
 The backup-privilege 100k FixtureGen self-check passed 15 Sep 2026 on this
 development machine. The 200 MB VHDX preflight disk-full probe, 1400 MB runtime
 disk-full pause/resume, published 1M `--scan` memory ceiling, published
-mid-copy kill-and-resume, and the FlaUI smoke on the published EXE also passed
-the same day. The remaining rows still need a disposable Windows 11 VM or
-signing credentials. The current agent process is not elevated
-(`S-1-16-8192`); the passing runs were launched through UAC `RunAs`.
+mid-copy kill-and-resume, the FlaUI smoke on the published EXE, and Explorer
+long-path `/select,` also passed the same day. The remaining rows still need a
+disposable Windows 11 VM or signing credentials. The current agent process is
+not elevated (`S-1-16-8192`); the passing runs were launched through UAC
+`RunAs` where elevation was required.
 
 ## Backup-privilege enumeration and read
 
@@ -54,12 +55,24 @@ Pending on a clean Windows 11 VM:
 
 ## Explorer long-path selection
 
-Pending interactive test:
+Passed 15 Sep 2026 on this development machine (`tools/run-explorer-long-path.ps1`).
+**The Explorer long-path row is complete.**
 
-1. Use a fixture path longer than 260 characters.
-2. Run the application's eventual Open Containing Folder action.
-3. Confirm whether `explorer.exe /select,` selects it.
-4. If not, implement and test opening the nearest shorter ancestor.
+The probe created a 345-character file under `%TEMP%`, asked
+`ExplorerSelect.BuildSelectArgument` for the `/select,` argument (same helper
+Open Folder uses), launched `explorer.exe` with that argument, and confirmed
+through `Shell.Application` that Explorer selected the nearest ancestor whose
+path is 251 characters (limit 259). The leaf itself is longer than Explorer
+accepts; the ancestor folder was highlighted. The probe then closed only that
+Explorer window.
+
+Evidence:
+
+- Transcript: `%TEMP%\WinOldRecovery-explorer-longpath-f3b01ca150e84361b4df4dc92f248625.log`
+- `Passed=true`, `SelectedLength=251`, `SelectedName=segment-0211-abcdefghijklmnopqrstuvwxyz`
+- Leaf: 345 characters ending in `deep-file.txt`
+
+Do not tag.
 
 ## Disk-full VHDX destination
 
@@ -144,7 +157,7 @@ Recorded from the development console session. This is not a pass.
 
 - Integrity: Medium (`S-1-16-8192`). `BUILTIN\Administrators` is present as a deny-only SID. `net session` failed. The agent is **not elevated**.
 - Interactive desktop: console logon for user `VJ` is present, but launching the `requireAdministrator` EXE still needs a UAC consent that this Medium IL process cannot complete by itself. FlaUI smoke uses `ProcessStartInfo.Verb = runas` when `RUN_FLAUI=1`.
-- Explorer long paths: code now selects the nearest ancestor whose path is at most 259 characters (and strips `\\?\`). Clicking the result in Explorer is still pending.
+- Explorer long paths: code selects the nearest ancestor whose path is at most 259 characters (and strips `\\?\`). Interactive confirmation passed 15 Sep 2026 (`tools/run-explorer-long-path.ps1`, transcript `%TEMP%\WinOldRecovery-explorer-longpath-f3b01ca150e84361b4df4dc92f248625.log`): Explorer selected the 251-character ancestor of a 345-character leaf.
 - Crash-resume overlay: unit tests cover journal detection and the Resume prompt. Integration kills `RestoreHarness` mid-CopyTree of 50k files. Headless published kill-and-resume passed 15 Sep 2026 (450/2000 files killed, resume `Passed: true`). The WPF overlay was then dismissed by the FlaUI smoke on an elevated interactive desktop the same day.
 - SignPath / Trusted Signing: no signing identity, API token, or `SIGNPATH_ENABLED` variable is configured. Release assets stay unsigned.
 - `cleanmgr` and a setup-created Windows.old were not run. The 1,000,000-node published `--scan` later passed on 15 Sep 2026.

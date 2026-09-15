@@ -94,7 +94,7 @@ All notable changes to WinOld Recovery will be documented here.
 - First-run overlay explaining the six steps and the two promises; in-app Help from bundled local Markdown (F1 / Help); Log opens the session log in Explorer; help files cannot leave the help folder.
 - In-app redacted session log viewer; middle-ellipsis long paths with full path in Inspect; panes collapse to Cards/Files/Inspect tabs below 1200 px; space budget says when a plan will not fit or is near the limit.
 - Scan source picker shows created/estimated-deletion dates, Browse for any folder, Pause/Resume with skipped-item counters, and thousands-separated sizes in the Files list.
-- Explorer Open Folder walks up from paths longer than 259 characters; FlaUI smoke requests UAC (`runas`) when `RUN_FLAUI=1`; elevated FixtureGen helper script `tools/run-elevated-m0.ps1`.
+- Explorer Open Folder walks up from paths longer than 259 characters; interactive confirmation passed 15 Sep 2026 (`tools/run-explorer-long-path.ps1`, Explorer selected a 251-character ancestor of a 345-character leaf). FlaUI smoke requests UAC (`runas`) when `RUN_FLAUI=1`; elevated FixtureGen helper script `tools/run-elevated-m0.ps1`.
 - Decide Files paging past 2,000 children, Recent 7/30/90-day selector, Reveal in tree, purge source-integrity text, and blocked step navigation during restore.
 - Decide shortcuts ignore typing in text boxes; Restore/Leave Behind keep the expanded tree; overwrite ticks update the button; glob search is case-insensitive; Recent uses the same UTC timestamp format as scan inserts.
 - A new Scan clears the previous tree and relocks Purge (I10); Cancel discards the in-flight scan, Pause still resumes.
