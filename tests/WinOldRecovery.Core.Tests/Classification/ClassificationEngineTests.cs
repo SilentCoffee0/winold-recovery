@@ -262,6 +262,33 @@ public sealed class ClassificationEngineTests
         Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(hive.Id));
     }
 
+    [Fact]
+    public async Task Classify_BadgesPasswordManagerExportsAsSensitive()
+    {
+        await using ClassifyContext context = await ClassifyContext.CreateAsync();
+        string alice = Path.Combine(context.Root, "Windows.old", "Users", "Alice");
+        Directory.CreateDirectory(Path.Combine(alice, "Documents"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "NTUSER.DAT"), "hive");
+        await File.WriteAllTextAsync(Path.Combine(alice, "Documents", "bitwarden_export_2026.json"), "{}");
+        await File.WriteAllTextAsync(Path.Combine(alice, "Documents", "1Password Emergency Kit.pdf"), "kit");
+        await File.WriteAllTextAsync(Path.Combine(alice, "Documents", "notes.pdf"), "not-a-kit");
+
+        ScanOrchestrator orchestrator = new(context.Database, context.SafeFs, context.Guard);
+        await orchestrator.RunAsync(
+            context.SessionId,
+            Path.Combine(context.Root, "Windows.old"),
+            Path.Combine(context.Root, "tmp"));
+
+        TreeNodeRow bitwarden = Find(context, @"Users\Alice\Documents\bitwarden_export_2026.json");
+        TreeNodeRow kit = Find(context, @"Users\Alice\Documents\1Password Emergency Kit.pdf");
+        TreeNodeRow notes = Find(context, @"Users\Alice\Documents\notes.pdf");
+        Assert.Contains("Password export", bitwarden.BadgeText);
+        Assert.Contains("Password export", kit.BadgeText);
+        Assert.DoesNotContain("Password export", notes.BadgeText);
+        DecisionEngine engine = new(context.Database, context.SessionId);
+        Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(bitwarden.Id));
+    }
+
     private static TreeNodeRow Find(ClassifyContext context, string relPath)
     {
         return new NodeBrowser(context.Database, context.SessionId).FindByRelPath(relPath)

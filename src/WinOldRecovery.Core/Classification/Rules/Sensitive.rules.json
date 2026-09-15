@@ -75,6 +75,22 @@
       "pathContains": ["\\Microsoft\\Protect"]
     },
     {
+      "id": "password-manager-exports",
+      "kind": "Sensitive",
+      "badge": "Password export",
+      "why": "A password-manager export. Contents are never displayed; prefer re-importing into the manager.",
+      "sensitive": true,
+      "suggestedDefault": "Undecided",
+      "nameGlobs": [
+        "*.1pux",
+        "*.1pif",
+        "bitwarden_export*.json",
+        "bitwarden_export*.csv",
+        "*Emergency Kit.pdf",
+        "lastpass_export*.csv"
+      ]
+    },
+    {
       "id": "credential-vault",
       "kind": "Sensitive",
       "badge": "Sensitive",

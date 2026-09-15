@@ -68,4 +68,27 @@ public sealed class OfflineRegistryHive
 
         return values;
     }
+
+    public IReadOnlyList<string> GetSubKeyNames(string keyPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(keyPath);
+
+        global::Registry.Abstractions.RegistryKey? key = hive.GetKey(keyPath);
+        if (key is null)
+        {
+            return [];
+        }
+
+        List<string> names = [];
+        foreach (global::Registry.Abstractions.RegistryKey sub in key.SubKeys)
+        {
+            string name = Path.GetFileName(sub.KeyName.Replace('/', '\\'));
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                names.Add(name);
+            }
+        }
+
+        return names;
+    }
 }

@@ -1,6 +1,8 @@
 using WinOldRecovery.Core.Decisions;
 using WinOldRecovery.Core.IO;
+using WinOldRecovery.Core.Processes;
 using WinOldRecovery.Core.Recipes;
+using WinOldRecovery.Core.Registry;
 
 namespace WinOldRecovery.Recipes;
 
@@ -12,9 +14,12 @@ public sealed class WslRecipe : IRecipe
     {
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
+        IReadOnlyList<WslLxss.Distro> lxss = ReadLxss(context);
+        bool wslInstalled = ProbeWslInstalled(context.ProcessRunner);
         foreach (string disk in FindDisks(context.SafeFs, Path.Combine(context.OldProfileRoot, "AppData", "Local")))
         {
-            string name = DistroName(disk);
+            WslLxss.Distro? lxssDistro = WslLxss.Match(disk, lxss);
+            string name = !string.IsNullOrWhiteSpace(lxssDistro?.Name) ? lxssDistro.Name : DistroName(disk);
             bool docker = disk.Contains("Docker", StringComparison.OrdinalIgnoreCase) ||
                 name.Contains("docker", StringComparison.OrdinalIgnoreCase);
             long size = 0;
@@ -65,8 +70,10 @@ public sealed class WslRecipe : IRecipe
                         new RecipeComponent(
                             "register",
                             "Register with wsl.exe",
-                            "wsl --import-in-place after copy; tests never launch wsl.exe",
-                            Decision.Undecided,
+                            wslInstalled
+                                ? "wsl --import-in-place after copy; never against Windows.old"
+                                : "Install WSL first (wsl --install --no-distribution) then reboot",
+                            docker || !wslInstalled ? Decision.Undecided : Decision.Restore,
                             false,
                             null,
                             false),
@@ -80,6 +87,10 @@ public sealed class WslRecipe : IRecipe
                         ["fileSize"] = size.ToString(),
                         ["allocatedSize"] = allocated.ToString(),
                         ["lastModified"] = lastModified,
+                        ["defaultUid"] = lxssDistro?.DefaultUid ?? string.Empty,
+                        ["wslVersion"] = lxssDistro?.Version ?? string.Empty,
+                        ["wslInstalled"] = wslInstalled ? "1" : "0",
+                        ["defaultDistribution"] = lxssDistro is { IsDefault: true } ? "1" : "0",
                     }));
             DetectorWalk.AddTreeBadge(
                 badges,
@@ -179,6 +190,54 @@ public sealed class WslRecipe : IRecipe
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite("wsl", "Close WSL before registering a copied disk.")];
+
+    private static IReadOnlyList<WslLxss.Distro> ReadLxss(ProfileContext context)
+    {
+        string hivePath = Path.Combine(context.OldProfileRoot, "NTUSER.DAT");
+        if (!context.SafeFs.FileExists(hivePath))
+        {
+            return [];
+        }
+
+        try
+        {
+            OfflineRegistryHive hive = OfflineRegistryHive.OpenCopyAsync(
+                    hivePath,
+                    context.SessionTemporaryDirectory,
+                    context.SafeFs)
+                .GetAwaiter()
+                .GetResult();
+            IReadOnlyDictionary<string, string> root = hive.GetStringValues(WslLxss.KeyPath);
+            Dictionary<string, IReadOnlyDictionary<string, string>> children = new(StringComparer.OrdinalIgnoreCase);
+            foreach (string name in hive.GetSubKeyNames(WslLxss.KeyPath))
+            {
+                children[name] = hive.GetStringValues(WslLxss.KeyPath + "\\" + name);
+            }
+
+            return WslLxss.Read(root, children, context.OldProfileRoot, context.ProfileName);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException and not StackOverflowException)
+        {
+            return [];
+        }
+    }
+
+    private static bool ProbeWslInstalled(IProcessRunner runner)
+    {
+        try
+        {
+            ProcessResult result = runner
+                .RunAsync(
+                    new ProcessRequest("wsl.exe", ["--version"], Timeout: TimeSpan.FromSeconds(15)))
+                .GetAwaiter()
+                .GetResult();
+            return result.ExitCode == 0;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException and not StackOverflowException)
+        {
+            return false;
+        }
+    }
 
     private static IEnumerable<string> FindDisks(SafeFs safeFs, string root)
     {

@@ -56,6 +56,8 @@ All notable changes to WinOld Recovery will be documented here.
 - SSH cards flag OpenSSH private keys whose header cipher is `none`, and record key types plus `config` / `known_hosts` counts without storing key material.
 - Syncthing leaves `https-cert.pem` / `https-key.pem` behind by default and restores a `gui` folder when one exists.
 - WSL cards record VHDX allocated size next to file size.
+- WSL cards read offline `Lxss` DefaultUid/version/name and probe `wsl.exe --version` through the process runner (never `--import-in-place` against Windows.old).
+- Sensitive badges for password-manager exports (`.1pux`/`.1pif`, Bitwarden/LastPass export names, 1Password Emergency Kit).
 - Gated purge: I10 gates, `PurgeToken` minted only after they pass, preferred `cleanmgr /sagerun:777` via `IProcessRunner`, reparse-aware manual delete, session purge manifest and support bundle.
 - Preview conflict list with per-file overwrite confirmation (I2); copy resume after a leftover `.winold-partial`; runtime disk-full pause that does not delete existing destination files.
 - Chromium autofill CSV from `Web Data` (never `credit_cards`); optional bookmark transplant behind `WINOLD_RECOVERY_CHROMIUM_TRANSPLANT=1`.

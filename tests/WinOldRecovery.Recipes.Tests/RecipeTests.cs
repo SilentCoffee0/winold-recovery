@@ -147,6 +147,49 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public void WslLxss_MapsOldUserBasePathAndMatchesPackageFamily()
+    {
+        string alice = @"D:\Windows.old\Users\Alice";
+        string mapped = WslLxss.MapBasePath(
+            @"\\?\C:\Users\Alice\AppData\Local\Packages\CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc\LocalState",
+            alice,
+            "Alice");
+        Assert.Equal(
+            Path.GetFullPath(Path.Combine(alice, @"AppData\Local\Packages\CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc\LocalState")),
+            mapped);
+        IReadOnlyList<WslLxss.Distro> distros = WslLxss.Read(
+            new Dictionary<string, string> { ["DefaultDistribution"] = "{11111111-1111-1111-1111-111111111111}" },
+            new Dictionary<string, IReadOnlyDictionary<string, string>>
+            {
+                ["{11111111-1111-1111-1111-111111111111}"] = new Dictionary<string, string>
+                {
+                    ["DistributionName"] = "Ubuntu",
+                    ["BasePath"] = @"C:\Users\Alice\AppData\Local\Packages\CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc\LocalState",
+                    ["Version"] = "2",
+                    ["DefaultUid"] = "1000",
+                    ["PackageFamilyName"] = "CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc",
+                },
+            },
+            alice,
+            "Alice");
+        WslLxss.Distro? match = WslLxss.Match(
+            Path.Combine(
+                alice,
+                "AppData",
+                "Local",
+                "Packages",
+                "CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc",
+                "LocalState",
+                "ext4.vhdx"),
+            distros);
+        Assert.NotNull(match);
+        Assert.Equal("Ubuntu", match.Name);
+        Assert.Equal("1000", match.DefaultUid);
+        Assert.Equal("2", match.Version);
+        Assert.True(match.IsDefault);
+    }
+
+    [Fact]
     public async Task Ssh_Detect_MarksUnencryptedOpenSshKeysAndCountsHosts()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
@@ -1904,10 +1947,18 @@ public sealed class RecipeTests
         Assert.Equal("512", wslCard.Facts["fileSize"]);
         Assert.True(long.Parse(wslCard.Facts["allocatedSize"]) >= 512);
         Assert.False(string.IsNullOrWhiteSpace(wslCard.Facts["lastModified"]));
+        Assert.Equal("1", wslCard.Facts["wslInstalled"]);
+        Assert.Equal(Decision.Restore, wslCard.Components.Single(component => component.Key == "register").SuggestedDefault);
         PlanResult wslPlan = host.PlanCard(new WslRecipe(), wslCard, Dest(context));
         await host.ExecuteAsync("session-1", new WslRecipe(), wslPlan);
         Assert.True(new WslRecipe().Verify(wslPlan).Ok);
-        Assert.DoesNotContain(context.Runner.Requests, request => request.FileName.Equals("wsl.exe", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            context.Runner.Requests,
+            request => request.FileName.Equals("wsl.exe", StringComparison.OrdinalIgnoreCase) &&
+                request.Arguments.Contains("--version"));
+        Assert.DoesNotContain(
+            context.Runner.Requests,
+            request => request.Arguments.Contains("--import-in-place"));
         IReadOnlyList<WinOldRecovery.Core.Processes.ProcessRequest> register = WslRecipe.CreateRegisterRequests("Ubuntu", "C:\\tmp\\ext4.vhdx");
         Assert.Equal("wsl.exe", register[0].FileName);
         Assert.Contains("--import-in-place", register[1].Arguments);
