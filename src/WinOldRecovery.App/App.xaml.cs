@@ -38,25 +38,52 @@ public partial class App : Application
             InterruptedRestoreReport? interrupted = publishedScan
                 ? null
                 : InterruptedRestore.FindLatest(safeFs);
-            SessionWorkspace workspace = interrupted is null
-                ? SessionWorkspace.Create(safeFs, now: startedAt)
-                : SessionWorkspace.Open(interrupted.WorkspaceRoot, interrupted.SessionId);
-            sessionLogPath = workspace.LogPath;
-            sessionDatabase = SessionDb.OpenAsync(workspace.DatabasePath, safeFs)
-                .GetAwaiter()
-                .GetResult();
-            if (interrupted is null)
+            SessionWorkspace workspace;
+            if (publishedScan)
             {
-                sessionDatabase.CreateSessionAsync(
-                        new SessionRecord(
-                            workspace.SessionId,
-                            startedAt,
-                            "Created",
-                            typeof(App).Assembly.GetName().Version?.ToString() ?? "0.1.0"))
+                // Open SQLite off the WPF STA thread. CreateSessionAsync().GetResult()
+                // on the dispatcher deadlocks the writer when OpenAsync completes inline.
+                (workspace, sessionDatabase) = Task.Run(() =>
+                    {
+                        SessionWorkspace created = SessionWorkspace.Create(safeFs, now: startedAt);
+                        SessionDb database = SessionDb.OpenAsync(created.DatabasePath, safeFs)
+                            .GetAwaiter()
+                            .GetResult();
+                        database.CreateSessionAsync(
+                                new SessionRecord(
+                                    created.SessionId,
+                                    startedAt,
+                                    "Created",
+                                    typeof(App).Assembly.GetName().Version?.ToString() ?? "0.1.0"))
+                            .GetAwaiter()
+                            .GetResult();
+                        return (created, database);
+                    })
                     .GetAwaiter()
                     .GetResult();
             }
+            else
+            {
+                workspace = interrupted is null
+                    ? SessionWorkspace.Create(safeFs, now: startedAt)
+                    : SessionWorkspace.Open(interrupted.WorkspaceRoot, interrupted.SessionId);
+                sessionDatabase = SessionDb.OpenAsync(workspace.DatabasePath, safeFs)
+                    .GetAwaiter()
+                    .GetResult();
+                if (interrupted is null)
+                {
+                    sessionDatabase.CreateSessionAsync(
+                            new SessionRecord(
+                                workspace.SessionId,
+                                startedAt,
+                                "Created",
+                                typeof(App).Assembly.GetName().Version?.ToString() ?? "0.1.0"))
+                        .GetAwaiter()
+                        .GetResult();
+                }
+            }
 
+            sessionLogPath = workspace.LogPath;
             RollingFileLoggerProvider fileProvider = new(
                 workspace.LogPath,
                 safeFs,
