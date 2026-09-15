@@ -1,3 +1,4 @@
+using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
@@ -486,8 +487,6 @@ public sealed class FixtureGenerator
 
         hazards["efs"] = Created(targetRoot, efsFile);
 
-        string userName = $"WORFix{Guid.NewGuid():N}"[..18];
-        string password = $"Wor!{Guid.NewGuid():N}aA7";
         string orphanFile = Path.Combine(
             targetRoot,
             "Users",
@@ -495,34 +494,7 @@ public sealed class FixtureGenerator
             "Orphaned",
             "owned.txt");
         WriteText(orphanFile, "orphan owner fixture");
-
-        await RunRequiredAsync(
-            "net.exe",
-            ["user", userName, password, "/add", "/expires:never", "/passwordchg:no"],
-            "create the temporary fixture account",
-            cancellationToken);
-
-        string accountName = $@"{Environment.MachineName}\{userName}";
-        string ownerSid;
-        try
-        {
-            ownerSid = ((SecurityIdentifier)new NTAccount(accountName).Translate(
-                typeof(SecurityIdentifier))).Value;
-            await RunRequiredAsync(
-                "icacls.exe",
-                [orphanFile, "/setowner", accountName, "/Q"],
-                "set the orphan fixture owner",
-                cancellationToken);
-        }
-        finally
-        {
-            await RunRequiredAsync(
-                "net.exe",
-                ["user", userName, "/delete"],
-                "delete the temporary fixture account",
-                cancellationToken);
-        }
-
+        string ownerSid = AssignUnmappedOwner(orphanFile);
         hazards["orphan-sid"] = new FixtureHazard(
             "Created",
             Relative(targetRoot, orphanFile),
@@ -536,13 +508,33 @@ public sealed class FixtureGenerator
         CancellationToken cancellationToken)
     {
         ProcessResult result = await processRunner.RunAsync(
-            new ProcessRequest(fileName, arguments),
+            new ProcessRequest(fileName, arguments, Timeout: TimeSpan.FromSeconds(45)),
             cancellationToken);
         if (result.ExitCode != 0)
         {
             throw new InvalidOperationException(
                 $"Could not {operation}; {fileName} exited with code {result.ExitCode}.");
         }
+    }
+
+    private static string AssignUnmappedOwner(string path)
+    {
+        SecurityIdentifier sid = new("S-1-5-21-2147483647-1-1-1001");
+        FileInfo file = new(path);
+        FileSecurity security = file.GetAccessControl();
+        security.SetOwner(sid);
+        file.SetAccessControl(security);
+        try
+        {
+            _ = sid.Translate(typeof(NTAccount));
+            throw new InvalidOperationException(
+                "The orphan fixture SID unexpectedly mapped to a local account.");
+        }
+        catch (IdentityNotMappedException)
+        {
+        }
+
+        return FileSecurityInfo.GetOwnerSid(path);
     }
 
     private void WriteText(string path, string contents)
