@@ -146,6 +146,42 @@ public sealed class SessionDbTests
     }
 
     [Fact]
+    public async Task InsertBadges_WritesAcrossAMultiRowSqliteChunk()
+    {
+        await using SessionDbTestContext context = await SessionDbTestContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Scanning", "0.1.0"));
+        List<PersistedNode> nodes = new(100);
+        List<NodeBadgeRow> badges = new(100);
+        for (int id = 1; id <= 100; id++)
+        {
+            nodes.Add(
+                new PersistedNode(
+                    id,
+                    "session-1",
+                    null,
+                    null,
+                    "n" + id.ToString(CultureInfo.InvariantCulture),
+                    "p" + id.ToString(CultureInfo.InvariantCulture),
+                    NodeKind.File,
+                    0,
+                    0,
+                    0,
+                    DateTime.UtcNow,
+                    0,
+                    NodeProblem.None));
+            badges.Add(new NodeBadgeRow(id, "High-value", "d" + id.ToString(CultureInfo.InvariantCulture)));
+        }
+
+        await context.Database.InsertNodesAsync(nodes);
+        await context.Database.InsertBadgesAsync(badges);
+        using SqliteConnection reader = context.Database.OpenReadConnection();
+        using SqliteCommand count = reader.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM badges;";
+        Assert.Equal(100L, (long)(count.ExecuteScalar() ?? 0L));
+    }
+
+    [Fact]
     public async Task ReplaceKindBadges_ReplacesOnlyThatKindOnTheNode()
     {
         await using SessionDbTestContext context = await SessionDbTestContext.CreateAsync();

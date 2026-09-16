@@ -15,6 +15,7 @@ public sealed class SessionDb : IAsyncDisposable
 {
     private const int WriterQueueCapacity = 1024;
     private const int NodeInsertChunkSize = 48;
+    private const int BadgeInsertChunkSize = 96;
 
     private readonly SqliteConnection writerConnection;
     private readonly Channel<IWriteRequest> writerQueue;
@@ -274,6 +275,28 @@ public sealed class SessionDb : IAsyncDisposable
         command.Parameters.AddWithValue("$problem" + n, node.Problem.ToString());
     }
 
+    private static string BuildBadgeInsertSql(int count)
+    {
+        StringBuilder sql = new(48 + (count * 48));
+        sql.Append("INSERT OR IGNORE INTO badges(node_id, kind, detail) VALUES");
+        for (int index = 0; index < count; index++)
+        {
+            if (index > 0)
+            {
+                sql.Append(',');
+            }
+
+            string n = index.ToString(CultureInfo.InvariantCulture);
+            sql.Append(" ($nodeId").Append(n)
+                .Append(", $kind").Append(n)
+                .Append(", $detail").Append(n)
+                .Append(')');
+        }
+
+        sql.Append(';');
+        return sql.ToString();
+    }
+
     public Task UpdateNodeAggregatesAsync(
         IReadOnlyList<NodeAggregateUpdate> updates,
         CancellationToken cancellationToken = default)
@@ -329,30 +352,32 @@ public sealed class SessionDb : IAsyncDisposable
         }
 
         return WriteAsync(
-            async (connection, token) =>
+            (connection, token) =>
             {
                 using SqliteTransaction transaction = connection.BeginTransaction();
-                await using SqliteCommand command = connection.CreateCommand();
-                command.Transaction = transaction;
-                command.CommandText =
-                    """
-                    INSERT OR IGNORE INTO badges(node_id, kind, detail)
-                    VALUES ($nodeId, $kind, $detail);
-                    """;
-                SqliteParameter nodeId = command.Parameters.Add("$nodeId", SqliteType.Integer);
-                SqliteParameter kind = command.Parameters.Add("$kind", SqliteType.Text);
-                SqliteParameter detail = command.Parameters.Add("$detail", SqliteType.Text);
-
-                foreach (NodeBadgeRow badge in badges)
+                int offset = 0;
+                while (offset < badges.Count)
                 {
                     token.ThrowIfCancellationRequested();
-                    nodeId.Value = badge.NodeId;
-                    kind.Value = badge.Kind;
-                    detail.Value = badge.Detail;
+                    int count = Math.Min(BadgeInsertChunkSize, badges.Count - offset);
+                    using SqliteCommand command = connection.CreateCommand();
+                    command.Transaction = transaction;
+                    command.CommandText = BuildBadgeInsertSql(count);
+                    for (int index = 0; index < count; index++)
+                    {
+                        NodeBadgeRow badge = badges[offset + index];
+                        string n = index.ToString(CultureInfo.InvariantCulture);
+                        command.Parameters.AddWithValue("$nodeId" + n, badge.NodeId);
+                        command.Parameters.AddWithValue("$kind" + n, badge.Kind);
+                        command.Parameters.AddWithValue("$detail" + n, badge.Detail);
+                    }
+
                     command.ExecuteNonQuery();
+                    offset += count;
                 }
 
                 transaction.Commit();
+                return Task.CompletedTask;
             },
             cancellationToken);
     }
