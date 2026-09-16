@@ -44,6 +44,7 @@ All notable changes to WinOld Recovery will be documented here.
 - I7 source scan also refuses `WebClient`, `HttpWebRequest`, `UdpClient`, `SocketsHttpHandler`, `WebRequest.Create`, `FtpWebRequest`, `HttpListener`, and `Dns.GetHost`.
 - README includes PRODUCT_SPEC §10 search phrases, including `selectively restore from Windows.old`. In-app Help still opens “What can and cannot be recovered” from `limitations.md`.
 - Copy path on the Decide Files context menu writes the selected source path through `ITextClipboard` (WPF clipboard in the app; captured in tests). Copied paths drop the `\\?\` prefix so Explorer can paste them.
+- Scan lists each Windows.old as a two-line card (path, kind, created date, profile count, estimated deletion) and shows the 10-day Setup Cleanup warning in a callout. Scan options sit under the source list.
 - FlaUI scan→decide→preview→restore→verify→purge on a browsed TEMP fixture passed 16 Sep 2026 (`tools/run-flaui-e2e.ps1`, 23.6 s). A second FlaUI case kills published `--restore` mid-copy and asserts the Resume overlay (27.2 s, two tests). The app refuses a volume-root `Windows.old*` smoke path, forces PreferManualDelete, and will not start the scan until the status line shows `Smoke fixture ready`. Still skipped in CI unless `RUN_FLAUI=1`.
 - Release workflow submits both published EXEs to SignPath when repository variable `SIGNPATH_ENABLED` is `true`, then checksums the signed copies. Without that variable the SignPath steps are skipped and assets stay unsigned.
 - Milestone 0 .NET 10 solution and project dependency structure.

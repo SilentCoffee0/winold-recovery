@@ -211,7 +211,23 @@
                     <TextBlock Margin="0,6,0,0"
                                Style="{StaticResource CaptionText}"
                                Text="{Binding ElevationNote}" />
-                    <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Text="{Binding SourceHint}" />
+                    <Border>
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource CalloutBorder}">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SourceHint}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding SourceHint}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock TextWrapping="Wrap" Text="{Binding SourceHint}"
+                                   AutomationProperties.Name="Source warning" />
+                    </Border>
                     <TextBlock Margin="0,6,0,0" Style="{StaticResource CaptionText}" Text="{Binding CurrentPath}"
                                ToolTip="{Binding CurrentPathFull}" />
                     <TextBlock Margin="0,6,0,0" Text="{Binding RestoreProgress}" TextWrapping="Wrap"
@@ -234,20 +250,41 @@
                                 Content="Browse…" Command="{Binding BrowseSourceCommand}"
                                 AutomationProperties.Name="Browse for Windows.old"
                                 AutomationProperties.AutomationId="BrowseSourceButton" />
-                        <ListBox MaxHeight="148"
-                                 Style="{StaticResource CardListBox}"
-                                 ItemsSource="{Binding Sources}"
-                                 SelectedValuePath="Path"
-                                 SelectedValue="{Binding SelectedSourcePath}"
-                                 AutomationProperties.Name="Windows.old sources">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Style="{StaticResource CardBorder}" Padding="12,8" Margin="0,0,0,4">
-                                        <TextBlock Text="{Binding DisplayLabel}" TextWrapping="Wrap" />
-                                    </Border>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Margin="0,0,0,8"
+                                       Text="Where is the old Windows?" />
+                            <ListBox MaxHeight="188"
+                                     Style="{StaticResource CardListBox}"
+                                     ItemsSource="{Binding Sources}"
+                                     SelectedValuePath="Path"
+                                     SelectedValue="{Binding SelectedSourcePath}"
+                                     AutomationProperties.Name="Windows.old sources">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource CardBorder}" Padding="12,10" Margin="0,0,0,4">
+                                            <StackPanel>
+                                                <TextBlock FontWeight="SemiBold" Text="{Binding PathLabel}" TextWrapping="Wrap" />
+                                                <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionText}"
+                                                           Text="{Binding DetailLabel}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <WrapPanel Margin="0,8,0,0">
+                                <TextBlock VerticalAlignment="Center" Margin="0,0,12,8" FontWeight="SemiBold" Text="Scan options" />
+                                <CheckBox Content="Compute folder sizes and counts (recommended)"
+                                          IsChecked="{Binding ComputeFolderSizes}"
+                                          VerticalAlignment="Center"
+                                          Margin="0,0,16,8"
+                                          AutomationProperties.Name="Compute folder sizes and counts" />
+                                <CheckBox Content="Hash files smaller than 64 MB during scan (slower; enables strong verify)"
+                                          IsChecked="{Binding HashDuringScan}"
+                                          VerticalAlignment="Center"
+                                          Margin="0,0,0,8"
+                                          AutomationProperties.Name="Hash files smaller than 64 MB during scan" />
+                            </WrapPanel>
+                        </StackPanel>
                     </DockPanel>
 
                     <DockPanel Grid.Row="1" Margin="0,8,0,8">
@@ -577,19 +614,6 @@
                         <TextBlock Margin="4,8,8,8" VerticalAlignment="Center" Text="{Binding PagingStatus}" />
                         </WrapPanel>
                         </Border>
-                        <WrapPanel Margin="0,8,0,0">
-                            <TextBlock VerticalAlignment="Center" Margin="0,0,12,8" FontWeight="SemiBold" Text="Scan options" />
-                            <CheckBox Content="Compute folder sizes and counts (recommended)"
-                                      IsChecked="{Binding ComputeFolderSizes}"
-                                      VerticalAlignment="Center"
-                                      Margin="0,0,16,8"
-                                      AutomationProperties.Name="Compute folder sizes and counts" />
-                            <CheckBox Content="Hash files smaller than 64 MB during scan (slower; enables strong verify)"
-                                      IsChecked="{Binding HashDuringScan}"
-                                      VerticalAlignment="Center"
-                                      Margin="0,0,0,8"
-                                      AutomationProperties.Name="Hash files smaller than 64 MB during scan" />
-                        </WrapPanel>
                     </StackPanel>
                     <DockPanel Grid.Row="3">
                         <DockPanel.Style>

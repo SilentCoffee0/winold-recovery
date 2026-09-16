@@ -42,6 +42,10 @@ public sealed class SourceDiscoveryTests : IDisposable
         Assert.Contains("22 Sep 2026", candidates[0].DeletionWarning, StringComparison.Ordinal);
         Assert.All(candidates, candidate => Assert.NotNull(candidate.EstimatedAutoDeleteAt));
         Assert.Contains("estimated deletion", candidates[0].DisplayLabel, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("estimated deletion", candidates[0].DetailLabel, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Windows.old", candidates[0].KindLabel);
+        Assert.Equal(1, candidates[0].UserProfileCount);
+        Assert.Contains("1 profile", candidates[0].DetailLabel, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -189,7 +193,8 @@ public sealed class SourceDiscoveryTests : IDisposable
 
     private static void CreateWindowsOld(string path, int createdDaysAgo)
     {
-        Directory.CreateDirectory(Path.Combine(path, "Users"));
+        Directory.CreateDirectory(Path.Combine(path, "Users", "Alice"));
+        Directory.CreateDirectory(Path.Combine(path, "Users", "Default"));
         Directory.CreateDirectory(Path.Combine(path, "Windows"));
         DateTime created = DateTime.Now.AddDays(-createdDaysAgo);
         Directory.SetCreationTime(path, created);

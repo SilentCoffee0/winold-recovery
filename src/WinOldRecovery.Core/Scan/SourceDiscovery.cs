@@ -224,6 +224,40 @@ public sealed class SourceDiscovery
             LooksLikeWindowsInstallation(normalized),
             HasUsersFolder(normalized),
             taskPresent,
-            taskPresent ? cleanupTask.NextRunAt : null);
+            taskPresent ? cleanupTask.NextRunAt : null,
+            CountUserProfiles(normalized));
+    }
+
+    private static int CountUserProfiles(string sourceRoot)
+    {
+        string users = Path.Combine(sourceRoot, "Users");
+        if (!Directory.Exists(users))
+        {
+            return 0;
+        }
+
+        EnumerationOptions options = new()
+        {
+            RecurseSubdirectories = false,
+            IgnoreInaccessible = true,
+            ReturnSpecialDirectories = false,
+            AttributesToSkip = 0,
+        };
+
+        int count = 0;
+        foreach (string directory in Directory.EnumerateDirectories(users, "*", options))
+        {
+            string name = Path.GetFileName(directory);
+            if (name.Equals("Default", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("Default User", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("All Users", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            count++;
+        }
+
+        return count;
     }
 }
