@@ -2102,6 +2102,72 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Wsl_Detect_FindsExt4VhdxFromRecipeIndexWithoutWalkingLocal()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string indexed = Path.Combine(alice, "AppData", "Local", "wsl", "{guid}", "ext4.vhdx");
+        string walked = Path.Combine(alice, "AppData", "Local", "Packages", "walked", "ext4.vhdx");
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "ext4.vhdx",
+                @"Users\Alice\AppData\Local\wsl\{guid}\ext4.vhdx",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+
+        DetectResult fromIndex = new WslRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner,
+                new RecipeIndex(
+                    context.Database,
+                    "session-1",
+                    @"Users\Alice",
+                    alice)));
+        RecipeCard indexedCard = Assert.Single(fromIndex.Cards);
+        Assert.Equal(indexed, indexedCard.Facts["source"]);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(walked)!);
+        byte[] vhdx = new byte[512];
+        System.Text.Encoding.ASCII.GetBytes("vhdxfile").CopyTo(vhdx, 0);
+        await File.WriteAllBytesAsync(walked, vhdx);
+        DetectResult fromDisk = new WslRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        string diskSource = Assert.Single(fromDisk.Cards).Facts["source"].Replace('/', '\\');
+        Assert.EndsWith(
+            @"Packages\walked\ext4.vhdx",
+            diskSource,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            fromIndex.Cards,
+            card => card.Facts["source"].Replace('/', '\\')
+                .EndsWith(@"Packages\walked\ext4.vhdx", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task AnkiWslAndGpg_RestoreWithoutTrashIndexOrRandomSeed()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();

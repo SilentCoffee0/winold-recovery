@@ -157,6 +157,53 @@ public sealed class RecipeIndexTests
                     @"AppData\Roaming\Microsoft\Windows\Start Menu\Programs")));
     }
 
+    [Fact]
+    public async Task Index_FindsWslVhdxUnderAppDataLocal()
+    {
+        await using RecipeIndexContext context = await RecipeIndexContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Created", "0.1.0"));
+        await context.Database.InsertNodesAsync(
+        [
+            Node(1, null, "Windows.old", ""),
+            Node(2, 1, "Alice", @"Users\Alice"),
+            Node(3, 2, "ext4.vhdx", @"Users\Alice\AppData\Local\wsl\{guid}\ext4.vhdx", NodeKind.File),
+            Node(4, 2, "docker_data.vhdx", @"Users\Alice\AppData\Local\Docker\wsl\data\docker_data.vhdx", NodeKind.File),
+            Node(5, 2, "other.vhdx", @"Users\Alice\Documents\backup.vhdx", NodeKind.File),
+        ]);
+
+        RecipeIndex index = new(
+            context.Database,
+            "session-1",
+            @"Users\Alice",
+            Path.Combine(context.Root, "Users", "Alice"));
+        Assert.Equal(
+            Path.Combine(context.Root, "Users", "Alice", "Documents", "backup.vhdx"),
+            Assert.Single(index.FilesWithExtensions(".vhdx")));
+        IReadOnlyList<string> disks = index.FilesWithExtensions(
+            [".vhdx"],
+            skipAppData: false,
+            Path.Combine("AppData", "Local"));
+        Assert.Equal(2, disks.Count);
+        Assert.Contains(
+            Path.Combine(context.Root, "Users", "Alice", "AppData", "Local", "wsl", "{guid}", "ext4.vhdx"),
+            disks,
+            StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            Path.Combine(
+                context.Root,
+                "Users",
+                "Alice",
+                "AppData",
+                "Local",
+                "Docker",
+                "wsl",
+                "data",
+                "docker_data.vhdx"),
+            disks,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
     private static PersistedNode Node(
         long id,
         long? parentId,

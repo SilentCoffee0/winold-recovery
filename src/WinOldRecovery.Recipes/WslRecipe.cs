@@ -16,7 +16,7 @@ public sealed class WslRecipe : IRecipe
         List<(string RelativePath, string Kind, string Detail)> badges = [];
         IReadOnlyList<WslLxss.Distro> lxss = ReadLxss(context);
         bool wslInstalled = ProbeWslInstalled(context.ProcessRunner);
-        foreach (string disk in FindDisks(context.SafeFs, Path.Combine(context.OldProfileRoot, "AppData", "Local")))
+        foreach (string disk in FindDisks(context))
         {
             WslLxss.Distro? lxssDistro = WslLxss.Match(disk, lxss);
             string name = !string.IsNullOrWhiteSpace(lxssDistro?.Name) ? lxssDistro.Name : DistroName(disk);
@@ -671,7 +671,40 @@ public sealed class WslRecipe : IRecipe
         }
     }
 
-    private static IEnumerable<string> FindDisks(SafeFs safeFs, string root)
+    private static IEnumerable<string> FindDisks(ProfileContext context)
+    {
+        if (context.Index is { } index)
+        {
+            foreach (string disk in index.FilesWithExtensions(
+                         [".vhdx"],
+                         skipAppData: false,
+                         relativeUnderProfile: Path.Combine("AppData", "Local")))
+            {
+                if (IsWslDiskName(disk))
+                {
+                    yield return disk;
+                }
+            }
+
+            yield break;
+        }
+
+        foreach (string disk in FindDisksOnDisk(
+                     context.SafeFs,
+                     Path.Combine(context.OldProfileRoot, "AppData", "Local")))
+        {
+            yield return disk;
+        }
+    }
+
+    private static bool IsWslDiskName(string path)
+    {
+        string name = Path.GetFileName(path);
+        return name.Equals("ext4.vhdx", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("docker_data.vhdx", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<string> FindDisksOnDisk(SafeFs safeFs, string root)
     {
         if (!safeFs.DirectoryExists(root))
         {
@@ -706,9 +739,7 @@ public sealed class WslRecipe : IRecipe
                     continue;
                 }
 
-                string name = Path.GetFileName(entry);
-                if (name.Equals("ext4.vhdx", StringComparison.OrdinalIgnoreCase) ||
-                    name.Equals("docker_data.vhdx", StringComparison.OrdinalIgnoreCase))
+                if (IsWslDiskName(entry))
                 {
                     yield return entry;
                 }
