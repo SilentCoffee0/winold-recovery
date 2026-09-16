@@ -606,7 +606,7 @@
                                    Text="Conflict policy"
                                    AutomationProperties.Name="Conflict policy" />
                         <RadioButton DockPanel.Dock="Top" GroupName="ConflictPolicy"
-                                     Content="Keep both (restored copy gets a suffix)"
+                                     Content="Keep both (restored copy gets a (from Windows.old) suffix)"
                                      IsChecked="{Binding IsKeepBothPolicy}"
                                      AutomationProperties.Name="Keep both conflict policy"
                                      AutomationProperties.AutomationId="ConflictKeepBothRadio" />

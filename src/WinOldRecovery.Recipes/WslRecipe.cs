@@ -181,9 +181,22 @@ public sealed class WslRecipe : IRecipe
         await journal.StartedAsync("register", cancellationToken).ConfigureAwait(false);
         try
         {
-            foreach (ProcessRequest request in CreateRegisterRequests(plan.Card.Facts["name"], destinationVhdx))
+            IProcessRunner runner = plan.Destination.ProcessRunner;
+            ProcessResult listed = await runner
+                .RunAsync(
+                    new ProcessRequest("wsl.exe", ["-l", "-v"], Timeout: TimeSpan.FromSeconds(30)),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (listed.ExitCode != 0)
             {
-                ProcessResult result = await plan.Destination.ProcessRunner
+                throw new IOException("wsl.exe -l -v exited " + listed.ExitCode + ".");
+            }
+
+            string registerName = ChooseRegisteredDistroName(plan.Card.Facts["name"], listed.StandardOutput);
+            RememberRegisterName(plan.Card, registerName);
+            foreach (ProcessRequest request in CreateRegisterRequests(registerName, destinationVhdx))
+            {
+                ProcessResult result = await runner
                     .RunAsync(request, cancellationToken)
                     .ConfigureAwait(false);
                 if (result.ExitCode != 0)
@@ -317,6 +330,68 @@ public sealed class WslRecipe : IRecipe
         return true;
     }
 
+    public static string ChooseRegisteredDistroName(string requested, string listing)
+    {
+        string sourceName = string.IsNullOrWhiteSpace(requested) ? "distro" : requested.Trim();
+        string text = listing.Replace("\0", string.Empty, StringComparison.Ordinal);
+        string candidate = sourceName;
+        int suffix = 0;
+        while (ListingContainsDistro(text, candidate))
+        {
+            suffix++;
+            candidate = suffix == 1
+                ? sourceName + "-recovered"
+                : sourceName + "-recovered-" + suffix;
+            if (suffix > 100)
+            {
+                throw new InvalidOperationException("No free WSL distro name for " + sourceName + ".");
+            }
+        }
+
+        return candidate;
+    }
+
+    public static bool ListingContainsDistro(string listing, string name)
+    {
+        using StringReader reader = new(listing);
+        while (reader.ReadLine() is { } line)
+        {
+            string trimmed = line.Trim();
+            if (trimmed.Length == 0)
+            {
+                continue;
+            }
+
+            if (trimmed.StartsWith('*'))
+            {
+                trimmed = trimmed.TrimStart('*').TrimStart();
+            }
+
+            int space = trimmed.IndexOfAny([' ', '\t']);
+            string token = space < 0 ? trimmed : trimmed[..space];
+            if (token.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string RegisteredDistroName(RecipeCard card)
+    {
+        string? registered = card.Facts.GetValueOrDefault("registerName");
+        return string.IsNullOrWhiteSpace(registered) ? card.Facts["name"] : registered;
+    }
+
+    private static void RememberRegisterName(RecipeCard card, string registerName)
+    {
+        if (card.Facts is Dictionary<string, string> writable)
+        {
+            writable["registerName"] = registerName;
+        }
+    }
+
     public static string FormatDefaultUserCommands(string distroName, string defaultUid)
     {
         string uid = string.IsNullOrWhiteSpace(defaultUid) ? "<DefaultUid>" : defaultUid;
@@ -334,7 +409,7 @@ public sealed class WslRecipe : IRecipe
         CancellationToken cancellationToken)
     {
         IProcessRunner runner = plan.Destination!.ProcessRunner;
-        string distroName = plan.Card.Facts["name"];
+        string distroName = RegisteredDistroName(plan.Card);
         string defaultUid = plan.Card.Facts.GetValueOrDefault("defaultUid") ?? string.Empty;
         TimeSpan timeout = TimeSpan.FromSeconds(30);
         await journal.StartedAsync("defaultUser", cancellationToken).ConfigureAwait(false);
@@ -465,7 +540,7 @@ public sealed class WslRecipe : IRecipe
             return header;
         }
 
-        string name = plan.Card.Facts["name"];
+        string name = RegisteredDistroName(plan.Card);
         ProcessResult listed = await plan.Destination.ProcessRunner
             .RunAsync(new ProcessRequest("wsl.exe", ["-l", "-v"], Timeout: TimeSpan.FromSeconds(30)), cancellationToken)
             .ConfigureAwait(false);

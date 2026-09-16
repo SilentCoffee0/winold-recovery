@@ -2217,6 +2217,74 @@ public sealed class RecipeTests
         Assert.False(WslRecipe.TryParsePasswdName("alice;id:x:1000:1000::/home/alice:/bin/bash", out _));
         Assert.False(WslRecipe.IsSafeLinuxUserName("Alice"));
         Assert.False(WslRecipe.IsSafeLinuxUserName("alice;id"));
+        Assert.Equal("Ubuntu", WslRecipe.ChooseRegisteredDistroName("Ubuntu", string.Empty));
+        Assert.Equal(
+            "Ubuntu-recovered",
+            WslRecipe.ChooseRegisteredDistroName("Ubuntu", "* Ubuntu  Running  2\nDebian  Stopped  2\n"));
+        Assert.Equal(
+            "Ubuntu-recovered",
+            WslRecipe.ChooseRegisteredDistroName("Ubuntu", "U\0b\0u\0n\0t\0u\0 \0R\0u\0n\0n\0i\0n\0g\0"));
+    }
+
+    [Fact]
+    public async Task Wsl_Register_SuffixesWhenNameAlreadyListed()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string wsl = Path.Combine(alice, "AppData", "Local", "wsl", "{guid}", "ext4.vhdx");
+        Directory.CreateDirectory(Path.GetDirectoryName(wsl)!);
+        byte[] vhdx = new byte[512];
+        System.Text.Encoding.ASCII.GetBytes("vhdxfile").CopyTo(vhdx, 0);
+        await File.WriteAllBytesAsync(wsl, vhdx);
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, RecipeCatalog.All);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+        RecipeCard wslCard = Assert.Single(cards, card => card.RecipeId == "wsl");
+        PlanResult planned = host.PlanCard(new WslRecipe(), wslCard, Dest(context));
+        ScriptedWslRunner runner = new()
+        {
+            ListStdout = "Ubuntu  Running  2\n",
+            GetentStdout = "alice:x:1000:1000::/home/alice:/bin/bash\n",
+        };
+        Dictionary<string, string> facts = new(planned.Card.Facts, StringComparer.Ordinal)
+        {
+            ["name"] = "Ubuntu",
+            ["defaultUid"] = "1000",
+        };
+        PlanResult plan = planned with
+        {
+            Card = planned.Card with { Facts = facts },
+            Destination = new DestinationContext(context.Destination, context.Exports, context.SafeFs, runner),
+        };
+        await host.ExecuteAsync("session-1", new WslRecipe(), plan);
+        ProcessRequest import = Assert.Single(
+            runner.Requests,
+            request => request.Arguments.Contains("--import-in-place"));
+        Assert.Contains("Ubuntu-recovered", import.Arguments);
+        Assert.DoesNotContain(
+            import.Arguments,
+            static argument => argument.Equals("Ubuntu", StringComparison.Ordinal));
+        Assert.Equal("Ubuntu-recovered", plan.Card.Facts["registerName"]);
+        Assert.Contains(
+            runner.Requests,
+            request => request.Arguments.Contains("--set-default-user") &&
+                request.Arguments.Contains("Ubuntu-recovered"));
     }
 
     [Fact]
@@ -3241,6 +3309,8 @@ public sealed class RecipeTests
     {
         public List<ProcessRequest> Requests { get; } = [];
 
+        public string ListStdout { get; init; } = string.Empty;
+
         public string ConfStdout { get; init; } = string.Empty;
 
         public string GetentStdout { get; init; } = string.Empty;
@@ -3250,6 +3320,11 @@ public sealed class RecipeTests
         public Task<ProcessResult> RunAsync(ProcessRequest request, CancellationToken cancellationToken = default)
         {
             Requests.Add(request);
+            if (request.Arguments.Contains("-l"))
+            {
+                return Task.FromResult(new ProcessResult(0, ListStdout, string.Empty));
+            }
+
             if (request.Arguments.Contains("cat"))
             {
                 return Task.FromResult(new ProcessResult(0, ConfStdout, string.Empty));
