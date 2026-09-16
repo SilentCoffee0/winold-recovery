@@ -1424,7 +1424,7 @@ public sealed class ShellViewModel : ObservableObject
             return false;
         }
 
-        Directory.CreateDirectory(destination);
+        safeFs.CreateDirectory(destination);
         PreferCleanupHandler = false;
         InterruptedRestoreVisible = false;
         CurrentStep = WorkflowStep.Scan;

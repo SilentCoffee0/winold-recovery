@@ -1418,7 +1418,7 @@ public sealed class SessionDb : IAsyncDisposable
         {
             DataSource = databasePath,
             Mode = SqliteOpenMode.ReadOnly,
-            Pooling = true,
+            Pooling = false,
             DefaultTimeout = 5,
         }.ToString();
     }

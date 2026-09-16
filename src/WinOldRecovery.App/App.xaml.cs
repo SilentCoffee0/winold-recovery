@@ -126,7 +126,7 @@ public partial class App : Application
                         .GetResult())
                 .GetAwaiter()
                 .GetResult();
-            File.WriteAllText(restoreReport, restoreText);
+            safeFs.WriteAllText(restoreReport, restoreText);
             Shutdown(restoreText.Contains("Passed: true", StringComparison.Ordinal) ? 0 : 2);
             return;
         }
@@ -143,7 +143,7 @@ public partial class App : Application
                     .GetResult())
             .GetAwaiter()
             .GetResult();
-        File.WriteAllText(scanReport, report);
+        safeFs.WriteAllText(scanReport, report);
         Shutdown(report.Contains("Passed: true", StringComparison.Ordinal) ? 0 : 2);
     }
 

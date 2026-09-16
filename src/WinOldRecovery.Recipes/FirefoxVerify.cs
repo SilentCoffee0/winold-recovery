@@ -1,5 +1,7 @@
 using Microsoft.Data.Sqlite;
+using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Recipes;
+using WinOldRecovery.Core.Safety;
 
 namespace WinOldRecovery.Recipes;
 
@@ -127,18 +129,7 @@ internal static class FirefoxVerify
                 "firefox",
                 Guid.NewGuid().ToString("N"))
             : Path.Combine(Path.GetTempPath(), "WinOldRecovery-FxVerify-" + Guid.NewGuid().ToString("N"));
-        if (plan.Destination is not null)
-        {
-            return ReadOnlySqlite.CopyToTemp(
-                plan.Destination.SafeFs,
-                destinationPlaces,
-                tempDirectory,
-                "places.sqlite");
-        }
-
-        Directory.CreateDirectory(tempDirectory);
-        string copy = Path.Combine(tempDirectory, "places.sqlite");
-        File.Copy(destinationPlaces, copy, overwrite: true);
-        return copy;
+        SafeFs safeFs = plan.Destination?.SafeFs ?? new SafeFs(new SourceGuard());
+        return ReadOnlySqlite.CopyToTemp(safeFs, destinationPlaces, tempDirectory, "places.sqlite");
     }
 }

@@ -26,7 +26,7 @@ public static class PublishedRestoreProbe
 
         string source = sourceGuard.RegisterSourceRoot(Path.GetFullPath(sourceRoot));
         string destination = Path.GetFullPath(destinationRoot);
-        Directory.CreateDirectory(destination);
+        safeFs.CreateDirectory(destination);
 
         IReadOnlyList<PlanItem> existing = sessionDb.ListPlanItems(sessionId);
         IReadOnlyList<PlanItem> items;

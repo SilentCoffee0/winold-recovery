@@ -23,6 +23,10 @@ public sealed class InvariantSourceScanTests
             "File.Delete(",
             "Directory.Delete(",
             "File.Move(",
+            "File.Copy(",
+            "File.WriteAllText(",
+            "File.WriteAllBytes(",
+            "Directory.CreateDirectory(",
             "RegLoadKey",
         ];
         foreach (string path in SourceFiles())
