@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using WinOldRecovery.Core.Classification;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Persistence;
@@ -69,15 +70,40 @@ public sealed class ScanOrchestrator
             .ConfigureAwait(false);
         walkClock.Stop();
 
+        string[] profileNames = profiles.Select(static profile => profile.DisplayName).ToArray();
+        void ReportPhase(string label)
+        {
+            progress?.Report(
+                new WalkProgress(
+                    walk.NodesVisited,
+                    walk.BytesSeen,
+                    label,
+                    walk.CompletedTopLevelDirectories,
+                    walk.JunctionsSkipped,
+                    walk.CloudSkipped,
+                    walk.EncryptedSkipped,
+                    walk.AccessDenied,
+                    ProfileNames: profileNames));
+        }
+
+        ReportPhase("Classifying scanned files…");
         ClassificationEngine classifier = new(sessionDb, safeFs);
         Stopwatch classifyClock = Stopwatch.StartNew();
         ClassificationSummary classification = await classifier.ClassifyAsync(
                 sessionId,
                 registered,
                 profiles,
-                cancellationToken)
+                cancellationToken,
+                visited =>
+                {
+                    if ((visited & 65535) == 0)
+                    {
+                        ReportPhase("Classifying scanned files (" + visited.ToString("N0", CultureInfo.InvariantCulture) + ")…");
+                    }
+                })
             .ConfigureAwait(false);
         classifyClock.Stop();
+        ReportPhase("Looking for apps…");
 
         return new ScanRunResult(
             registered,

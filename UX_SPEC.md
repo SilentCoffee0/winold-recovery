@@ -80,7 +80,7 @@ Scanning C:\Windows.old …
 
 ## 3. Step 2 — Decide
 
-The core screen. Two panes: **Overview/cards** on the left, **detail** on the right. A top toggle switches the left pane between **Cards** (known apps and high-value data) and **Files** (the tree).
+The core screen. Two panes: **Overview/cards** on the left, **detail** on the right. A top toggle switches the left pane between **Apps & folders** (known apps, then personal folders) and **All files** (the tree). Restore is this pass; **Later** keeps the item Undecided so it can be restored afterwards. Leave Behind still does not delete.
 
 ### 3.1 Cards view
 

@@ -50,6 +50,11 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("OpenOverviewCardCommand", xaml, StringComparison.Ordinal);
         Assert.Contains("RestoreOverviewCardCommand", xaml, StringComparison.Ordinal);
         Assert.Contains("LeaveOverviewCardCommand", xaml, StringComparison.Ordinal);
+        Assert.Contains("LaterOverviewCardCommand", xaml, StringComparison.Ordinal);
+        Assert.Contains("Skip this card for now", xaml, StringComparison.Ordinal);
+        Assert.Contains("Apps and personal folders", xaml, StringComparison.Ordinal);
+        Assert.Contains("All files tree", xaml, StringComparison.Ordinal);
+        Assert.Contains("DecideHint", xaml, StringComparison.Ordinal);
         Assert.Contains("Inspect this card", xaml, StringComparison.Ordinal);
         Assert.Contains("Open this card folder", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"PauseRestoreButton\"", xaml, StringComparison.Ordinal);

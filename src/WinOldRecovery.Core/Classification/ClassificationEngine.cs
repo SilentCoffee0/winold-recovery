@@ -31,7 +31,8 @@ public sealed class ClassificationEngine
         string sessionId,
         string sourceRoot,
         IReadOnlyList<DetectedProfile> profiles,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<int>? onVisited = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceRoot);
@@ -59,9 +60,11 @@ public sealed class ClassificationEngine
             sessionId,
             node =>
             {
-                if ((index++ & 4095) == 0)
+                index++;
+                if ((index & 4095) == 0)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    onVisited?.Invoke(index);
                 }
 
                 if (wantedRelPaths.Contains(node.RelPath))

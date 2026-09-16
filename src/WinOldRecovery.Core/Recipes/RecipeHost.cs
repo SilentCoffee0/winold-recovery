@@ -42,7 +42,8 @@ public sealed class RecipeHost
         string destinationUserProfile,
         string sessionTemporaryDirectory,
         string sessionExportsDirectory,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<string>? progress = null)
     {
         IReadOnlyList<ProfileRecord> storedProfiles = sessionDb.ListProfiles(sessionId);
         List<RecipeCard> cards = [];
@@ -68,6 +69,7 @@ public sealed class RecipeHost
             foreach (IRecipe recipe in recipes)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                progress?.Report(recipe.Id);
                 DetectResult detected = recipe.Detect(context);
                 foreach (RecipeCard card in detected.Cards)
                 {

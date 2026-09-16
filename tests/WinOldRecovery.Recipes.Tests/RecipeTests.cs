@@ -2942,6 +2942,14 @@ public sealed class RecipeTests
         RecipeHost host = new(context.Database, context.SafeFs, context.Runner, [new ThunderbirdRecipe()]);
         PlanResult plan = host.PlanCard(new ThunderbirdRecipe(), card, Dest(context));
         await host.ExecuteAsync("session-1", new ThunderbirdRecipe(), plan);
+        Assert.True(new ThunderbirdRecipe().Verify(plan).Ok);
+        string destIni = Path.Combine(
+            context.Destination,
+            "AppData",
+            "Roaming",
+            "Thunderbird",
+            "profiles.ini");
+        Assert.Contains("relocated.thunderbird-recovered", await File.ReadAllTextAsync(destIni), StringComparison.Ordinal);
         Assert.True(File.Exists(
             Path.Combine(
                 context.Destination,
@@ -2951,6 +2959,22 @@ public sealed class RecipeTests
                 "Profiles",
                 "relocated.thunderbird-recovered",
                 "prefs.js")));
+        string destProfile = Path.Combine(
+            context.Destination,
+            "AppData",
+            "Roaming",
+            "Thunderbird",
+            "Profiles",
+            "relocated.thunderbird-recovered");
+        await File.WriteAllTextAsync(Path.Combine(destProfile, "key4.db"), "key");
+        RecipeVerifyResult unpaired = new ThunderbirdRecipe().Verify(plan);
+        Assert.False(unpaired.Ok);
+        Assert.Contains("key4.db", unpaired.Detail, StringComparison.OrdinalIgnoreCase);
+        File.Delete(Path.Combine(destProfile, "key4.db"));
+        await File.WriteAllTextAsync(destIni, "[General]\nStartWithLastProfile=1\n");
+        RecipeVerifyResult unlisted = new ThunderbirdRecipe().Verify(plan);
+        Assert.False(unlisted.Ok);
+        Assert.Contains("profiles.ini", unlisted.Detail, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -2976,6 +3000,7 @@ public sealed class RecipeTests
         Directory.CreateDirectory(Path.Combine(thunder, "Mail", "Local Folders"));
         await File.WriteAllTextAsync(Path.Combine(thunder, "prefs.js"), "user_pref(\"test\",1);");
         await File.WriteAllTextAsync(Path.Combine(thunder, "key4.db"), Canary);
+        await File.WriteAllTextAsync(Path.Combine(thunder, "logins.json"), "{}");
         await File.WriteAllTextAsync(Path.Combine(thunder, "Mail", "Local Folders", "Inbox"), "mail");
         await File.WriteAllTextAsync(Path.Combine(thunder, "panacea.dat"), "regen");
         Directory.CreateDirectory(

@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using WinOldRecovery.App;
 using WinOldRecovery.App.Help;
 using WinOldRecovery.Core.Browse;
 using WinOldRecovery.Core.Classification;
@@ -191,6 +192,9 @@ public sealed class ShellViewModel : ObservableObject
         RestoreOverviewCardCommand = new AsyncRelayCommand<OverviewCard>(
             card => DecideOverviewCardAsync(card, Decision.Restore),
             static card => card is { ShowVerbs: true });
+        LaterOverviewCardCommand = new AsyncRelayCommand<OverviewCard>(
+            card => DecideOverviewCardAsync(card, Decision.Undecided),
+            static card => card is { ShowVerbs: true });
         LeaveOverviewCardCommand = new AsyncRelayCommand<OverviewCard>(
             card => DecideOverviewCardAsync(card, Decision.LeaveBehind),
             static card => card is { ShowVerbs: true });
@@ -295,6 +299,7 @@ public sealed class ShellViewModel : ObservableObject
     public IRelayCommand<OverviewCard> InspectOverviewCardCommand { get; }
     public IAsyncRelayCommand<OverviewCard> OpenOverviewCardCommand { get; }
     public IAsyncRelayCommand<OverviewCard> RestoreOverviewCardCommand { get; }
+    public IAsyncRelayCommand<OverviewCard> LaterOverviewCardCommand { get; }
     public IAsyncRelayCommand<OverviewCard> LeaveOverviewCardCommand { get; }
     public IAsyncRelayCommand AnalyzeGitCommand { get; }
     public IRelayCommand<TreeNodeRow> ExpandCommand { get; }
@@ -430,6 +435,7 @@ public sealed class ShellViewModel : ObservableObject
 
             SetProperty(ref currentStep, value);
             OnPropertyChanged(nameof(WindowTitle));
+            OnPropertyChanged(nameof(IsDecideStep));
             if (value == WorkflowStep.Purge)
             {
                 RefreshPurgeSummary();
@@ -440,6 +446,11 @@ public sealed class ShellViewModel : ObservableObject
     public bool IsScanning { get; private set; }
 
     public bool ScanCompleted => scanCompleted;
+
+    public bool IsDecideStep => CurrentStep == WorkflowStep.Decide;
+
+    public string DecideHint { get; } =
+        "Pick what to copy this time. Restore an app or folder without marking everything else Leave Behind — skip with Later (Undecided) and come back. Leave Behind still does not delete Windows.old.";
 
     public bool RestoreCompleted => restoreCompleted;
 
@@ -636,7 +647,7 @@ public sealed class ShellViewModel : ObservableObject
     public string FirstRunBody { get; } =
         "WinOld Recovery has six steps." + Environment.NewLine + Environment.NewLine +
         "1. Scan Windows.old (read-only)." + Environment.NewLine +
-        "2. Decide Restore, Leave Behind, or Undecided." + Environment.NewLine +
+        "2. Decide. Restore what you want this time. Later keeps it Undecided so you can come back; Leave Behind still does not delete." + Environment.NewLine +
         "3. Preview the plan and conflicts." + Environment.NewLine +
         "4. Restore copies to your new profile." + Environment.NewLine +
         "5. Verify the copies." + Environment.NewLine +
@@ -1188,36 +1199,40 @@ public sealed class ShellViewModel : ObservableObject
             ScanStatus = "Looking for Windows.old folders…";
         }
 
-        Sources.Clear();
-        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        foreach (SourceCandidate kept in keptBrowsed)
-        {
-            if (seen.Add(kept.Path))
-            {
-                Sources.Add(kept);
-            }
-        }
-
         IReadOnlyList<SourceCandidate> discovered = await sourceDiscovery.DiscoverAsync(cancellationToken)
-            .ConfigureAwait(true);
-        foreach (SourceCandidate candidate in discovered)
+            .ConfigureAwait(false);
+
+        await UiThread.InvokeAsync(() =>
         {
-            if (seen.Add(candidate.Path))
+            Sources.Clear();
+            HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+            foreach (SourceCandidate kept in keptBrowsed)
             {
-                Sources.Add(candidate);
+                if (seen.Add(kept.Path))
+                {
+                    Sources.Add(kept);
+                }
             }
-        }
 
-        if (string.IsNullOrEmpty(SelectedSourcePath) && Sources.Count > 0)
-        {
-            SelectedSourcePath = Sources[0].Path;
-        }
+            foreach (SourceCandidate candidate in discovered)
+            {
+                if (seen.Add(candidate.Path))
+                {
+                    Sources.Add(candidate);
+                }
+            }
 
-        OnPropertyChanged(nameof(Sources));
-        if (!preserveStatus)
-        {
-            ScanStatus = "Choose a Windows.old folder, then scan.";
-        }
+            if (string.IsNullOrEmpty(SelectedSourcePath) && Sources.Count > 0)
+            {
+                SelectedSourcePath = Sources[0].Path;
+            }
+
+            OnPropertyChanged(nameof(Sources));
+            if (!preserveStatus)
+            {
+                ScanStatus = "Choose a Windows.old folder, then scan.";
+            }
+        }).ConfigureAwait(true);
     }
 
     public bool CanGoTo(WorkflowStep step)
@@ -1741,6 +1756,14 @@ public sealed class ShellViewModel : ObservableObject
         scanCancellation = new CancellationTokenSource();
         Progress<WalkProgress> progress = new(report =>
         {
+            if (IsPostWalkPhase(report.CurrentRelativePath))
+            {
+                CurrentPathFull = report.CurrentRelativePath;
+                CurrentPath = report.CurrentRelativePath;
+                ScanStatus = report.CurrentRelativePath + " Nothing has been changed.";
+                return;
+            }
+
             NodesVisited = report.NodesVisited;
             CurrentPathFull = report.CurrentRelativePath;
             CurrentPath = PathDisplay.MiddleEllipsis(report.CurrentRelativePath);
@@ -1750,6 +1773,10 @@ public sealed class ShellViewModel : ObservableObject
             }
 
             ScanStatus = StatusStrip.FormatScanProgress(report, scanProfileNames);
+        });
+        Progress<string> detectProgress = new(id =>
+        {
+            ScanStatus = "Looking for " + AppDetectLabel(id) + "… Nothing has been changed.";
         });
 
         try
@@ -1779,103 +1806,140 @@ public sealed class ShellViewModel : ObservableObject
                     resume: resume,
                     computeFolderSizes: computeFolderSizes,
                     cancellationToken: scanCancellation.Token)
-                .ConfigureAwait(true);
+                .ConfigureAwait(false);
             await sessionDb.SetKvAsync(
                     workspace.SessionId,
                     "scan.computeFolderSizes",
                     computeFolderSizes ? "1" : "0",
                     scanCancellation.Token)
-                .ConfigureAwait(true);
+                .ConfigureAwait(false);
             await sessionDb.SetKvAsync(
                     workspace.SessionId,
                     "scan.hashDuringScan",
                     hashDuringScan ? "1" : "0",
                     scanCancellation.Token)
-                .ConfigureAwait(true);
-            SourceRoot = result.SourceRoot;
-            scanCompleted = true;
+                .ConfigureAwait(false);
             int? hashed = null;
             if (HashDuringScan)
             {
+                await UiThread.InvokeAsync(() =>
+                    ScanStatus = "Hashing files under 64 MB… Nothing has been changed.")
+                    .ConfigureAwait(false);
                 FileHashingPass hasher = new(sessionDb, safeFs);
                 hashed = await hasher.HashSessionFilesAsync(
                         workspace.SessionId,
                         result.SourceRoot,
                         scanCancellation.Token)
-                    .ConfigureAwait(true);
+                    .ConfigureAwait(false);
             }
 
-            lastProfiles = result.Profiles;
-            lastClassification = result.Classification;
-            lastRecipeCards = [];
+            IReadOnlyList<RecipeCard> cards = [];
             if (recipeHost is not null)
             {
-                lastRecipeCards = await recipeHost.DetectAsync(
+                cards = await recipeHost.DetectAsync(
                         workspace.SessionId,
                         result.Profiles,
                         LiveProfileRoot,
                         workspace.TemporaryPath,
                         workspace.ExportsPath,
-                        scanCancellation.Token)
-                    .ConfigureAwait(true);
+                        scanCancellation.Token,
+                        detectProgress)
+                    .ConfigureAwait(false);
             }
 
-            ScanStatus = StatusStrip.FormatScanSummary(
-                result.Walk.NodesVisited,
-                result.Walk.BytesSeen,
-                result.Profiles.Count,
-                lastRecipeCards.Count,
-                lastClassification?.HighValueCount ?? 0,
-                hashed);
-
-            RebuildCards(lastProfiles);
-            CurrentStep = WorkflowStep.Decide;
-            DecidePane = DecidePane.Cards;
-            ReloadView();
-            OnPropertyChanged(nameof(WindowTitle));
-            OnPropertyChanged(nameof(ScanCompleted));
-            PreparePreviewCommand.NotifyCanExecuteChanged();
-            ExecuteRestoreCommand.NotifyCanExecuteChanged();
-            ReviewUndecidedCommand.NotifyCanExecuteChanged();
-            ExecuteVerifyCommand.NotifyCanExecuteChanged();
-            ExecutePurgeCommand.NotifyCanExecuteChanged();
-            CreateSupportBundleCommand.NotifyCanExecuteChanged();
-            AnalyzeGitCommand.NotifyCanExecuteChanged();
+            int? hashedFiles = hashed;
+            await UiThread.InvokeAsync(() =>
+            {
+                SourceRoot = result.SourceRoot;
+                scanCompleted = true;
+                lastProfiles = result.Profiles;
+                lastClassification = result.Classification;
+                lastRecipeCards = cards;
+                ScanStatus = StatusStrip.FormatScanSummary(
+                    result.Walk.NodesVisited,
+                    result.Walk.BytesSeen,
+                    result.Profiles.Count,
+                    lastRecipeCards.Count,
+                    lastClassification?.HighValueCount ?? 0,
+                    hashedFiles);
+                RebuildCards(lastProfiles);
+                CurrentStep = WorkflowStep.Decide;
+                DecidePane = DecidePane.Cards;
+                ReloadView();
+                OnPropertyChanged(nameof(WindowTitle));
+                OnPropertyChanged(nameof(ScanCompleted));
+                PreparePreviewCommand.NotifyCanExecuteChanged();
+                ExecuteRestoreCommand.NotifyCanExecuteChanged();
+                ReviewUndecidedCommand.NotifyCanExecuteChanged();
+                ExecuteVerifyCommand.NotifyCanExecuteChanged();
+                ExecutePurgeCommand.NotifyCanExecuteChanged();
+                CreateSupportBundleCommand.NotifyCanExecuteChanged();
+                AnalyzeGitCommand.NotifyCanExecuteChanged();
+            }).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
             if (scanAbortRequested)
             {
-                await sessionDb.ClearScanDataAsync(workspace.SessionId).ConfigureAwait(true);
-                ResetWorkflowAfterFreshScan();
-                scanCompleted = false;
-                SourceRoot = null;
-                ReloadView();
-                CurrentStep = WorkflowStep.Scan;
-                OnPropertyChanged(nameof(ScanCompleted));
-                OnPropertyChanged(nameof(WindowTitle));
-                ScanStatus = "Scan cancelled. Choose Scan to start again.";
+                await sessionDb.ClearScanDataAsync(workspace.SessionId).ConfigureAwait(false);
+                await UiThread.InvokeAsync(() =>
+                {
+                    ResetWorkflowAfterFreshScan();
+                    scanCompleted = false;
+                    SourceRoot = null;
+                    ReloadView();
+                    CurrentStep = WorkflowStep.Scan;
+                    OnPropertyChanged(nameof(ScanCompleted));
+                    OnPropertyChanged(nameof(WindowTitle));
+                    ScanStatus = "Scan cancelled. Choose Scan to start again.";
+                }).ConfigureAwait(true);
             }
             else
             {
-                scanPaused = true;
-                pausedSourcePath = SelectedSourcePath;
-                OnPropertyChanged(nameof(ScanButtonLabel));
-                ScanStatus = "Scan paused. Partial results were kept. Choose Resume scan to continue.";
+                await UiThread.InvokeAsync(() =>
+                {
+                    scanPaused = true;
+                    pausedSourcePath = SelectedSourcePath;
+                    OnPropertyChanged(nameof(ScanButtonLabel));
+                    ScanStatus = "Scan paused. Partial results were kept. Choose Resume scan to continue.";
+                }).ConfigureAwait(true);
             }
         }
         catch (Exception exception)
         {
-            ShowHandledFailure(exception);
+            await UiThread.InvokeAsync(() => ShowHandledFailure(exception)).ConfigureAwait(true);
         }
         finally
         {
-            IsScanning = false;
-            OnPropertyChanged(nameof(IsScanning));
-            ScanCommand.NotifyCanExecuteChanged();
-            CancelScanCommand.NotifyCanExecuteChanged();
-            PauseScanCommand.NotifyCanExecuteChanged();
+            await UiThread.InvokeAsync(() =>
+            {
+                IsScanning = false;
+                OnPropertyChanged(nameof(IsScanning));
+                ScanCommand.NotifyCanExecuteChanged();
+                CancelScanCommand.NotifyCanExecuteChanged();
+                PauseScanCommand.NotifyCanExecuteChanged();
+            }).ConfigureAwait(true);
         }
+    }
+
+    private static bool IsPostWalkPhase(string currentRelativePath)
+    {
+        return currentRelativePath.StartsWith("Classifying", StringComparison.Ordinal) ||
+            currentRelativePath.StartsWith("Looking for", StringComparison.Ordinal) ||
+            currentRelativePath.StartsWith("Hashing", StringComparison.Ordinal);
+    }
+
+    private static string AppDetectLabel(string recipeId)
+    {
+        foreach ((string id, string title) in RecipeCatalog.AbsentLabels)
+        {
+            if (id.Equals(recipeId, StringComparison.Ordinal))
+            {
+                return title;
+            }
+        }
+
+        return recipeId;
     }
 
     private async Task BrowseSourceAsync()
@@ -1889,14 +1953,17 @@ public sealed class ShellViewModel : ObservableObject
         try
         {
             CleanupTaskStatus cleanupTask = await sourceDiscovery.QueryCleanupTaskAsync()
-                .ConfigureAwait(true);
+                .ConfigureAwait(false);
             SourceCandidate candidate = sourceDiscovery.InspectBrowsedPath(path, cleanupTask);
-            if (!Sources.Any(existing => existing.Path.Equals(candidate.Path, StringComparison.OrdinalIgnoreCase)))
+            await UiThread.InvokeAsync(() =>
             {
-                Sources.Add(candidate);
-            }
+                if (!Sources.Any(existing => existing.Path.Equals(candidate.Path, StringComparison.OrdinalIgnoreCase)))
+                {
+                    Sources.Add(candidate);
+                }
 
-            SelectedSourcePath = candidate.Path;
+                SelectedSourcePath = candidate.Path;
+            }).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -2386,46 +2453,16 @@ public sealed class ShellViewModel : ObservableObject
                     DecisionDisplay.Label(Decision.Undecided, ownUser: false, suggested: false),
                     NodeId: null,
                     "Profile"));
-
-            foreach (StandardFolderMatch folder in profile.StandardFolders.Where(static item => item.PresentInSource))
-            {
-                TreeNodeRow? node = folder.RelativePathInSource is null
-                    ? null
-                    : nodeBrowser.FindByRelPath(folder.RelativePathInSource);
-                Cards.Add(
-                    new OverviewCard(
-                        folder.KnownName,
-                        "Personal folder in " + profile.DisplayName,
-                        node is null
-                            ? "Present in the old profile"
-                            : $"{node.AggFiles} files, {node.AggSize} bytes",
-                        node?.DecisionLabel ?? DecisionDisplay.Label(Decision.Undecided, ownUser: false, suggested: false),
-                        node?.Id,
-                        "PersonalFolder",
-                        node?.DecisionTooltip ?? string.Empty));
-            }
         }
 
-        if (lastClassification is not null)
-        {
-            Cards.Add(
-                new OverviewCard(
-                    "High-value items",
-                    "Password vaults, libraries, VM disks, and similar files.",
-                    $"{lastClassification.HighValueCount} items, {lastClassification.HighValueBytes} bytes",
-                    DecisionDisplay.Label(Decision.Undecided, ownUser: false, suggested: false),
-                    NodeId: null,
-                    "HighValue"));
-            Cards.Add(
-                new OverviewCard(
-                    "Regeneratable",
-                    "Caches and installers. Badged only — never left behind automatically.",
-                    $"{lastClassification.RegeneratableCount} folders or files, {lastClassification.RegeneratableBytes} bytes",
-                    DecisionDisplay.Label(Decision.Undecided, ownUser: false, suggested: false),
-                    NodeId: null,
-                    "Regeneratable"));
-        }
-
+        Cards.Add(
+            new OverviewCard(
+                "Apps",
+                "Choose apps for this restore. Skipping one does not mean you do not want it.",
+                string.Empty,
+                string.Empty,
+                NodeId: null,
+                "Section"));
         foreach (RecipeCard recipe in lastRecipeCards)
         {
             bool restoreSuggested = recipe.Components.Any(
@@ -2471,6 +2508,63 @@ public sealed class ShellViewModel : ObservableObject
                         NodeId: null,
                         "Absent"));
             }
+        }
+
+        Cards.Add(
+            new OverviewCard(
+                "Personal folders",
+                "Same as apps: Restore copies them this time. Later leaves them in Windows.old for another pass.",
+                string.Empty,
+                string.Empty,
+                NodeId: null,
+                "Section"));
+        foreach (DetectedProfile profile in profiles)
+        {
+            foreach (StandardFolderMatch folder in profile.StandardFolders.Where(static item => item.PresentInSource))
+            {
+                TreeNodeRow? node = folder.RelativePathInSource is null
+                    ? null
+                    : nodeBrowser.FindByRelPath(folder.RelativePathInSource);
+                Cards.Add(
+                    new OverviewCard(
+                        folder.KnownName,
+                        "Personal folder in " + profile.DisplayName,
+                        node is null
+                            ? "Present in the old profile"
+                            : $"{node.AggFiles} files, {node.AggSize} bytes",
+                        node?.DecisionLabel ?? DecisionDisplay.Label(Decision.Undecided, ownUser: false, suggested: false),
+                        node?.Id,
+                        "PersonalFolder",
+                        node?.DecisionTooltip ?? string.Empty));
+            }
+        }
+
+        if (lastClassification is not null)
+        {
+            Cards.Add(
+                new OverviewCard(
+                    "Also found",
+                    "High-value and regeneratable items. Open All files to decide them in the tree.",
+                    string.Empty,
+                    string.Empty,
+                    NodeId: null,
+                    "Section"));
+            Cards.Add(
+                new OverviewCard(
+                    "High-value items",
+                    "Password vaults, libraries, VM disks, and similar files.",
+                    $"{lastClassification.HighValueCount} items, {lastClassification.HighValueBytes} bytes",
+                    DecisionDisplay.Label(Decision.Undecided, ownUser: false, suggested: false),
+                    NodeId: null,
+                    "HighValue"));
+            Cards.Add(
+                new OverviewCard(
+                    "Regeneratable",
+                    "Caches and installers. Badged only — never left behind automatically.",
+                    $"{lastClassification.RegeneratableCount} folders or files, {lastClassification.RegeneratableBytes} bytes",
+                    DecisionDisplay.Label(Decision.Undecided, ownUser: false, suggested: false),
+                    NodeId: null,
+                    "Regeneratable"));
         }
 
         if (keepTitle is not null && keepKind is not null)

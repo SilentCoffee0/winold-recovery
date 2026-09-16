@@ -290,8 +290,25 @@
                     </DockPanel>
 
                     <DockPanel Grid.Row="1" Margin="0,8,0,8">
+                        <Border DockPanel.Dock="Top"
+                                AutomationProperties.Name="Decide hint">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource CalloutBorder}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Setter Property="Margin" Value="0,0,0,12" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsDecideStep}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock TextWrapping="Wrap" Text="{Binding DecideHint}" />
+                        </Border>
                         <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,12">
-                            <Button Content="Cards" Command="{Binding ShowCardsCommand}" Margin="0,0,8,8">
+                            <Button Content="Apps &amp; folders" Command="{Binding ShowCardsCommand}" Margin="0,0,8,8"
+                                    AutomationProperties.Name="Apps and personal folders"
+                                    AutomationProperties.AutomationId="DecideAppsButton">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                         <Style.Triggers>
@@ -304,7 +321,9 @@
                                     </Style>
                                 </Button.Style>
                             </Button>
-                            <Button Content="Files" Command="{Binding ShowFilesCommand}" Margin="0,0,8,8">
+                            <Button Content="All files" Command="{Binding ShowFilesCommand}" Margin="0,0,8,8"
+                                    AutomationProperties.Name="All files tree"
+                                    AutomationProperties.AutomationId="DecideFilesButton">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                         <Style.Triggers>
@@ -411,6 +430,9 @@
                                                         <DataTrigger Binding="{Binding Kind}" Value="Absent">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Section">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBlock.Style>
@@ -420,6 +442,9 @@
                                                 <Style TargetType="Border" BasedOn="{StaticResource DecisionChip}">
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding Kind}" Value="Absent">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Kind}" Value="Section">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
@@ -452,6 +477,11 @@
                                                     CommandParameter="{Binding}"
                                                     IsEnabled="{Binding DataContext.CanMutateSession, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     AutomationProperties.Name="Restore this card" />
+                                            <Button Content="Later" Margin="0,0,8,4"
+                                                    Command="{Binding DataContext.LaterOverviewCardCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}"
+                                                    IsEnabled="{Binding DataContext.CanMutateSession, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    AutomationProperties.Name="Skip this card for now" />
                                             <Button Content="Leave Behind" Margin="0,0,0,4"
                                                     Command="{Binding DataContext.LeaveOverviewCardCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     CommandParameter="{Binding}"

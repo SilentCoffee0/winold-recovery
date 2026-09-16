@@ -16,5 +16,7 @@ public sealed record OverviewCard(
     string DecisionTooltip = "")
 {
     public bool ShowVerbs =>
-        Kind is not ("Absent" or "Profile" or "HighValue" or "Regeneratable");
+        Kind is not ("Absent" or "Profile" or "HighValue" or "Regeneratable" or "Section");
+
+    public bool IsSection => Kind == "Section";
 }

@@ -168,8 +168,27 @@ public sealed class ThunderbirdRecipe : IRecipe
         return Task.CompletedTask;
     }
 
-    public RecipeVerifyResult Verify(PlanResult plan) =>
-        DetectorWalk.FilesPresent(plan, "Thunderbird files present", "Thunderbird transplant missing");
+    public RecipeVerifyResult Verify(PlanResult plan)
+    {
+        if (plan.Writes.Any(static write => !File.Exists(write.DestinationPath)))
+        {
+            return new RecipeVerifyResult(false, "Thunderbird transplant missing");
+        }
+
+        RecipeVerifyResult? registration = FirefoxVerify.CheckRegistration(plan);
+        if (registration is not null)
+        {
+            return registration;
+        }
+
+        RecipeVerifyResult? logins = FirefoxVerify.CheckKey4LoginPair(plan);
+        if (logins is not null)
+        {
+            return logins;
+        }
+
+        return new RecipeVerifyResult(true, "Thunderbird profile registered");
+    }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite("thunderbird", "Thunderbird must be closed before the profile is transplanted.")];

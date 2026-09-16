@@ -8,7 +8,7 @@ After you reinstall, reset, or upgrade Windows, the previous installation is kep
 
 1. Run WinOld Recovery as administrator.
 2. Scan the `Windows.old` folder.
-3. Mark Desktop, Documents, and other folders Restore or Leave Behind. Leave Behind does **not** delete anything.
+3. Mark Desktop, Documents, and apps Restore for this pass, or Later (Undecided) if you might want them afterwards. Leave Behind does **not** delete anything.
 4. Preview the plan. Existing files are kept; restored copies get a `(from Windows.old)` suffix unless you confirm overwrite per file.
 5. Restore, then Verify.
 6. Purge only after verify and after typing the folder name.

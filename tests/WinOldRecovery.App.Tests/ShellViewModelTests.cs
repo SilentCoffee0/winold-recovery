@@ -168,6 +168,14 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task UiThread_InvokeAsync_RunsInlineWhenNoDispatcherOwnsTheCall()
+    {
+        int ran = 0;
+        await UiThread.InvokeAsync(() => ran++);
+        Assert.Equal(1, ran);
+    }
+
+    [Fact]
     public async Task TryApplySmokeFixture_SelectsBrowsedTempFolderAndForcesManualDelete()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();
@@ -999,6 +1007,39 @@ public sealed class ShellViewModelTests
         Assert.Contains(
             context.ViewModel.RecipeComponents,
             component => component.Decision == Decision.LeaveBehind);
+    }
+
+    [Fact]
+    public async Task Decide_ListsAppsThenPersonal_LaterKeepsUndecided()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync(RecipeCatalog.All);
+        string source = Path.Combine(context.Root, "Windows.old");
+        string ssh = Path.Combine(source, "Users", "Alice", ".ssh");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        Directory.CreateDirectory(ssh);
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        await File.WriteAllTextAsync(Path.Combine(ssh, "id_ed25519.pub"), "ssh-ed25519 FIXTURE");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        Assert.True(context.ViewModel.IsDecideStep);
+        Assert.Contains("Later", context.ViewModel.DecideHint, StringComparison.Ordinal);
+        List<OverviewCard> cards = [.. context.ViewModel.Cards];
+        int apps = cards.FindIndex(card => card.Kind == "Section" && card.Title == "Apps");
+        int sshCard = cards.FindIndex(card => card.Kind == "ssh");
+        int personal = cards.FindIndex(card => card.Kind == "Section" && card.Title == "Personal folders");
+        int desktop = cards.FindIndex(card => card.Kind == "PersonalFolder" && card.Title == "Desktop");
+        Assert.True(apps >= 0 && sshCard > apps && personal > sshCard && desktop > personal);
+        OverviewCard section = cards[apps];
+        Assert.True(section.IsSection);
+        Assert.False(section.ShowVerbs);
+        Assert.False(context.ViewModel.LaterOverviewCardCommand.CanExecute(section));
+
+        OverviewCard desktopCard = cards[desktop];
+        await context.ViewModel.LaterOverviewCardCommand.ExecuteAsync(desktopCard);
+        Assert.Equal(Decision.Undecided, context.ViewModel.SelectedNode?.EffectiveDecision);
     }
 
     [Fact]

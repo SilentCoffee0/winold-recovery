@@ -15,36 +15,16 @@ internal static class FirefoxVerify
             return new RecipeVerifyResult(false, "Firefox transplant missing");
         }
 
-        string? iniPath = plan.Writes
-            .Select(static write => write.DestinationPath)
-            .FirstOrDefault(static path => path.EndsWith("profiles.ini", StringComparison.OrdinalIgnoreCase));
-        string folder = plan.Card.Facts.GetValueOrDefault("folder") ?? string.Empty;
-        if (!string.IsNullOrEmpty(iniPath) && !string.IsNullOrEmpty(folder))
+        RecipeVerifyResult? registration = CheckRegistration(plan);
+        if (registration is not null)
         {
-            string recovered = folder + "-recovered";
-            string text = File.ReadAllText(iniPath);
-            bool listed = FirefoxIni.ParseProfiles(text).Any(record =>
-            {
-                string path = record.Path.Replace('/', '\\');
-                return path.EndsWith(recovered, StringComparison.OrdinalIgnoreCase) ||
-                    record.Name.Equals(recovered, StringComparison.OrdinalIgnoreCase);
-            });
-            if (!listed)
-            {
-                return new RecipeVerifyResult(false, "profiles.ini does not list the recovered profile");
-            }
+            return registration;
         }
 
-        string? destProfile = RecoveredProfileDirectory(plan);
-        if (!string.IsNullOrEmpty(destProfile))
+        RecipeVerifyResult? logins = CheckKey4LoginPair(plan);
+        if (logins is not null)
         {
-            bool key4 = File.Exists(Path.Combine(destProfile, "key4.db"));
-            bool logins = File.Exists(Path.Combine(destProfile, "logins.json")) ||
-                File.Exists(Path.Combine(destProfile, "logins.db"));
-            if (key4 != logins)
-            {
-                return new RecipeVerifyResult(false, "key4.db and logins.json must be restored together");
-            }
+            return logins;
         }
 
         RecipeWrite? places = plan.Writes.FirstOrDefault(static write =>
@@ -87,6 +67,52 @@ internal static class FirefoxVerify
         }
 
         return new RecipeVerifyResult(true, "Firefox files present");
+    }
+
+    public static RecipeVerifyResult? CheckRegistration(PlanResult plan)
+    {
+        string? iniPath = plan.Writes
+            .Select(static write => write.DestinationPath)
+            .FirstOrDefault(static path => path.EndsWith("profiles.ini", StringComparison.OrdinalIgnoreCase));
+        string folder = plan.Card.Facts.GetValueOrDefault("folder") ?? string.Empty;
+        if (string.IsNullOrEmpty(iniPath) || string.IsNullOrEmpty(folder))
+        {
+            return null;
+        }
+
+        string recovered = folder + "-recovered";
+        string text = File.ReadAllText(iniPath);
+        bool listed = FirefoxIni.ParseProfiles(text).Any(record =>
+        {
+            string path = record.Path.Replace('/', '\\');
+            return path.EndsWith(recovered, StringComparison.OrdinalIgnoreCase) ||
+                record.Name.Equals(recovered, StringComparison.OrdinalIgnoreCase);
+        });
+        if (!listed)
+        {
+            return new RecipeVerifyResult(false, "profiles.ini does not list the recovered profile");
+        }
+
+        return null;
+    }
+
+    public static RecipeVerifyResult? CheckKey4LoginPair(PlanResult plan)
+    {
+        string? destProfile = RecoveredProfileDirectory(plan);
+        if (string.IsNullOrEmpty(destProfile))
+        {
+            return null;
+        }
+
+        bool key4 = File.Exists(Path.Combine(destProfile, "key4.db"));
+        bool logins = File.Exists(Path.Combine(destProfile, "logins.json")) ||
+            File.Exists(Path.Combine(destProfile, "logins.db"));
+        if (key4 != logins)
+        {
+            return new RecipeVerifyResult(false, "key4.db and logins.json must be restored together");
+        }
+
+        return null;
     }
 
     private static string? RecoveredProfileDirectory(PlanResult plan)

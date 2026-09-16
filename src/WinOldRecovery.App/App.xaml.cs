@@ -35,6 +35,7 @@ public partial class App : Application
     {
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
+        TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
         try
         {
             Privileges.EnableBackupAndRestore();
@@ -273,6 +274,7 @@ public partial class App : Application
         }
         catch (Exception exception)
         {
+            logger?.LogError(exception, "GUI startup failed.");
             ShowCrash(exception);
             Shutdown(exitCode: 1);
         }
@@ -353,6 +355,12 @@ public partial class App : Application
         }
     }
 
+    private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        logger?.LogError(e.Exception, "Unobserved task exception.");
+        e.SetObserved();
+    }
+
     private static Window CreateStartupWindow()
     {
         Window window = new()
@@ -377,6 +385,7 @@ public partial class App : Application
 
     private void ShowCrash(Exception exception)
     {
+        logger?.LogError(exception, "Unhandled exception.");
         ILogRedactor active = redactor ?? new SensitiveDataRedactor();
         string text = ExceptionReport.FormatUserMessage(exception, sessionLogPath, active);
         MessageBox.Show(
@@ -395,7 +404,14 @@ public partial class App : Application
             instanceMutex = null;
         }
 
-        logger?.LogInformation("Session closed normally.");
+        if (e.ApplicationExitCode != 0)
+        {
+            logger?.LogInformation("Session closed after an error (exit {Code}).", e.ApplicationExitCode);
+        }
+        else
+        {
+            logger?.LogInformation("Session closed normally.");
+        }
         if (sessionDatabase is not null)
         {
             try
