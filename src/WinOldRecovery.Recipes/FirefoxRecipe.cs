@@ -74,23 +74,45 @@ public sealed class FirefoxRecipe : IRecipe
         foreach (DiscoveredFirefoxProfile discovered in profiles)
         {
             string profile = discovered.Directory;
-            List<string> present = [];
-            foreach (string name in AllowList)
+            List<string> present;
+            List<string> folders;
+            bool hasTabs;
+            if (DetectorWalk.TryIndexedRelative(context, profile, out RecipeIndex index, out string relative))
             {
-                if (context.SafeFs.FileExists(Path.Combine(profile, name)))
+                present = DetectorWalk.IndexedImmediateFiles(index, profile, relative, AllowList);
+                folders = [];
+                foreach (string name in FolderAllowList)
                 {
-                    present.Add(name);
+                    if (DetectorWalk.IndexedChildFolder(index, relative, name))
+                    {
+                        folders.Add(name);
+                    }
                 }
-            }
 
-            List<string> folders = [];
-            foreach (string name in FolderAllowList)
+                hasTabs = DetectorWalk.IndexedFirefoxSession(index, profile, relative);
+            }
+            else
             {
-                if (context.SafeFs.DirectoryExists(Path.Combine(profile, name)) &&
-                    !DetectorWalk.IsReparse(Path.Combine(profile, name)))
+                present = [];
+                foreach (string name in AllowList)
                 {
-                    folders.Add(name);
+                    if (context.SafeFs.FileExists(Path.Combine(profile, name)))
+                    {
+                        present.Add(name);
+                    }
                 }
+
+                folders = [];
+                foreach (string name in FolderAllowList)
+                {
+                    if (context.SafeFs.DirectoryExists(Path.Combine(profile, name)) &&
+                        !DetectorWalk.IsReparse(Path.Combine(profile, name)))
+                    {
+                        folders.Add(name);
+                    }
+                }
+
+                hasTabs = FirefoxExports.HasSession(context.SafeFs, profile);
             }
 
             bool hasPlaces = present.Contains("places.sqlite");
@@ -103,7 +125,6 @@ public sealed class FirefoxRecipe : IRecipe
                     Path.Combine(profile, "key4.db"),
                     firefoxTemp)
                 : Key4PrimaryPassword.Missing;
-            bool hasTabs = FirefoxExports.HasSession(context.SafeFs, profile);
             bool hasExtensions = present.Contains("extensions.json");
             string titleName = discovered.IsDefault ? discovered.Name + " (default)" : discovered.Name;
 

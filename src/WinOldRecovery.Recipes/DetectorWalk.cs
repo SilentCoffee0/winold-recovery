@@ -427,4 +427,99 @@ internal static class DetectorWalk
             }
         }
     }
+
+    public static bool TryIndexedRelative(
+        ProfileContext context,
+        string path,
+        out RecipeIndex index,
+        out string relative)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        relative = string.Empty;
+        index = null!;
+        if (context.Index is not { } found || string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        string candidate = RelativeUnder(context.OldProfileRoot, path);
+        if (string.IsNullOrWhiteSpace(candidate) ||
+            candidate is "." or ".." ||
+            candidate.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+            candidate.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal) ||
+            Path.IsPathRooted(candidate))
+        {
+            return false;
+        }
+
+        index = found;
+        relative = candidate;
+        return true;
+    }
+
+    public static List<string> IndexedImmediateFiles(
+        RecipeIndex index,
+        string directory,
+        string relativeUnderProfile,
+        params string[] names)
+    {
+        ArgumentNullException.ThrowIfNull(index);
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeUnderProfile);
+        ArgumentNullException.ThrowIfNull(names);
+        List<string> present = [];
+        foreach (string path in index.FilesNamedUnder(relativeUnderProfile, names))
+        {
+            if (!SameDirectory(directory, Path.GetDirectoryName(path)))
+            {
+                continue;
+            }
+
+            string name = Path.GetFileName(path);
+            if (!present.Contains(name, StringComparer.OrdinalIgnoreCase))
+            {
+                present.Add(name);
+            }
+        }
+
+        return present;
+    }
+
+    public static bool IndexedChildFolder(RecipeIndex index, string relativeUnderProfile, string childName)
+    {
+        ArgumentNullException.ThrowIfNull(index);
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeUnderProfile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(childName);
+        return index.HasChildNamed(relativeUnderProfile, childName) ||
+            index.CountFilesUnder(Path.Combine(relativeUnderProfile, childName)) > 0;
+    }
+
+    public static bool IndexedFirefoxSession(RecipeIndex index, string directory, string relativeUnderProfile)
+    {
+        ArgumentNullException.ThrowIfNull(index);
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeUnderProfile);
+        foreach (string path in index.FilesNamedUnder(relativeUnderProfile, "sessionstore.jsonlz4"))
+        {
+            if (SameDirectory(directory, Path.GetDirectoryName(path)))
+            {
+                return true;
+            }
+        }
+
+        return index.FilesNamedUnder(
+                Path.Combine(relativeUnderProfile, "sessionstore-backups"),
+                "recovery.jsonlz4",
+                "previous.jsonlz4")
+            .Count > 0;
+    }
+
+    private static bool SameDirectory(string left, string? right)
+    {
+        return right is not null &&
+            string.Equals(
+                Path.TrimEndingDirectorySeparator(left),
+                Path.TrimEndingDirectorySeparator(right),
+                StringComparison.OrdinalIgnoreCase);
+    }
 }

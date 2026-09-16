@@ -3758,6 +3758,43 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Firefox_Detect_ReadsAllowListAndSessionFromRecipeIndexWithoutWalkingProfile()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string walked = Path.Combine(alice, "AppData", "Roaming", "Mozilla", "Firefox", "Profiles", "walked.default");
+        string indexed = Path.Combine(alice, "Documents", "indexed.ff");
+        Directory.CreateDirectory(Path.Combine(indexed, "extensions"));
+        Directory.CreateDirectory(walked);
+        await File.WriteAllTextAsync(Path.Combine(indexed, "places.sqlite"), "places");
+        await File.WriteAllTextAsync(Path.Combine(indexed, "sessionstore.jsonlz4"), "session");
+        await File.WriteAllTextAsync(Path.Combine(indexed, "cookies.sqlite"), "walked-cookie");
+        await File.WriteAllTextAsync(Path.Combine(walked, "places.sqlite"), "walk");
+        const string indexedRel = @"Users\Alice\Documents\indexed.ff";
+        await context.Database.InsertNodesAsync(
+        [
+            Indexed(1, null, "indexed.ff", indexedRel, NodeKind.Directory),
+            Indexed(2, 1, "places.sqlite", indexedRel + @"\places.sqlite"),
+            Indexed(3, 1, "sessionstore.jsonlz4", indexedRel + @"\sessionstore.jsonlz4"),
+            Indexed(4, 1, "extensions", indexedRel + @"\extensions", NodeKind.Directory),
+        ]);
+
+        FirefoxRecipe recipe = new();
+        RecipeCard fromIndex = Assert.Single(recipe.Detect(WithIndex(context, alice)).Cards);
+        Assert.Equal("indexed.ff", fromIndex.Facts["name"]);
+        Assert.Equal(
+            new[] { "places.sqlite", "sessionstore.jsonlz4" }.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            fromIndex.Facts["files"].Split('|').ToHashSet(StringComparer.OrdinalIgnoreCase));
+        Assert.Equal("extensions", fromIndex.Facts["folders"]);
+        Assert.Equal(
+            "Session file found",
+            fromIndex.Components.Single(component => component.Key == "tabs-export").Summary);
+        Assert.DoesNotContain("cookies.sqlite", fromIndex.Facts["files"], StringComparison.OrdinalIgnoreCase);
+        RecipeCard fromDisk = Assert.Single(recipe.Detect(WithoutIndex(context, alice)).Cards);
+        Assert.Equal("walked.default", fromDisk.Facts["name"]);
+    }
+
+    [Fact]
     public async Task Thunderbird_Detect_FindsRelocatedPrefsFromRecipeIndexWithoutWalkingProfiles()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
@@ -3778,6 +3815,35 @@ public sealed class RecipeTests
         RecipeCard fromIndex = Assert.Single(
             recipe.Detect(WithIndex(context, alice)).Cards);
         Assert.Equal("relocated.tb", fromIndex.Facts["name"]);
+        RecipeCard fromDisk = Assert.Single(recipe.Detect(WithoutIndex(context, alice)).Cards);
+        Assert.Equal("walked.tb", fromDisk.Facts["name"]);
+    }
+
+    [Fact]
+    public async Task Thunderbird_Detect_ReadsAllowListAndMailFromRecipeIndexWithoutWalkingProfile()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string walked = Path.Combine(alice, "AppData", "Roaming", "Thunderbird", "Profiles", "walked.tb");
+        string indexed = Path.Combine(alice, "Documents", "indexed.tb");
+        Directory.CreateDirectory(Path.Combine(indexed, "Mail"));
+        Directory.CreateDirectory(walked);
+        await File.WriteAllTextAsync(Path.Combine(indexed, "prefs.js"), "prefs");
+        await File.WriteAllTextAsync(Path.Combine(indexed, "abook.sqlite"), "walked-abook");
+        await File.WriteAllTextAsync(Path.Combine(walked, "prefs.js"), "walk");
+        const string indexedRel = @"Users\Alice\Documents\indexed.tb";
+        await context.Database.InsertNodesAsync(
+        [
+            Indexed(1, null, "indexed.tb", indexedRel, NodeKind.Directory),
+            Indexed(2, 1, "prefs.js", indexedRel + @"\prefs.js"),
+            Indexed(3, 1, "Mail", indexedRel + @"\Mail", NodeKind.Directory),
+        ]);
+
+        ThunderbirdRecipe recipe = new();
+        RecipeCard fromIndex = Assert.Single(recipe.Detect(WithIndex(context, alice)).Cards);
+        Assert.Equal("indexed.tb", fromIndex.Facts["name"]);
+        Assert.Equal("prefs.js", fromIndex.Facts["files"]);
+        Assert.DoesNotContain("abook.sqlite", fromIndex.Facts["files"], StringComparison.OrdinalIgnoreCase);
         RecipeCard fromDisk = Assert.Single(recipe.Detect(WithoutIndex(context, alice)).Cards);
         Assert.Equal("walked.tb", fromDisk.Facts["name"]);
     }

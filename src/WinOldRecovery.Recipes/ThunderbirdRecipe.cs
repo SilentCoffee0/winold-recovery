@@ -47,22 +47,34 @@ public sealed class ThunderbirdRecipe : IRecipe
                      skipProfilesDirectoryWalk: context.Index is not null))
         {
             string profile = discovered.Directory;
-            if (!context.SafeFs.DirectoryExists(profile) || DetectorWalk.IsReparse(profile))
+            List<string> present;
+            bool hasMail;
+            if (DetectorWalk.TryIndexedRelative(context, profile, out RecipeIndex index, out string relative))
             {
-                continue;
+                present = DetectorWalk.IndexedImmediateFiles(index, profile, relative, AllowList);
+                hasMail = DetectorWalk.IndexedChildFolder(index, relative, "Mail") ||
+                    DetectorWalk.IndexedChildFolder(index, relative, "ImapMail");
             }
-
-            List<string> present = [];
-            foreach (string name in AllowList)
+            else
             {
-                if (context.SafeFs.FileExists(Path.Combine(profile, name)))
+                if (!context.SafeFs.DirectoryExists(profile) || DetectorWalk.IsReparse(profile))
                 {
-                    present.Add(name);
+                    continue;
                 }
+
+                present = [];
+                foreach (string name in AllowList)
+                {
+                    if (context.SafeFs.FileExists(Path.Combine(profile, name)))
+                    {
+                        present.Add(name);
+                    }
+                }
+
+                hasMail = context.SafeFs.DirectoryExists(Path.Combine(profile, "Mail")) ||
+                    context.SafeFs.DirectoryExists(Path.Combine(profile, "ImapMail"));
             }
 
-            bool hasMail = context.SafeFs.DirectoryExists(Path.Combine(profile, "Mail")) ||
-                context.SafeFs.DirectoryExists(Path.Combine(profile, "ImapMail"));
             if (present.Count == 0 && !hasMail)
             {
                 continue;
