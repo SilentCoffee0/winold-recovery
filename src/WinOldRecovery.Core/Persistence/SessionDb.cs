@@ -1663,6 +1663,36 @@ public sealed class SessionDb : IAsyncDisposable
         return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 
+    public IReadOnlyList<string> ListFileRelPathsUnderRelPrefix(string sessionId, string relPrefix)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        string prefix = (relPrefix ?? string.Empty).Replace('/', '\\').Trim('\\');
+        if (string.IsNullOrEmpty(prefix))
+        {
+            return [];
+        }
+
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT rel_path
+            FROM nodes
+            WHERE session_id = $sessionId
+              AND kind = 'File'
+            """ + RelPathPrefixSql("rel_path", prefix) + ";";
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        BindRelPathPrefix(command, prefix);
+        List<string> paths = [];
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            paths.Add(reader.GetString(0));
+        }
+
+        return paths;
+    }
+
     public int CountChildDirectories(string sessionId, string parentRelPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);

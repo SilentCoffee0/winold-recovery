@@ -52,12 +52,21 @@
       "pathGlobs": ["**\\Microsoft.WindowsTerminal_*\\LocalState\\settings.json"]
     },
     {
+      "id": "vm-disks-vhdx",
+      "kind": "HighValue",
+      "badge": "VM disk",
+      "why": "Copy only; re-register the disk in the hypervisor yourself.",
+      "suggestedDefault": "Undecided",
+      "nameGlobs": ["*.vhdx"],
+      "headerHex": "7668647866696C65"
+    },
+    {
       "id": "vm-disks",
       "kind": "HighValue",
       "badge": "VM disk",
       "why": "Copy only; re-register the disk in the hypervisor yourself.",
       "suggestedDefault": "Undecided",
-      "nameGlobs": ["*.vhd", "*.vhdx", "*.vmdk", "*.vdi", "*.qcow2", "*.ova", "*.vbox", "*.vmx"]
+      "nameGlobs": ["*.vhd", "*.vmdk", "*.vdi", "*.qcow2", "*.ova", "*.vbox", "*.vmx"]
     },
     {
       "id": "databases",

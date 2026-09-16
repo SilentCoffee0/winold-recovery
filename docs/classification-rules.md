@@ -26,7 +26,7 @@ Badges never decide. Regeneratable and unclassified nodes must not receive a sug
 | `siblingGlobs` | Another name under the same parent must match |
 | `childGlobs` | A direct child name must match |
 | `minSize` | File size in bytes |
-| `headerHex` | Optional magic bytes compared to the first 4 KB. Ignored when `sensitive` is true |
+| `headerHex` | Optional magic bytes compared to the first 4 KB. Ignored when `sensitive` is true. `*.vhdx` uses `7668647866696C65` (`vhdxfile`) |
 
 Non-empty matcher groups are combined with AND. Within a group, any glob may match.
 

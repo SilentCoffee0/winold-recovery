@@ -17,8 +17,7 @@ public sealed class SshRecipe : IRecipe
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
         string ssh = Path.Combine(context.OldProfileRoot, ".ssh");
-        if (context.SafeFs.DirectoryExists(ssh) &&
-            TryListFiles(context.SafeFs, ssh, out SshFolderFacts userFacts))
+        if (TryFolder(context, ssh, ".ssh", underSource: false, out SshFolderFacts userFacts))
         {
             cards.Add(
                 new RecipeCard(
@@ -45,8 +44,7 @@ public sealed class SshRecipe : IRecipe
         }
 
         string server = Path.GetFullPath(Path.Combine(context.OldProfileRoot, "..", "..", "ProgramData", "ssh"));
-        if (context.SafeFs.DirectoryExists(server) &&
-            TryListFiles(context.SafeFs, server, out SshFolderFacts hostFacts))
+        if (TryFolder(context, server, Path.Combine("ProgramData", "ssh"), underSource: true, out SshFolderFacts hostFacts))
         {
             cards.Add(
                 new RecipeCard(
@@ -346,6 +344,30 @@ public sealed class SshRecipe : IRecipe
         }
     }
 
+    private static bool TryFolder(
+        ProfileContext context,
+        string directory,
+        string relative,
+        bool underSource,
+        out SshFolderFacts facts)
+    {
+        if (context.Index is { } index)
+        {
+            IReadOnlyList<string> files = underSource
+                ? index.FilesUnderSource(relative)
+                : index.FilesUnder(relative);
+            return TryListEntries(context.SafeFs, files, out facts);
+        }
+
+        if (!context.SafeFs.DirectoryExists(directory))
+        {
+            facts = default!;
+            return false;
+        }
+
+        return TryListEntries(context.SafeFs, context.SafeFs.EnumerateFileSystemEntries(directory), out facts);
+    }
+
     private static Dictionary<string, string> UserFacts(string source, SshFolderFacts facts)
     {
         return new Dictionary<string, string>
@@ -363,7 +385,7 @@ public sealed class SshRecipe : IRecipe
         };
     }
 
-    private static bool TryListFiles(SafeFs safeFs, string directory, out SshFolderFacts facts)
+    private static bool TryListEntries(SafeFs safeFs, IEnumerable<string> entries, out SshFolderFacts facts)
     {
         List<string> names = [];
         List<string> fingerprints = [];
@@ -372,7 +394,7 @@ public sealed class SshRecipe : IRecipe
         int efs = 0;
         int configHosts = 0;
         int knownHosts = 0;
-        foreach (string entry in safeFs.EnumerateFileSystemEntries(directory))
+        foreach (string entry in entries)
         {
             if (safeFs.DirectoryExists(entry))
             {

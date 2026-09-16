@@ -239,6 +239,10 @@ public sealed class ClassificationEngineTests
         await File.WriteAllTextAsync(Path.Combine(alice, ".nuget", "NuGet.Config"), "<configuration />");
         await File.WriteAllTextAsync(Path.Combine(alice, ".m2", "settings.xml"), "<settings />");
         await File.WriteAllTextAsync(Path.Combine(alice, "machine.vmx"), "guestOS = \"windows9-64\"");
+        byte[] vhdx = new byte[16];
+        System.Text.Encoding.ASCII.GetBytes("vhdxfile").CopyTo(vhdx, 0);
+        await File.WriteAllBytesAsync(Path.Combine(alice, "disk.vhdx"), vhdx);
+        await File.WriteAllTextAsync(Path.Combine(alice, "fake.vhdx"), "not-a-disk");
         await File.WriteAllTextAsync(Path.Combine(alice, ".yarnrc.yml"), "npmAuthToken: secret");
         await File.WriteAllTextAsync(Path.Combine(alice, "certs", "site.crt"), "cert");
         await File.WriteAllTextAsync(Path.Combine(alice, "certs", "site.key"), "key");
@@ -262,6 +266,8 @@ public sealed class ClassificationEngineTests
         TreeNodeRow nuget = Find(context, @"Users\Alice\.nuget\NuGet.Config");
         TreeNodeRow maven = Find(context, @"Users\Alice\.m2\settings.xml");
         TreeNodeRow vmx = Find(context, @"Users\Alice\machine.vmx");
+        TreeNodeRow vhdxDisk = Find(context, @"Users\Alice\disk.vhdx");
+        TreeNodeRow fakeVhdx = Find(context, @"Users\Alice\fake.vhdx");
         TreeNodeRow yarn = Find(context, @"Users\Alice\.yarnrc.yml");
         TreeNodeRow cert = Find(context, @"Users\Alice\certs\site.crt");
         TreeNodeRow lonely = Find(context, @"Users\Alice\lonely.crt");
@@ -278,6 +284,8 @@ public sealed class ClassificationEngineTests
         Assert.Contains("Dev config", nuget.BadgeText);
         Assert.Contains("Dev config", maven.BadgeText);
         Assert.Contains("VM disk", vmx.BadgeText);
+        Assert.Contains("VM disk", vhdxDisk.BadgeText);
+        Assert.DoesNotContain("VM disk", fakeVhdx.BadgeText);
         Assert.Contains("Sensitive", yarn.BadgeText);
         Assert.Contains("Sensitive", cert.BadgeText);
         Assert.DoesNotContain("Sensitive", lonely.BadgeText);

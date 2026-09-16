@@ -321,6 +321,87 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Ssh_Detect_FindsKeysFromRecipeIndexWithoutWalkingDisk()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string ssh = Path.Combine(alice, ".ssh");
+        string server = Path.Combine(context.Source, "ProgramData", "ssh");
+        Directory.CreateDirectory(ssh);
+        Directory.CreateDirectory(server);
+        await File.WriteAllTextAsync(Path.Combine(ssh, "id_ed25519.pub"), "ssh-ed25519 INDEXED");
+        await File.WriteAllTextAsync(Path.Combine(ssh, "walked_only"), "disk-only-user");
+        await File.WriteAllTextAsync(Path.Combine(server, "sshd_config"), "Port 22");
+        await File.WriteAllTextAsync(Path.Combine(server, "walked_host"), "disk-only-host");
+
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "id_ed25519.pub",
+                @"Users\Alice\.ssh\id_ed25519.pub",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                2,
+                "session-1",
+                null,
+                null,
+                "sshd_config",
+                @"ProgramData\ssh\sshd_config",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+
+        RecipeIndex index = new(context.Database, "session-1", @"Users\Alice", alice);
+        DetectResult fromIndex = new SshRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner,
+                index));
+        RecipeCard user = Assert.Single(fromIndex.Cards, card => card.InstanceKey == "Alice");
+        Assert.Equal("id_ed25519.pub", user.Facts["names"]);
+        RecipeCard host = Assert.Single(fromIndex.Cards, card => card.InstanceKey == "openssh-server");
+        Assert.Equal("sshd_config", host.Facts["names"]);
+
+        DetectResult fromDisk = new SshRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        Assert.Contains(
+            fromDisk.Cards,
+            card => card.InstanceKey == "Alice" &&
+                card.Facts["names"].Contains("walked_only", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            fromDisk.Cards,
+            card => card.InstanceKey == "openssh-server" &&
+                card.Facts["names"].Contains("walked_host", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task SshAndChromeAndFirefoxAndGit_DetectWithoutLeakingCanaries()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();

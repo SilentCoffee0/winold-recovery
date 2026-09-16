@@ -605,6 +605,42 @@ public sealed class RecipeIndexTests
                     "settings.json")));
     }
 
+    [Fact]
+    public async Task Index_FindsSshFilesUnderProfileAndProgramData()
+    {
+        await using RecipeIndexContext context = await RecipeIndexContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Created", "0.1.0"));
+        await context.Database.InsertNodesAsync(
+        [
+            Node(1, null, "Alice", @"Users\Alice"),
+            Node(
+                2,
+                1,
+                "id_ed25519.pub",
+                @"Users\Alice\.ssh\id_ed25519.pub",
+                NodeKind.File),
+            Node(
+                3,
+                1,
+                "sshd_config",
+                @"ProgramData\ssh\sshd_config",
+                NodeKind.File),
+        ]);
+
+        RecipeIndex index = new(
+            context.Database,
+            "session-1",
+            @"Users\Alice",
+            Path.Combine(context.Root, "Users", "Alice"));
+        Assert.Equal(
+            Path.Combine(context.Root, "Users", "Alice", ".ssh", "id_ed25519.pub"),
+            Assert.Single(index.FilesUnder(".ssh")));
+        Assert.Equal(
+            Path.Combine(context.Root, "ProgramData", "ssh", "sshd_config"),
+            Assert.Single(index.FilesUnderSource(Path.Combine("ProgramData", "ssh"))));
+    }
+
     private static PersistedNode Node(
         long id,
         long? parentId,
