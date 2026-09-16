@@ -13,7 +13,11 @@ public static class VerifyReportFormat
                 " files verified by size and timestamp   ✔" +
                 Environment.NewLine +
                 QuantityFormat.Count(report.HashOk) +
-                " files verified by SHA-256 (sample + all files under 64 MB)   ✔";
+                " files verified by SHA-256 (sample + files 64 MB or smaller, VHDX, and sensitive items)   ✔" +
+                Environment.NewLine +
+                "0 failures. You can now open the restored files and apps and confirm they work." +
+                Environment.NewLine +
+                "Purge is available once every restore job is verified.";
         }
 
         return QuantityFormat.Count(report.SizeTimeOk) +

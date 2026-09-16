@@ -11,9 +11,12 @@ public sealed class VerifyReportFormatTests
         string text = VerifyReportFormat.Counts(report);
         Assert.Contains("118,420 files verified by size and timestamp   ✔", text, StringComparison.Ordinal);
         Assert.Contains(
-            "4,120 files verified by SHA-256 (sample + all files under 64 MB)   ✔",
+            "4,120 files verified by SHA-256 (sample + files 64 MB or smaller, VHDX, and sensitive items)   ✔",
             text,
             StringComparison.Ordinal);
+        Assert.Contains("0 failures.", text, StringComparison.Ordinal);
+        Assert.Contains("You can now open the restored files", text, StringComparison.Ordinal);
+        Assert.Contains("Purge is available", text, StringComparison.Ordinal);
     }
 
     [Fact]

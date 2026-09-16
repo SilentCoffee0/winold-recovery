@@ -47,6 +47,7 @@ All notable changes to WinOld Recovery will be documented here.
 - Scan lists each Windows.old as a two-line card (path, kind, created date, profile count, estimated deletion) and shows the 10-day Setup Cleanup warning in a callout. Scan options sit under the source list.
 - The status-strip space budget uses KB/MB/GB like the rest of the shell (`Selected: 41.2 GB of 127.0 GB free`) instead of raw byte counts.
 - Restore jobs use UX_SPEC §5.1 glyphs (waiting ○, running ▶, done ✔, paused, failed) on card rows.
+- Verify names the L2 hash set (sample + 64 MB or smaller, VHDX, sensitive) and ends a passing report with 0 failures and that Purge is available.
 - FlaUI scan→decide→preview→restore→verify→purge on a browsed TEMP fixture passed 16 Sep 2026 (`tools/run-flaui-e2e.ps1`, 23.6 s). A second FlaUI case kills published `--restore` mid-copy and asserts the Resume overlay (27.2 s, two tests). The app refuses a volume-root `Windows.old*` smoke path, forces PreferManualDelete, and will not start the scan until the status line shows `Smoke fixture ready`. Still skipped in CI unless `RUN_FLAUI=1`.
 - Release workflow submits both published EXEs to SignPath when repository variable `SIGNPATH_ENABLED` is `true`, then checksums the signed copies. Without that variable the SignPath steps are skipped and assets stay unsigned.
 - Milestone 0 .NET 10 solution and project dependency structure.
