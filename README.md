@@ -42,7 +42,7 @@ C# on .NET 10 LTS, WPF (Fluent, `ThemeMode=System`), portable single-file EXE (n
 
 ## Related searches this project answers
 
-Windows.old recovery · Windows.old restore · recover files after reinstalling Windows · recover files from Windows.old · restore files from Windows.old folder · delete Windows.old safely · Windows recovery tool · recover WSL distro from Windows.old · restore Syncthing identity after reinstall · SSH keys in Windows.old · Chrome passwords after Windows reinstall
+Windows.old recovery · Windows.old restore · recover files after reinstalling Windows · recover files from Windows.old · restore files from Windows.old folder · selectively restore from Windows.old · delete Windows.old safely · Windows recovery tool · recover WSL distro from Windows.old · restore Syncthing identity after reinstall · SSH keys in Windows.old · Chrome passwords after Windows reinstall
 
 ## Disclaimer
 
