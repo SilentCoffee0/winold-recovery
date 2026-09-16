@@ -128,6 +128,16 @@ public sealed class RecipeIndex
 
     public IReadOnlyList<string> GitWorkingTrees() => ParentsOfChildNamed(".git");
 
+    public bool AnyFileNamedStartingWith(string relativeUnderProfile, params string[] namePrefixes)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeUnderProfile);
+        ArgumentNullException.ThrowIfNull(namePrefixes);
+        return sessionDb.AnyFileUnderPrefixWithNamePrefix(
+            sessionId,
+            CombinePrefix(profileRelPrefix, relativeUnderProfile),
+            namePrefixes);
+    }
+
     public IReadOnlyList<string> ParentsOfChildNamedUnder(string relativeUnderSource, string childName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(relativeUnderSource);

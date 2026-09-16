@@ -1,4 +1,5 @@
 using WinOldRecovery.Core.IO;
+using WinOldRecovery.Core.Recipes;
 
 namespace WinOldRecovery.Recipes;
 
@@ -58,7 +59,9 @@ public static class FirefoxIni
     public static IReadOnlyList<DiscoveredFirefoxProfile> Discover(
         SafeFs safeFs,
         string firefoxRoot,
-        string containingRoot)
+        string containingRoot,
+        IReadOnlyList<string>? extraDirectories = null,
+        bool skipProfilesDirectoryWalk = false)
     {
         ArgumentNullException.ThrowIfNull(safeFs);
         ArgumentException.ThrowIfNullOrWhiteSpace(firefoxRoot);
@@ -110,19 +113,60 @@ public static class FirefoxIni
             (directory, name, isDefault) => Consider(directory, name, isDefault),
             firefoxRoot);
 
-        string profilesDir = Path.Combine(firefoxRoot, "Profiles");
-        if (safeFs.DirectoryExists(profilesDir) && !DetectorWalk.IsReparse(profilesDir))
+        if (!skipProfilesDirectoryWalk)
         {
-            foreach (string entry in safeFs.EnumerateFileSystemEntries(profilesDir))
+            string profilesDir = Path.Combine(firefoxRoot, "Profiles");
+            if (safeFs.DirectoryExists(profilesDir) && !DetectorWalk.IsReparse(profilesDir))
             {
-                if (safeFs.DirectoryExists(entry))
+                foreach (string entry in safeFs.EnumerateFileSystemEntries(profilesDir))
                 {
-                    Consider(entry, Path.GetFileName(entry), isDefault: false);
+                    if (safeFs.DirectoryExists(entry))
+                    {
+                        Consider(entry, Path.GetFileName(entry), isDefault: false);
+                    }
                 }
             }
         }
 
+        if (extraDirectories is not null)
+        {
+            foreach (string directory in extraDirectories)
+            {
+                Consider(directory, Path.GetFileName(directory.Replace('/', '\\')), isDefault: false);
+            }
+        }
+
         return [.. found.Values];
+    }
+
+    public static IReadOnlyList<string> IndexedDirectories(
+        ProfileContext context,
+        string relativeUnderProfile,
+        params string[] childNames)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeUnderProfile);
+        ArgumentNullException.ThrowIfNull(childNames);
+        if (context.Index is not { } index || childNames.Length == 0)
+        {
+            return [];
+        }
+
+        HashSet<string> directories = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string childName in childNames)
+        {
+            foreach (string parent in index.ParentsOfChildNamedUnderProfile(relativeUnderProfile, childName))
+            {
+                directories.Add(parent);
+            }
+
+            foreach (string parent in index.ParentsOfChildNamed(childName))
+            {
+                directories.Add(parent);
+            }
+        }
+
+        return [.. directories];
     }
 
     private static void ReadIni(

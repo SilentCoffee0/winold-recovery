@@ -37,7 +37,14 @@ public sealed class ThunderbirdRecipe : IRecipe
         foreach (DiscoveredFirefoxProfile discovered in FirefoxIni.Discover(
                      context.SafeFs,
                      thunderbird,
-                     context.OldProfileRoot))
+                     context.OldProfileRoot,
+                     FirefoxIni.IndexedDirectories(
+                         context,
+                         @"AppData\Roaming\Thunderbird",
+                         "prefs.js",
+                         "abook.sqlite",
+                         "places.sqlite"),
+                     skipProfilesDirectoryWalk: context.Index is not null))
         {
             string profile = discovered.Directory;
             if (!context.SafeFs.DirectoryExists(profile) || DetectorWalk.IsReparse(profile))

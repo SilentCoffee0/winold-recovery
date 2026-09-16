@@ -38,15 +38,9 @@ public sealed class ChromiumRecipe : IRecipe
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
         ChromiumUserDataMeta localState = ChromiumLocalState.Read(context.SafeFs, userData);
-        foreach (string entry in context.SafeFs.EnumerateFileSystemEntries(userData))
+        foreach (string entry in ChromiumProfileDirectories(context, userData, relativeUserData))
         {
             string name = Path.GetFileName(entry);
-            if (!name.Equals("Default", StringComparison.OrdinalIgnoreCase) &&
-                !name.StartsWith("Profile ", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
             string bookmarks = Path.Combine(entry, "Bookmarks");
             if (!context.SafeFs.FileExists(bookmarks))
             {
@@ -58,7 +52,10 @@ public sealed class ChromiumRecipe : IRecipe
                 Path.Combine(entry, "Extensions"),
                 Path.Combine(relativeUserData, name, "Extensions"));
             bool hasHistory = context.SafeFs.FileExists(Path.Combine(entry, "History"));
-            bool hasSessions = HasSessionFiles(context.SafeFs, Path.Combine(entry, "Sessions"));
+            bool hasSessions = HasSessionFiles(
+                context,
+                Path.Combine(entry, "Sessions"),
+                Path.Combine(relativeUserData, name, "Sessions"));
             bool hasAutofill = context.SafeFs.FileExists(Path.Combine(entry, "Web Data"));
             List<RecipeComponent> components =
             [
@@ -505,6 +502,37 @@ public sealed class ChromiumRecipe : IRecipe
         return -1;
     }
 
+    private static IEnumerable<string> ChromiumProfileDirectories(
+        ProfileContext context,
+        string userData,
+        string relativeUserData)
+    {
+        if (context.Index is { } index)
+        {
+            foreach (string parent in index.ParentsOfChildNamedUnderProfile(relativeUserData, "Bookmarks"))
+            {
+                if (IsChromiumProfileName(Path.GetFileName(parent)))
+                {
+                    yield return parent;
+                }
+            }
+
+            yield break;
+        }
+
+        foreach (string entry in context.SafeFs.EnumerateFileSystemEntries(userData))
+        {
+            if (IsChromiumProfileName(Path.GetFileName(entry)))
+            {
+                yield return entry;
+            }
+        }
+    }
+
+    private static bool IsChromiumProfileName(string name) =>
+        name.Equals("Default", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("Profile ", StringComparison.OrdinalIgnoreCase);
+
     private static int CountExtensionFolders(
         ProfileContext context,
         string extensionsRoot,
@@ -539,16 +567,21 @@ public sealed class ChromiumRecipe : IRecipe
         return count;
     }
 
-    private static bool HasSessionFiles(SafeFs safeFs, string sessionsDir)
+    private static bool HasSessionFiles(ProfileContext context, string sessionsDir, string relativeUnderProfile)
     {
-        if (!safeFs.DirectoryExists(sessionsDir))
+        if (context.Index is { } index)
+        {
+            return index.AnyFileNamedStartingWith(relativeUnderProfile, "Session_", "Tabs_");
+        }
+
+        if (!context.SafeFs.DirectoryExists(sessionsDir))
         {
             return false;
         }
 
         try
         {
-            foreach (string path in safeFs.EnumerateFileSystemEntries(sessionsDir))
+            foreach (string path in context.SafeFs.EnumerateFileSystemEntries(sessionsDir))
             {
                 string name = Path.GetFileName(path);
                 if (name.StartsWith("Session_", StringComparison.OrdinalIgnoreCase) ||

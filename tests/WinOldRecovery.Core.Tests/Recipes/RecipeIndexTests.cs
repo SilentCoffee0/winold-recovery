@@ -442,10 +442,85 @@ public sealed class RecipeIndexTests
                 "Anki2",
                 "addons21",
                 "2040501954"),
+        Assert.Single(
+            index.ParentsOfChildNamedUnderProfile(
+                Path.Combine("AppData", "Roaming", "Anki2", "addons21"),
+                "manifest.json")));
+    }
+
+    [Fact]
+    public async Task Index_FindsPlacesSqliteParentsAndSessionNamePrefixes()
+    {
+        await using RecipeIndexContext context = await RecipeIndexContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Created", "0.1.0"));
+        await context.Database.InsertNodesAsync(
+        [
+            Node(1, null, "Alice", @"Users\Alice"),
+            Node(2, 1, "relocated.ff", @"Users\Alice\Documents\relocated.ff"),
+            Node(
+                3,
+                2,
+                "places.sqlite",
+                @"Users\Alice\Documents\relocated.ff\places.sqlite",
+                NodeKind.File),
+            Node(
+                4,
+                1,
+                "Default",
+                @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default"),
+            Node(
+                5,
+                4,
+                "Bookmarks",
+                @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default\Bookmarks",
+                NodeKind.File),
+            Node(
+                6,
+                4,
+                "Session_abc",
+                @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default\Sessions\Session_abc",
+                NodeKind.File),
+            Node(
+                7,
+                4,
+                "Current Session",
+                @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default\Sessions\Current Session",
+                NodeKind.File),
+        ]);
+
+        RecipeIndex index = new(
+            context.Database,
+            "session-1",
+            @"Users\Alice",
+            Path.Combine(context.Root, "Users", "Alice"));
+        Assert.Equal(
+            Path.Combine(context.Root, "Users", "Alice", "Documents", "relocated.ff"),
+            Assert.Single(index.ParentsOfChildNamed("places.sqlite")));
+        Assert.Equal(
+            Path.Combine(
+                context.Root,
+                "Users",
+                "Alice",
+                "AppData",
+                "Local",
+                "Google",
+                "Chrome",
+                "User Data",
+                "Default"),
             Assert.Single(
                 index.ParentsOfChildNamedUnderProfile(
-                    Path.Combine("AppData", "Roaming", "Anki2", "addons21"),
-                    "manifest.json")));
+                    Path.Combine("AppData", "Local", "Google", "Chrome", "User Data"),
+                    "Bookmarks")));
+        Assert.True(
+            index.AnyFileNamedStartingWith(
+                Path.Combine("AppData", "Local", "Google", "Chrome", "User Data", "Default", "Sessions"),
+                "Session_",
+                "Tabs_"));
+        Assert.False(
+            index.AnyFileNamedStartingWith(
+                Path.Combine("AppData", "Local", "Google", "Chrome", "User Data", "Default", "Sessions"),
+                "Tabs_"));
     }
 
     private static PersistedNode Node(

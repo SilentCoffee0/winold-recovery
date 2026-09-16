@@ -3507,52 +3507,16 @@ public sealed class RecipeTests
         await File.WriteAllTextAsync(
             Path.Combine(alice, "AppData", "Local", "Google", "Chrome", "User Data", "Default", "Bookmarks"),
             """{"roots":{"bookmark_bar":{"children":[]}}}""");
-        const string extensionsRel =
-            @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default\Extensions";
+        const string defaultRel =
+            @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default";
+        const string extensionsRel = defaultRel + @"\Extensions";
         await context.Database.InsertNodesAsync(
         [
-            new PersistedNode(
-                1,
-                "session-1",
-                null,
-                null,
-                "Extensions",
-                extensionsRel,
-                NodeKind.Directory,
-                0,
-                0,
-                0,
-                DateTime.UtcNow,
-                0,
-                NodeProblem.None),
-            new PersistedNode(
-                2,
-                "session-1",
-                null,
-                1,
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                extensionsRel + @"\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                NodeKind.Directory,
-                0,
-                0,
-                0,
-                DateTime.UtcNow,
-                0,
-                NodeProblem.None),
-            new PersistedNode(
-                3,
-                "session-1",
-                null,
-                1,
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-                extensionsRel + @"\bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-                NodeKind.Directory,
-                0,
-                0,
-                0,
-                DateTime.UtcNow,
-                0,
-                NodeProblem.None),
+            Indexed(10, null, "Default", defaultRel, NodeKind.Directory),
+            Indexed(11, 10, "Bookmarks", defaultRel + @"\Bookmarks"),
+            Indexed(1, 10, "Extensions", extensionsRel, NodeKind.Directory),
+            Indexed(2, 1, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", extensionsRel + @"\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", NodeKind.Directory),
+            Indexed(3, 1, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", extensionsRel + @"\bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", NodeKind.Directory),
         ]);
 
         ChromiumRecipe recipe = new(
@@ -3586,6 +3550,134 @@ public sealed class RecipeTests
                     context.SafeFs,
                     context.Runner)).Cards);
         Assert.Equal("3", fromDisk.Facts["extensions"]);
+    }
+
+    [Fact]
+    public async Task Firefox_Detect_FindsRelocatedPlacesFromRecipeIndexWithoutWalkingProfiles()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string walked = Path.Combine(alice, "AppData", "Roaming", "Mozilla", "Firefox", "Profiles", "walked.default");
+        string relocated = Path.Combine(alice, "Documents", "relocated.ff");
+        Directory.CreateDirectory(walked);
+        Directory.CreateDirectory(relocated);
+        await File.WriteAllTextAsync(Path.Combine(walked, "places.sqlite"), "walk");
+        await File.WriteAllTextAsync(Path.Combine(relocated, "places.sqlite"), "reloc");
+        await context.Database.InsertNodesAsync(
+        [
+            Indexed(1, null, "relocated.ff", @"Users\Alice\Documents\relocated.ff", NodeKind.Directory),
+            Indexed(2, 1, "places.sqlite", @"Users\Alice\Documents\relocated.ff\places.sqlite"),
+        ]);
+
+        FirefoxRecipe recipe = new();
+        RecipeCard fromIndex = Assert.Single(
+            recipe.Detect(WithIndex(context, alice)).Cards);
+        Assert.Equal("relocated.ff", fromIndex.Facts["name"]);
+        Assert.DoesNotContain(
+            recipe.Detect(WithIndex(context, alice)).Cards,
+            card => card.Facts["name"].Contains("walked", StringComparison.OrdinalIgnoreCase));
+        RecipeCard fromDisk = Assert.Single(recipe.Detect(WithoutIndex(context, alice)).Cards);
+        Assert.Equal("walked.default", fromDisk.Facts["name"]);
+    }
+
+    [Fact]
+    public async Task Thunderbird_Detect_FindsRelocatedPrefsFromRecipeIndexWithoutWalkingProfiles()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string walked = Path.Combine(alice, "AppData", "Roaming", "Thunderbird", "Profiles", "walked.tb");
+        string relocated = Path.Combine(alice, "Documents", "relocated.tb");
+        Directory.CreateDirectory(walked);
+        Directory.CreateDirectory(relocated);
+        await File.WriteAllTextAsync(Path.Combine(walked, "prefs.js"), "walk");
+        await File.WriteAllTextAsync(Path.Combine(relocated, "prefs.js"), "reloc");
+        await context.Database.InsertNodesAsync(
+        [
+            Indexed(1, null, "relocated.tb", @"Users\Alice\Documents\relocated.tb", NodeKind.Directory),
+            Indexed(2, 1, "prefs.js", @"Users\Alice\Documents\relocated.tb\prefs.js"),
+        ]);
+
+        ThunderbirdRecipe recipe = new();
+        RecipeCard fromIndex = Assert.Single(
+            recipe.Detect(WithIndex(context, alice)).Cards);
+        Assert.Equal("relocated.tb", fromIndex.Facts["name"]);
+        RecipeCard fromDisk = Assert.Single(recipe.Detect(WithoutIndex(context, alice)).Cards);
+        Assert.Equal("walked.tb", fromDisk.Facts["name"]);
+    }
+
+    [Fact]
+    public async Task Chromium_Detect_FindsBookmarksAndSessionsFromRecipeIndexWithoutWalkingUserData()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string userData = Path.Combine(alice, "AppData", "Local", "Google", "Chrome", "User Data");
+        string defaultProfile = Path.Combine(userData, "Default");
+        string extra = Path.Combine(userData, "Profile 1");
+        Directory.CreateDirectory(Path.Combine(defaultProfile, "Sessions"));
+        Directory.CreateDirectory(Path.Combine(extra, "Sessions"));
+        await File.WriteAllTextAsync(
+            Path.Combine(defaultProfile, "Bookmarks"),
+            """{"roots":{"bookmark_bar":{"children":[]}}}""");
+        await File.WriteAllTextAsync(
+            Path.Combine(extra, "Bookmarks"),
+            """{"roots":{"bookmark_bar":{"children":[]}}}""");
+        await File.WriteAllTextAsync(Path.Combine(defaultProfile, "Sessions", "Session_abc"), "s");
+        await File.WriteAllTextAsync(Path.Combine(extra, "Sessions", "Tabs_walked"), "t");
+        const string defaultRel = @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default";
+        await context.Database.InsertNodesAsync(
+        [
+            Indexed(1, null, "Default", defaultRel, NodeKind.Directory),
+            Indexed(2, 1, "Bookmarks", defaultRel + @"\Bookmarks"),
+            Indexed(3, 1, "Session_abc", defaultRel + @"\Sessions\Session_abc"),
+        ]);
+
+        ChromiumRecipe recipe = new(
+            "chrome",
+            "Google Chrome",
+            Path.Combine("AppData", "Local", "Google", "Chrome", "User Data"));
+        RecipeCard fromIndex = Assert.Single(recipe.Detect(WithIndex(context, alice)).Cards);
+        Assert.Equal("Default", fromIndex.Facts["folder"]);
+        Assert.Equal("1", fromIndex.Facts["sessionsPresent"]);
+        IReadOnlyList<RecipeCard> fromDisk = recipe.Detect(WithoutIndex(context, alice)).Cards;
+        Assert.Equal(2, fromDisk.Count);
+        Assert.Contains(fromDisk, card => card.Facts["folder"] == "Profile 1");
+    }
+
+    [Fact]
+    public async Task Anki_Detect_FindsCollectionFromRecipeIndexWithoutWalkingBase()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string user1 = Path.Combine(alice, "AppData", "Roaming", "Anki2", "User 1");
+        string user2 = Path.Combine(alice, "AppData", "Roaming", "Anki2", "User 2");
+        Directory.CreateDirectory(user1);
+        Directory.CreateDirectory(user2);
+        WriteSqlite(
+            Path.Combine(user1, "collection.anki2"),
+            """
+            CREATE TABLE notes(id INTEGER PRIMARY KEY, guid TEXT);
+            CREATE TABLE cards(id INTEGER PRIMARY KEY, nid INTEGER);
+            """);
+        WriteSqlite(
+            Path.Combine(user2, "collection.anki2"),
+            """
+            CREATE TABLE notes(id INTEGER PRIMARY KEY, guid TEXT);
+            CREATE TABLE cards(id INTEGER PRIMARY KEY, nid INTEGER);
+            """);
+        const string user1Rel = @"Users\Alice\AppData\Roaming\Anki2\User 1";
+        await context.Database.InsertNodesAsync(
+        [
+            Indexed(1, null, "User 1", user1Rel, NodeKind.Directory),
+            Indexed(2, 1, "collection.anki2", user1Rel + @"\collection.anki2"),
+        ]);
+
+        AnkiRecipe recipe = new();
+        RecipeCard fromIndex = Assert.Single(recipe.Detect(WithIndex(context, alice)).Cards);
+        Assert.Contains("User 1", fromIndex.Title, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            recipe.Detect(WithIndex(context, alice)).Cards,
+            card => card.Title.Contains("User 2", StringComparison.Ordinal));
+        Assert.Equal(2, recipe.Detect(WithoutIndex(context, alice)).Cards.Count);
     }
 
     [Fact]
@@ -4655,6 +4747,48 @@ public sealed class RecipeTests
             }
         }
     }
+
+    private static ProfileContext WithIndex(RecipeContext context, string alice) =>
+        new(
+            "Alice",
+            alice,
+            context.Destination,
+            context.Temp,
+            context.Exports,
+            context.SafeFs,
+            context.Runner,
+            new RecipeIndex(context.Database, "session-1", @"Users\Alice", alice));
+
+    private static ProfileContext WithoutIndex(RecipeContext context, string alice) =>
+        new(
+            "Alice",
+            alice,
+            context.Destination,
+            context.Temp,
+            context.Exports,
+            context.SafeFs,
+            context.Runner);
+
+    private static PersistedNode Indexed(
+        long id,
+        long? parentId,
+        string name,
+        string relPath,
+        NodeKind kind = NodeKind.File) =>
+        new(
+            id,
+            "session-1",
+            null,
+            parentId,
+            name,
+            relPath,
+            kind,
+            0,
+            0,
+            0,
+            DateTime.UtcNow,
+            0,
+            NodeProblem.None);
 
     private sealed class RecipeContext : IAsyncDisposable
     {

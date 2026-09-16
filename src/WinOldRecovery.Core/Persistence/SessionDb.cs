@@ -1689,6 +1689,48 @@ public sealed class SessionDb : IAsyncDisposable
         return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 
+    public bool AnyFileUnderPrefixWithNamePrefix(
+        string sessionId,
+        string relPrefix,
+        IReadOnlyList<string> namePrefixes)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentNullException.ThrowIfNull(namePrefixes);
+        string prefix = (relPrefix ?? string.Empty).Replace('/', '\\').Trim('\\');
+        if (string.IsNullOrEmpty(prefix) || namePrefixes.Count == 0)
+        {
+            return false;
+        }
+
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        List<string> likes = new(namePrefixes.Count);
+        for (int index = 0; index < namePrefixes.Count; index++)
+        {
+            string parameter = "$pre" + index.ToString(CultureInfo.InvariantCulture);
+            likes.Add("name LIKE " + parameter + " ESCAPE '\\'");
+            command.Parameters.AddWithValue(parameter, namePrefixes[index] + "%");
+        }
+
+        command.CommandText =
+            """
+            SELECT 1
+            FROM nodes
+            WHERE session_id = $sessionId
+              AND kind = 'File'
+              AND (
+            """ + string.Join(" OR ", likes) +
+            """
+              )
+            """ + RelPathPrefixSql("rel_path", prefix) +
+            """
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        BindRelPathPrefix(command, prefix);
+        return command.ExecuteScalar() is not null and not DBNull;
+    }
+
     private static string RelPathPrefixSql(string column, string prefix)
     {
         if (string.IsNullOrEmpty(prefix))

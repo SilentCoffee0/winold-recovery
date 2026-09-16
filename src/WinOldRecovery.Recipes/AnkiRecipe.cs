@@ -20,7 +20,7 @@ public sealed class AnkiRecipe : IRecipe
                 continue;
             }
 
-            foreach (string profile in context.SafeFs.EnumerateFileSystemEntries(baseFolder))
+            foreach (string profile in AnkiProfileDirectories(context, baseFolder))
             {
                 if (!context.SafeFs.DirectoryExists(profile))
                 {
@@ -439,6 +439,33 @@ public sealed class AnkiRecipe : IRecipe
         }
 
         return CountMedia(context.SafeFs, media);
+    }
+
+    private static IEnumerable<string> AnkiProfileDirectories(ProfileContext context, string baseFolder)
+    {
+        if (TryIndexRelative(context, baseFolder, out RecipeIndex index, out string relative))
+        {
+            string[] fromIndex = [.. index.ParentsOfChildNamedUnderProfile(relative, "collection.anki2")];
+            if (fromIndex.Length > 0)
+            {
+                foreach (string profile in fromIndex)
+                {
+                    yield return profile;
+                }
+
+                yield break;
+            }
+        }
+
+        if (!context.SafeFs.DirectoryExists(baseFolder))
+        {
+            yield break;
+        }
+
+        foreach (string profile in context.SafeFs.EnumerateFileSystemEntries(baseFolder))
+        {
+            yield return profile;
+        }
     }
 
     private static bool TryIndexRelative(

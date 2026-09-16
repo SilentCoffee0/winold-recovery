@@ -54,10 +54,13 @@ public sealed class FirefoxRecipe : IRecipe
     public DetectResult Detect(ProfileContext context)
     {
         string firefox = Path.Combine(context.OldProfileRoot, "AppData", "Roaming", "Mozilla", "Firefox");
+        const string firefoxRel = @"AppData\Roaming\Mozilla\Firefox";
         IReadOnlyList<DiscoveredFirefoxProfile> profiles = FirefoxIni.Discover(
             context.SafeFs,
             firefox,
-            context.OldProfileRoot);
+            context.OldProfileRoot,
+            FirefoxIni.IndexedDirectories(context, firefoxRel, "places.sqlite", "prefs.js"),
+            skipProfilesDirectoryWalk: context.Index is not null);
         string destFirefox = Path.Combine(
             context.DestinationProfileRoot,
             "AppData",
