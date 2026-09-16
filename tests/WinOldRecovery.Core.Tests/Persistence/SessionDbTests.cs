@@ -182,6 +182,77 @@ public sealed class SessionDbTests
     }
 
     [Fact]
+    public async Task UpdateNodeAggregates_WritesAcrossASqliteChunk()
+    {
+        await using SessionDbTestContext context = await SessionDbTestContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Scanning", "0.1.0"));
+        List<PersistedNode> nodes = new(40);
+        List<NodeAggregateUpdate> updates = new(40);
+        for (int id = 1; id <= 40; id++)
+        {
+            nodes.Add(
+                new PersistedNode(
+                    id,
+                    "session-1",
+                    null,
+                    null,
+                    "n" + id.ToString(CultureInfo.InvariantCulture),
+                    "p" + id.ToString(CultureInfo.InvariantCulture),
+                    NodeKind.Directory,
+                    0,
+                    0,
+                    0,
+                    DateTime.UtcNow,
+                    0,
+                    NodeProblem.None));
+            updates.Add(new NodeAggregateUpdate(id, id * 10, id, NodeProblem.None));
+        }
+
+        await context.Database.InsertNodesAsync(nodes);
+        await context.Database.UpdateNodeAggregatesAsync(updates);
+        using SqliteConnection reader = context.Database.OpenReadConnection();
+        using SqliteCommand first = reader.CreateCommand();
+        first.CommandText = "SELECT agg_size, agg_files FROM nodes WHERE id = 1;";
+        using (SqliteDataReader row = first.ExecuteReader())
+        {
+            Assert.True(row.Read());
+            Assert.Equal(10L, row.GetInt64(0));
+            Assert.Equal(1L, row.GetInt64(1));
+        }
+
+        using SqliteCommand last = reader.CreateCommand();
+        last.CommandText = "SELECT agg_size, agg_files FROM nodes WHERE id = 40;";
+        using (SqliteDataReader row = last.ExecuteReader())
+        {
+            Assert.True(row.Read());
+            Assert.Equal(400L, row.GetInt64(0));
+            Assert.Equal(40L, row.GetInt64(1));
+        }
+    }
+
+    [Fact]
+    public async Task SetKvBatch_UpsertsAcrossASqliteChunk()
+    {
+        await using SessionDbTestContext context = await SessionDbTestContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Scanning", "0.1.0"));
+        List<(string Key, string Value)> pairs = new(70);
+        for (int i = 1; i <= 70; i++)
+        {
+            string n = i.ToString(CultureInfo.InvariantCulture);
+            pairs.Add(("filehash." + n, "v" + n));
+        }
+
+        await context.Database.SetKvBatchAsync("session-1", pairs);
+        Assert.Equal("v1", context.Database.GetKv("session-1", "filehash.1"));
+        Assert.Equal("v70", context.Database.GetKv("session-1", "filehash.70"));
+        await context.Database.SetKvBatchAsync("session-1", [("filehash.1", "updated")]);
+        Assert.Equal("updated", context.Database.GetKv("session-1", "filehash.1"));
+        Assert.Equal("v70", context.Database.GetKv("session-1", "filehash.70"));
+    }
+
+    [Fact]
     public async Task ReplaceKindBadges_ReplacesOnlyThatKindOnTheNode()
     {
         await using SessionDbTestContext context = await SessionDbTestContext.CreateAsync();

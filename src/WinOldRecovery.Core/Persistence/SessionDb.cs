@@ -16,6 +16,8 @@ public sealed class SessionDb : IAsyncDisposable
     private const int WriterQueueCapacity = 1024;
     private const int NodeInsertChunkSize = 48;
     private const int BadgeInsertChunkSize = 96;
+    private const int AggregateUpdateChunkSize = 32;
+    private const int KvBatchChunkSize = 64;
 
     private readonly SqliteConnection writerConnection;
     private readonly Channel<IWriteRequest> writerQueue;
@@ -308,37 +310,59 @@ public sealed class SessionDb : IAsyncDisposable
         }
 
         return WriteAsync(
-            async (connection, token) =>
+            (connection, token) =>
             {
                 using SqliteTransaction transaction = connection.BeginTransaction();
-                await using SqliteCommand command = connection.CreateCommand();
-                command.Transaction = transaction;
-                command.CommandText =
-                    """
-                    UPDATE nodes
-                    SET agg_size = $aggSize,
-                        agg_files = $aggFiles,
-                        problem = $problem
-                    WHERE id = $id;
-                    """;
-                SqliteParameter id = command.Parameters.Add("$id", SqliteType.Integer);
-                SqliteParameter aggSize = command.Parameters.Add("$aggSize", SqliteType.Integer);
-                SqliteParameter aggFiles = command.Parameters.Add("$aggFiles", SqliteType.Integer);
-                SqliteParameter problem = command.Parameters.Add("$problem", SqliteType.Text);
-
-                foreach (NodeAggregateUpdate update in updates)
+                int offset = 0;
+                while (offset < updates.Count)
                 {
                     token.ThrowIfCancellationRequested();
-                    id.Value = update.Id;
-                    aggSize.Value = update.AggSize;
-                    aggFiles.Value = update.AggFiles;
-                    problem.Value = update.Problem.ToString();
+                    int count = Math.Min(AggregateUpdateChunkSize, updates.Count - offset);
+                    using SqliteCommand command = connection.CreateCommand();
+                    command.Transaction = transaction;
+                    command.CommandText = BuildAggregateUpdateSql(count);
+                    for (int index = 0; index < count; index++)
+                    {
+                        NodeAggregateUpdate update = updates[offset + index];
+                        string n = index.ToString(CultureInfo.InvariantCulture);
+                        command.Parameters.AddWithValue("$id" + n, update.Id);
+                        command.Parameters.AddWithValue("$aggSize" + n, update.AggSize);
+                        command.Parameters.AddWithValue("$aggFiles" + n, update.AggFiles);
+                        command.Parameters.AddWithValue("$problem" + n, update.Problem.ToString());
+                    }
+
                     command.ExecuteNonQuery();
+                    offset += count;
                 }
 
                 transaction.Commit();
+                return Task.CompletedTask;
             },
             cancellationToken);
+    }
+
+    private static string BuildAggregateUpdateSql(int count)
+    {
+        StringBuilder size = new(count * 28);
+        StringBuilder files = new(count * 28);
+        StringBuilder problem = new(count * 28);
+        StringBuilder ids = new(count * 8);
+        for (int index = 0; index < count; index++)
+        {
+            string n = index.ToString(CultureInfo.InvariantCulture);
+            size.Append("WHEN $id").Append(n).Append(" THEN $aggSize").Append(n).Append(' ');
+            files.Append("WHEN $id").Append(n).Append(" THEN $aggFiles").Append(n).Append(' ');
+            problem.Append("WHEN $id").Append(n).Append(" THEN $problem").Append(n).Append(' ');
+            if (index > 0)
+            {
+                ids.Append(',');
+            }
+
+            ids.Append("$id").Append(n);
+        }
+
+        return "UPDATE nodes SET agg_size = CASE id " + size + "END, agg_files = CASE id " +
+            files + "END, problem = CASE id " + problem + "END WHERE id IN (" + ids + ");";
     }
 
     public Task InsertBadgesAsync(
@@ -1089,32 +1113,56 @@ public sealed class SessionDb : IAsyncDisposable
         }
 
         return WriteAsync(
-            async (connection, token) =>
+            (connection, token) =>
             {
                 using SqliteTransaction transaction = connection.BeginTransaction();
-                await using SqliteCommand command = connection.CreateCommand();
-                command.Transaction = transaction;
-                command.CommandText =
-                    """
-                    INSERT INTO kv(session_id, key, value)
-                    VALUES ($sessionId, $key, $value)
-                    ON CONFLICT(session_id, key) DO UPDATE SET value = excluded.value;
-                    """;
-                SqliteParameter sessionParam = command.Parameters.Add("$sessionId", SqliteType.Text);
-                SqliteParameter key = command.Parameters.Add("$key", SqliteType.Text);
-                SqliteParameter value = command.Parameters.Add("$value", SqliteType.Text);
-                foreach ((string pairKey, string pairValue) in pairs)
+                int offset = 0;
+                while (offset < pairs.Count)
                 {
                     token.ThrowIfCancellationRequested();
-                    sessionParam.Value = sessionId;
-                    key.Value = pairKey;
-                    value.Value = pairValue;
+                    int count = Math.Min(KvBatchChunkSize, pairs.Count - offset);
+                    using SqliteCommand command = connection.CreateCommand();
+                    command.Transaction = transaction;
+                    command.CommandText = BuildKvUpsertSql(count);
+                    for (int index = 0; index < count; index++)
+                    {
+                        (string pairKey, string pairValue) = pairs[offset + index];
+                        string n = index.ToString(CultureInfo.InvariantCulture);
+                        command.Parameters.AddWithValue("$sessionId" + n, sessionId);
+                        command.Parameters.AddWithValue("$key" + n, pairKey);
+                        command.Parameters.AddWithValue("$value" + n, pairValue);
+                    }
+
                     command.ExecuteNonQuery();
+                    offset += count;
                 }
 
                 transaction.Commit();
+                return Task.CompletedTask;
             },
             cancellationToken);
+    }
+
+    private static string BuildKvUpsertSql(int count)
+    {
+        StringBuilder sql = new(80 + (count * 48));
+        sql.Append("INSERT INTO kv(session_id, key, value) VALUES");
+        for (int index = 0; index < count; index++)
+        {
+            if (index > 0)
+            {
+                sql.Append(',');
+            }
+
+            string n = index.ToString(CultureInfo.InvariantCulture);
+            sql.Append(" ($sessionId").Append(n)
+                .Append(", $key").Append(n)
+                .Append(", $value").Append(n)
+                .Append(')');
+        }
+
+        sql.Append(" ON CONFLICT(session_id, key) DO UPDATE SET value = excluded.value;");
+        return sql.ToString();
     }
 
     public string? GetKv(string sessionId, string key)
