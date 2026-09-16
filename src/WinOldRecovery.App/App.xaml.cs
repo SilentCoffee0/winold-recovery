@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
 using WinOldRecovery.App.ViewModels;
+using WinOldRecovery.Core;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Logging;
 using WinOldRecovery.Core.Persistence;
@@ -38,6 +39,12 @@ public partial class App : Application
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
         try
         {
+            if (!OsRequirement.IsCurrentSupported())
+            {
+                RefuseUnsupportedOs(e);
+                return;
+            }
+
             Privileges.EnableBackupAndRestore();
             SourceGuard sourceGuard = new();
             SafeFs safeFs = new(sourceGuard);
@@ -97,6 +104,34 @@ public partial class App : Application
             ShowCrash(exception);
             Shutdown(exitCode: 1);
         }
+    }
+
+    private void RefuseUnsupportedOs(StartupEventArgs e)
+    {
+        bool publishedScan = PublishedScanArgs.TryParse(e.Args, out _, out string scanReport);
+        bool publishedRestore = PublishedRestoreArgs.TryParse(
+            e.Args,
+            out _,
+            out _,
+            out string restoreReport);
+        if (publishedScan || publishedRestore)
+        {
+            SafeFs safeFs = new(new SourceGuard());
+            string report = publishedScan ? scanReport : restoreReport;
+            safeFs.WriteAllText(
+                report,
+                "Passed: false" + Environment.NewLine + OsRequirement.RefusalMessage + Environment.NewLine);
+        }
+        else
+        {
+            MessageBox.Show(
+                OsRequirement.RefusalMessage,
+                "WinOld Recovery",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+
+        Shutdown(exitCode: 1);
     }
 
     private void StartHeadless(

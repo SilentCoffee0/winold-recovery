@@ -18,6 +18,7 @@ All notable changes to WinOld Recovery will be documented here.
 - VS Code L3 verify requires dest `install-extensions-<cli>.cmd` to list every source extension id.
 - SSH L3 verify runs `ssh -G localhost` against the restored `.ssh` folder when ssh.exe answers. Missing ssh skips the process check. Game-save cards also restore `Program Files (x86)\Steam\userdata` into `Saved Games\Steam userdata`, Steam library `steamapps\common` save folders, and LocalLow publisher / Steam-compatible folders. After a walker checkpoint, those Steam library folders come from the node index instead of listing every title. Firefox help documents `logins.db` next to `logins.json`. Thunderbird copies `logins.db` with `key4.db` the same way.
 - About (next to Log and Help) shows version 0.1.0, the git commit when the build stamped SourceRevisionId, the commit date, and the independent-project trademark note.
+- Startup refuses Windows 8.1, Windows 10 before 1809 (build 17763), and 32-bit processes. Headless `--scan`/`--restore` write `Passed: false` plus that message to the report file.
 - Zotero, Calibre Library, Joplin, and Logseq graphs are recipe cards. Verify requires the catalog file (`zotero.sqlite`, `metadata.db`, `database.sqlite`, or `config.edn`). After a walker checkpoint, Zotero/Calibre/Logseq folders come from the node index.
 
 ### Fixed
