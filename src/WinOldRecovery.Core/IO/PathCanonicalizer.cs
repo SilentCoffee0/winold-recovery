@@ -77,6 +77,12 @@ public static class PathCanonicalizer
         return TrimEndingSeparatorUnlessRoot(ToExtendedPath(Path.GetFullPath(regularPath)));
     }
 
+    public static string WithoutExtendedPrefix(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        return RemoveExtendedPrefix(path);
+    }
+
     public static string ToExtendedPath(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);

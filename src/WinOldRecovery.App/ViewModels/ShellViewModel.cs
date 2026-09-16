@@ -2330,7 +2330,8 @@ public sealed class ShellViewModel : ObservableObject
             return;
         }
 
-        textClipboard.SetText(Path.Combine(SourceRoot, SelectedNode.RelPath));
+        textClipboard.SetText(
+            PathCanonicalizer.WithoutExtendedPrefix(Path.Combine(SourceRoot, SelectedNode.RelPath)));
     }
 
     private void RebuildCards(IReadOnlyList<DetectedProfile> profiles)

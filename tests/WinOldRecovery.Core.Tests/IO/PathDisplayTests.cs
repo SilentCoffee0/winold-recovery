@@ -21,4 +21,15 @@ public sealed class PathDisplayTests
         Assert.Contains("...", shown, StringComparison.Ordinal);
         Assert.DoesNotContain("middle", shown, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void WithoutExtendedPrefix_StripsWin32DevicePrefix()
+    {
+        Assert.Equal(
+            @"C:\Windows.old\Users\Alice",
+            PathCanonicalizer.WithoutExtendedPrefix(@"\\?\C:\Windows.old\Users\Alice"));
+        Assert.Equal(
+            @"C:\Windows.old\Users\Alice",
+            PathCanonicalizer.WithoutExtendedPrefix(@"C:\Windows.old\Users\Alice"));
+    }
 }

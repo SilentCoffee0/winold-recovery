@@ -93,7 +93,10 @@ public sealed class ShellViewModelTests
         context.ViewModel.SelectedNode = desktop;
         Assert.True(context.ViewModel.CopyPathCommand.CanExecute(null));
         context.ViewModel.CopyPathCommand.Execute(null);
-        Assert.Equal(Path.Combine(context.ViewModel.SourceRoot!, desktop.RelPath), context.Clipboard.LastText);
+        Assert.Equal(
+            PathCanonicalizer.WithoutExtendedPrefix(Path.Combine(context.ViewModel.SourceRoot!, desktop.RelPath)),
+            context.Clipboard.LastText);
+        Assert.DoesNotContain(@"\\?\", context.Clipboard.LastText, StringComparison.Ordinal);
     }
 
     [Fact]

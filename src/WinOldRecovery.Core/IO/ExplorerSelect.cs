@@ -8,7 +8,7 @@ public static class ExplorerSelect
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        string candidate = StripExtendedPrefix(path);
+        string candidate = PathCanonicalizer.WithoutExtendedPrefix(path);
         while (candidate.Length > MaxExplorerPathLength)
         {
             string? parent = Path.GetDirectoryName(candidate);
@@ -22,19 +22,5 @@ public static class ExplorerSelect
         }
 
         return "/select," + candidate;
-    }
-
-    private static string StripExtendedPrefix(string path)
-    {
-        const string extended = @"\\?\";
-        const string extendedUnc = @"\\?\UNC\";
-        if (path.StartsWith(extendedUnc, StringComparison.OrdinalIgnoreCase))
-        {
-            return @"\\" + path[extendedUnc.Length..];
-        }
-
-        return path.StartsWith(extended, StringComparison.Ordinal)
-            ? path[extended.Length..]
-            : path;
     }
 }
