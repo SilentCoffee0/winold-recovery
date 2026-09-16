@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Data.Sqlite;
@@ -85,6 +86,79 @@ public sealed class I7NetworkMonitorTests
                 Directory.Delete(root, recursive: true);
             }
         }
+    }
+
+    [SkippableFact(Timeout = 120_000)]
+    public async Task I7_PublishedScan_OpensNoRemoteSockets()
+    {
+        string? exe = Environment.GetEnvironmentVariable("WINOLD_RECOVERY_EXE");
+        Skip.If(
+            string.IsNullOrWhiteSpace(exe) || !File.Exists(exe),
+            "Set WINOLD_RECOVERY_EXE to the published WinOldRecovery.exe.");
+
+        string root = Path.Combine(Path.GetTempPath(), "WinOldRecovery-I7-scan-" + Guid.NewGuid().ToString("N"));
+        string source = Path.Combine(root, "OldInstall");
+        string report = Path.Combine(root, "report.txt");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(Path.Combine(source, "Users", "Alice", "Desktop", "note.txt"), "i7");
+
+        ProcessStartInfo start = new(exe)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        start.ArgumentList.Add("--scan");
+        start.ArgumentList.Add(source);
+        start.ArgumentList.Add("--report");
+        start.ArgumentList.Add(report);
+
+        Process process;
+        try
+        {
+            process = Process.Start(start) ?? throw new InvalidOperationException("Could not start WinOldRecovery.exe.");
+        }
+        catch (Win32Exception exception) when (exception.NativeErrorCode == 740)
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+
+            Skip.If(true, "Published EXE requires elevation (UIPI). Run this test from an elevated testhost.");
+            return;
+        }
+
+        List<string> remote = [];
+        int exitCode;
+        try
+        {
+            while (!process.HasExited)
+            {
+                remote.AddRange(ListRemoteEndpoints(process.Id));
+                await Task.Delay(50);
+            }
+
+            exitCode = process.ExitCode;
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(15_000);
+            }
+
+            process.Dispose();
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+
+        Assert.Equal(0, exitCode);
+        Assert.True(
+            remote.Count == 0,
+            "Published --scan opened remote sockets: " + string.Join("; ", remote.Distinct(StringComparer.Ordinal)));
     }
 
     private static void CreateTree(string source)
