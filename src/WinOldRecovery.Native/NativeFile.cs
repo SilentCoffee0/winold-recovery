@@ -8,14 +8,27 @@ public static class DiskSpace
     public static long GetFreeBytes(string directoryPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
-        if (!GetDiskFreeSpaceEx(directoryPath, out ulong freeForCaller, out _, out _))
+        string candidate = directoryPath;
+        Win32Exception? lastError = null;
+        while (true)
         {
-            throw new Win32Exception(
+            if (GetDiskFreeSpaceEx(candidate, out ulong freeForCaller, out _, out _))
+            {
+                return checked((long)freeForCaller);
+            }
+
+            lastError = new Win32Exception(
                 Marshal.GetLastWin32Error(),
                 $"Could not read free space for '{directoryPath}'.");
-        }
+            string? parent = Path.GetDirectoryName(candidate);
+            if (string.IsNullOrEmpty(parent) ||
+                string.Equals(parent, candidate, StringComparison.OrdinalIgnoreCase))
+            {
+                throw lastError;
+            }
 
-        return checked((long)freeForCaller);
+            candidate = parent;
+        }
     }
 
     [DllImport("kernel32.dll", EntryPoint = "GetDiskFreeSpaceExW", CharSet = CharSet.Unicode, SetLastError = true)]

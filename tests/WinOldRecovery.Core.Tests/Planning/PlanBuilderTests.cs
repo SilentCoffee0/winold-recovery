@@ -160,6 +160,14 @@ public sealed class PlanBuilderTests
         Assert.True(free > 0);
     }
 
+    [Fact]
+    public void GetFreeBytes_WalksToAnExistingAncestorWhenTheFolderIsGone()
+    {
+        string missing = Path.Combine(Path.GetTempPath(), $"wor-gone-{Guid.NewGuid():N}", "dest");
+        long free = DiskSpace.GetFreeBytes(missing);
+        Assert.True(free > 0);
+    }
+
     private static PersistedNode Node(
         long id,
         long? parentId,

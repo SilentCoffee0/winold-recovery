@@ -168,7 +168,7 @@ public static class InterruptedRestore
                     .GetResult();
                 string sessionId = Path.GetFileName(directory);
                 InterruptedRestoreReport? report = Describe(database, sessionId, directory);
-                if (report is not null)
+                if (report is not null && SourceFolderExists(report.SourceRoot))
                 {
                     return report;
                 }
@@ -259,6 +259,23 @@ public static class InterruptedRestore
             return true;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SqliteException)
+        {
+            return false;
+        }
+    }
+
+    private static bool SourceFolderExists(string? sourceRoot)
+    {
+        if (string.IsNullOrWhiteSpace(sourceRoot))
+        {
+            return false;
+        }
+
+        try
+        {
+            return Directory.Exists(PathCanonicalizer.WithoutExtendedPrefix(sourceRoot));
+        }
+        catch (Exception exception) when (exception is IOException or ArgumentException or NotSupportedException)
         {
             return false;
         }

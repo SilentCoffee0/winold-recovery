@@ -65,6 +65,7 @@ public partial class App : Application
                 return;
             }
 
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
             instanceMutex = new Mutex(initiallyOwned: true, SingleInstanceName, out bool createdNew);
             if (!createdNew)
             {
@@ -244,7 +245,15 @@ public partial class App : Application
 
             if (interrupted is not null)
             {
-                viewModel.OfferInterruptedRestore(interrupted);
+                try
+                {
+                    viewModel.OfferInterruptedRestore(interrupted);
+                }
+                catch (Exception exception) when (
+                    exception is not OutOfMemoryException and not StackOverflowException)
+                {
+                    logger?.LogError(exception, "Interrupted-restore overlay was skipped.");
+                }
             }
 
             ApplyOptionalSmokeFixture(viewModel);
@@ -253,6 +262,7 @@ public partial class App : Application
             window.Show();
             MainWindow = window;
             startupWindow.Close();
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
             // schtasks /Query used to block first paint (15 s timeout). Discover
             // after Show, and skip it when smoke/resume already picked a source.
             if (string.IsNullOrEmpty(viewModel.SelectedSourcePath) &&
@@ -263,7 +273,6 @@ public partial class App : Application
         }
         catch (Exception exception)
         {
-            startupWindow.Close();
             ShowCrash(exception);
             Shutdown(exitCode: 1);
         }
@@ -379,9 +388,6 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        logger?.LogInformation("Session closed normally.");
-        sessionDatabase?.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        loggerFactory?.Dispose();
         if (instanceMutex is not null)
         {
             instanceMutex.ReleaseMutex();
@@ -389,6 +395,20 @@ public partial class App : Application
             instanceMutex = null;
         }
 
+        logger?.LogInformation("Session closed normally.");
+        if (sessionDatabase is not null)
+        {
+            try
+            {
+                sessionDatabase.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2));
+            }
+            catch (Exception exception) when (
+                exception is not OutOfMemoryException and not StackOverflowException)
+            {
+            }
+        }
+
+        loggerFactory?.Dispose();
         base.OnExit(e);
     }
 }
