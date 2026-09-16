@@ -31,6 +31,22 @@ public sealed class GameSavesRecipe : IRecipe
         (Path.Combine("AppData", "Roaming", "SmartSteamEmu"), "Steam-compatible saves", Decision.Restore),
         (Path.Combine("AppData", "Roaming", "Player"), "Player saves", Decision.Restore),
         (Path.Combine("AppData", "Roaming", "GOG.com", "Galaxy", "Applications"), "GOG Galaxy", Decision.Undecided),
+        (Path.Combine("AppData", "LocalLow", "Epic Games"), "Epic Games", Decision.Undecided),
+        (Path.Combine("AppData", "LocalLow", "Ubisoft"), "Ubisoft", Decision.Undecided),
+        (Path.Combine("AppData", "LocalLow", "Electronic Arts"), "EA / Origin", Decision.Undecided),
+        (Path.Combine("AppData", "LocalLow", "Origin"), "EA / Origin", Decision.Undecided),
+        (Path.Combine("AppData", "LocalLow", "Battle.net"), "Battle.net", Decision.Undecided),
+        (Path.Combine("AppData", "LocalLow", "Blizzard Entertainment"), "Blizzard", Decision.Undecided),
+        (Path.Combine("AppData", "LocalLow", "Riot Games"), "Riot Games", Decision.Undecided),
+        (Path.Combine("AppData", "LocalLow", "Goldberg SteamEmu Saves"), "Steam-compatible saves", Decision.Restore),
+        (Path.Combine("AppData", "LocalLow", "GSE Saves"), "Steam-compatible saves", Decision.Restore),
+        (Path.Combine("AppData", "LocalLow", "CODEX"), "Steam-compatible saves", Decision.Restore),
+        (Path.Combine("AppData", "LocalLow", "SmartSteamEmu"), "Steam-compatible saves", Decision.Restore),
+        (Path.Combine("AppData", "LocalLow", "Player"), "Player saves", Decision.Restore),
+        (Path.Combine("AppData", "Local", "Goldberg SteamEmu Saves"), "Steam-compatible saves", Decision.Restore),
+        (Path.Combine("AppData", "Local", "GSE Saves"), "Steam-compatible saves", Decision.Restore),
+        (Path.Combine("AppData", "Local", "CODEX"), "Steam-compatible saves", Decision.Restore),
+        (Path.Combine("AppData", "Local", "SmartSteamEmu"), "Steam-compatible saves", Decision.Restore),
     ];
 
     public DetectResult Detect(ProfileContext context)
@@ -47,6 +63,25 @@ public sealed class GameSavesRecipe : IRecipe
             }
 
             AddCard(context, cards, badges, source, relative, title, suggested);
+        }
+
+        foreach (string steamUserdata in SteamUserdataFolders(context.OldProfileRoot))
+        {
+            if (!context.SafeFs.DirectoryExists(steamUserdata) ||
+                DetectorWalk.IsReparse(steamUserdata) ||
+                !seen.Add(steamUserdata))
+            {
+                continue;
+            }
+
+            AddCard(
+                context,
+                cards,
+                badges,
+                steamUserdata,
+                Path.Combine("Saved Games", "Steam userdata"),
+                "Steam userdata",
+                Decision.Restore);
         }
 
         IEnumerable<string> extraParents = context.Index is { } index
@@ -143,12 +178,20 @@ public sealed class GameSavesRecipe : IRecipe
                 [
                     new RecipeComponent("saves", "Save folder", Path.GetFileName(source), suggested, false, null, false),
                 ],
-                context.ProfileName + ":" + relative.Replace('\\', '/'),
+                context.ProfileName + ":" + source.Replace('\\', '/'),
                 new Dictionary<string, string>
                 {
                     ["source"] = source,
                     ["relative"] = relative,
                 }));
         DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, source, "Game save", title);
+    }
+
+    private static IEnumerable<string> SteamUserdataFolders(string oldProfileRoot)
+    {
+        yield return Path.GetFullPath(
+            Path.Combine(oldProfileRoot, "..", "..", "Program Files (x86)", "Steam", "userdata"));
+        yield return Path.GetFullPath(
+            Path.Combine(oldProfileRoot, "..", "..", "Program Files", "Steam", "userdata"));
     }
 }

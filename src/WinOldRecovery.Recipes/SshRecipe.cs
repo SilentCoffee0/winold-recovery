@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using WinOldRecovery.Core.Decisions;
 using WinOldRecovery.Core.IO;
+using WinOldRecovery.Core.Processes;
 using WinOldRecovery.Core.Recipes;
 
 namespace WinOldRecovery.Recipes;
@@ -135,7 +136,7 @@ public sealed class SshRecipe : IRecipe
         if (plan.Destination is { } destination)
         {
             await destination.ProcessRunner.RunAsync(
-                    new WinOldRecovery.Core.Processes.ProcessRequest(
+                    new ProcessRequest(
                         "ssh.exe",
                         ["-G", "localhost"],
                         WorkingDirectory: Path.Combine(destination.DestinationProfileRoot, ".ssh"),
@@ -168,7 +169,72 @@ public sealed class SshRecipe : IRecipe
         return new RecipeVerifyResult(true, "SSH files present");
     }
 
+    public async Task<RecipeVerifyResult> VerifyAsync(
+        PlanResult plan,
+        CancellationToken cancellationToken = default)
+    {
+        RecipeVerifyResult files = Verify(plan);
+        if (!files.Ok || plan.Destination is null)
+        {
+            return files;
+        }
+
+        string? home = DestinationHome(plan);
+        if (string.IsNullOrEmpty(home))
+        {
+            return files;
+        }
+
+        ProcessResult result;
+        try
+        {
+            result = await plan.Destination.ProcessRunner
+                .RunAsync(
+                    new ProcessRequest(
+                        "ssh.exe",
+                        ["-G", "localhost"],
+                        WorkingDirectory: home,
+                        Timeout: TimeSpan.FromSeconds(15)),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is not OutOfMemoryException and not StackOverflowException)
+        {
+            return files;
+        }
+
+        if (result.ExitCode != 0)
+        {
+            return new RecipeVerifyResult(false, "ssh -G localhost failed");
+        }
+
+        return new RecipeVerifyResult(true, "ssh -G localhost succeeded");
+    }
+
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) => [];
+
+    private static string? DestinationHome(PlanResult plan)
+    {
+        foreach (RecipeWrite write in plan.Writes)
+        {
+            string? directory = Path.GetDirectoryName(write.DestinationPath);
+            if (string.IsNullOrEmpty(directory))
+            {
+                continue;
+            }
+
+            string name = Path.GetFileName(directory);
+            if (name.Equals(".ssh", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("ssh", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("OpenSSH-Server", StringComparison.OrdinalIgnoreCase))
+            {
+                return directory;
+            }
+        }
+
+        return null;
+    }
 
     internal static void HardenUserOnlyAcl(SafeFs safeFs, string path)
     {

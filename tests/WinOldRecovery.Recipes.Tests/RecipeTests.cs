@@ -194,6 +194,35 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Ssh_VerifyAsync_FailsWhenSshGExitsNonZero()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string key = Path.Combine(context.Destination, ".ssh", "id_ed25519");
+        Directory.CreateDirectory(Path.GetDirectoryName(key)!);
+        await File.WriteAllTextAsync(key, "key");
+        SshRecipe.HardenUserOnlyAcl(context.SafeFs, key);
+        RecipeCard card = new(
+            "ssh",
+            "SSH",
+            "what",
+            "why",
+            "restored",
+            "cloud",
+            "regen",
+            "left",
+            [],
+            "ssh:test",
+            new Dictionary<string, string>());
+        PlanResult plan = new(
+            card,
+            [new RecipeWrite(RecipeWriteKind.CopyFile, key, key, null, 1, "files")],
+            new DestinationContext(context.Destination, context.Exports, context.SafeFs, new ExitOneRunner(), context.Temp));
+        RecipeVerifyResult result = await new SshRecipe().VerifyAsync(plan);
+        Assert.False(result.Ok);
+        Assert.Contains("ssh -G", result.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void WslLxss_MapsOldUserBasePathAndMatchesPackageFamily()
     {
         string alice = @"D:\Windows.old\Users\Alice";
@@ -3305,6 +3334,48 @@ public sealed class RecipeTests
         Assert.Contains(
             cards,
             card => card.RecipeId == "game-saves" && card.Title.Contains("Steam-compatible", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GameSaves_Detect_FindsSteamUserdataAndLocalLowSaves()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string steam = Path.Combine(context.Source, "Program Files (x86)", "Steam", "userdata", "12345", "760");
+        Directory.CreateDirectory(steam);
+        await File.WriteAllTextAsync(Path.Combine(steam, "remote.sav"), "steam");
+        string riot = Path.Combine(alice, "AppData", "LocalLow", "Riot Games", "League");
+        Directory.CreateDirectory(riot);
+        await File.WriteAllTextAsync(Path.Combine(riot, "settings.yaml"), "riot");
+
+        DetectResult detected = new GameSavesRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        RecipeCard steamCard = Assert.Single(
+            detected.Cards,
+            card => card.Title.Contains("Steam userdata", StringComparison.Ordinal));
+        Assert.Equal(
+            Path.GetFullPath(Path.Combine(context.Source, "Program Files (x86)", "Steam", "userdata")),
+            steamCard.Facts["source"]);
+        Assert.Equal(Path.Combine("Saved Games", "Steam userdata"), steamCard.Facts["relative"]);
+        Assert.Contains(
+            detected.Cards,
+            card => card.Title.Contains("Riot Games", StringComparison.Ordinal));
+
+        PlanResult plan = new GameSavesRecipe().Plan(
+            new CardDecisions(steamCard, new Dictionary<string, Decision> { ["saves"] = Decision.Restore }),
+            Dest(context));
+        Assert.Contains(
+            plan.Writes,
+            write => write.DestinationPath.EndsWith(
+                Path.Combine("Saved Games", "Steam userdata", "12345", "760", "remote.sav"),
+                StringComparison.OrdinalIgnoreCase));
     }
 
     private static string CreateCertificatePem()

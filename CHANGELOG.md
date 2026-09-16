@@ -16,7 +16,7 @@ All notable changes to WinOld Recovery will be documented here.
 - After a scan, Git/KeePass/Obsidian/Outlook, Anki Start-menu `.lnk`, and WSL `ext4.vhdx`/`docker_data.vhdx` detect use the node index instead of walking the profile again. Anki still reads `-b` bytes from those shortcuts. Detect without a walker checkpoint still walks the disk (unit tests).
 - Anki L3 verify opens the restored `collection.anki2` for `PRAGMA integrity_check` and note-count compare, checks dest media file count against the source (excluding `media.trash`), and fails if the newest `.colpkg` was planned but missing.
 - VS Code L3 verify requires dest `install-extensions-<cli>.cmd` to list every source extension id.
-- KeePass L3 verify requires dest sibling `.keyx`/`.key` files. Outlook verify fails if an OST was written. Terminal verify fails if existing `settings.json` matches the old copy. Obsidian verify requires dest `.obsidian`.
+- SSH L3 verify runs `ssh -G localhost` against the restored `.ssh` folder when ssh.exe answers. Missing ssh skips the process check. Game-save cards also restore `Program Files (x86)\Steam\userdata` into `Saved Games\Steam userdata` and LocalLow publisher / Steam-compatible folders.
 
 ### Fixed
 
