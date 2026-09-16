@@ -522,4 +522,29 @@ internal static class DetectorWalk
                 Path.TrimEndingDirectorySeparator(right),
                 StringComparison.OrdinalIgnoreCase);
     }
+
+    public static string? IndexedImmediatePath(
+        RecipeIndex index,
+        string directory,
+        string? relativeUnderProfile,
+        string name)
+    {
+        ArgumentNullException.ThrowIfNull(index);
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        IReadOnlyList<string> paths = string.IsNullOrWhiteSpace(relativeUnderProfile) ||
+            relativeUnderProfile == "."
+            ? index.FilesNamed(name)
+            : index.FilesNamedUnder(relativeUnderProfile, name);
+        foreach (string path in paths)
+        {
+            if (SameDirectory(directory, Path.GetDirectoryName(path)) &&
+                Path.GetFileName(path).Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return path;
+            }
+        }
+
+        return null;
+    }
 }

@@ -1,11 +1,34 @@
 using WinOldRecovery.Core.IO;
+using WinOldRecovery.Core.Recipes;
 
 namespace WinOldRecovery.Recipes;
 
 internal static class FirefoxProfileGroups
 {
-    public static bool Detected(SafeFs safeFs, string firefoxRoot)
+    public static bool Detected(
+        SafeFs safeFs,
+        string firefoxRoot,
+        RecipeIndex? index = null,
+        string? relativeUnderProfile = null)
     {
+        if (index is not null && !string.IsNullOrWhiteSpace(relativeUnderProfile))
+        {
+            foreach (string name in new[] { "profiles.ini", "installs.ini" })
+            {
+                string? indexed = DetectorWalk.IndexedImmediatePath(
+                    index,
+                    firefoxRoot,
+                    relativeUnderProfile,
+                    name);
+                if (indexed is not null && safeFs.FileExists(indexed) && HasStoreId(safeFs.ReadAllText(indexed)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         if (!safeFs.DirectoryExists(firefoxRoot))
         {
             return false;

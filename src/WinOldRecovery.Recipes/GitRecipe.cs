@@ -12,30 +12,23 @@ public sealed class GitRecipe : IRecipe
     {
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
-        string gitconfig = Path.Combine(context.OldProfileRoot, ".gitconfig");
-        if (!context.SafeFs.FileExists(gitconfig))
-        {
-            gitconfig = Path.Combine(context.OldProfileRoot, ".config", "git", "config");
-        }
-
-        if (context.SafeFs.FileExists(gitconfig))
+        string? gitconfig = ResolveGitConfig(context);
+        if (gitconfig is not null)
         {
             string text = context.SafeFs.ReadAllText(gitconfig);
             cards.Add(ConfigCard(context, gitconfig, Scrub(text), GitConfigFacts.Read(text)));
         }
 
-        string cred = Path.Combine(context.OldProfileRoot, ".git-credentials");
-        if (cards.Count > 0 && context.SafeFs.FileExists(cred))
-        {
-            RecipeCard config = cards[0];
-            Dictionary<string, string> facts = new(config.Facts) { ["credentials"] = cred };
-            AttachOptionalConfigFiles(context, facts);
-            cards[0] = config with { Facts = facts };
-        }
-        else if (cards.Count > 0)
+        if (cards.Count > 0)
         {
             RecipeCard config = cards[0];
             Dictionary<string, string> facts = new(config.Facts);
+            string? cred = ResolveProfileFile(context, ".git-credentials");
+            if (cred is not null)
+            {
+                facts["credentials"] = cred;
+            }
+
             AttachOptionalConfigFiles(context, facts);
             cards[0] = config with { Facts = facts };
         }
@@ -334,17 +327,67 @@ public sealed class GitRecipe : IRecipe
 
     private static void AttachOptionalConfigFiles(ProfileContext context, Dictionary<string, string> facts)
     {
-        string ignore = Path.Combine(context.OldProfileRoot, ".config", "git", "ignore");
-        if (context.SafeFs.FileExists(ignore))
+        string? ignore = ResolveIndexedOrDisk(
+            context,
+            Path.Combine(context.OldProfileRoot, ".config", "git"),
+            Path.Combine(".config", "git"),
+            "ignore");
+        if (ignore is not null)
         {
             facts["ignore"] = ignore;
         }
 
-        string globalIgnore = Path.Combine(context.OldProfileRoot, ".gitignore_global");
-        if (context.SafeFs.FileExists(globalIgnore))
+        string? globalIgnore = ResolveProfileFile(context, ".gitignore_global");
+        if (globalIgnore is not null)
         {
             facts["gitignore_global"] = globalIgnore;
         }
+    }
+
+    private static string? ResolveGitConfig(ProfileContext context)
+    {
+        return ResolveProfileFile(context, ".gitconfig") ??
+            ResolveIndexedOrDisk(
+                context,
+                Path.Combine(context.OldProfileRoot, ".config", "git"),
+                Path.Combine(".config", "git"),
+                "config");
+    }
+
+    private static string? ResolveProfileFile(ProfileContext context, string fileName)
+    {
+        if (context.Index is { } index)
+        {
+            string? indexed = DetectorWalk.IndexedImmediatePath(
+                index,
+                context.OldProfileRoot,
+                relativeUnderProfile: null,
+                fileName);
+            return indexed is not null && context.SafeFs.FileExists(indexed) ? indexed : null;
+        }
+
+        string path = Path.Combine(context.OldProfileRoot, fileName);
+        return context.SafeFs.FileExists(path) ? path : null;
+    }
+
+    private static string? ResolveIndexedOrDisk(
+        ProfileContext context,
+        string directory,
+        string relativeUnderProfile,
+        string fileName)
+    {
+        if (context.Index is { } index)
+        {
+            string? indexed = DetectorWalk.IndexedImmediatePath(
+                index,
+                directory,
+                relativeUnderProfile,
+                fileName);
+            return indexed is not null && context.SafeFs.FileExists(indexed) ? indexed : null;
+        }
+
+        string path = Path.Combine(directory, fileName);
+        return context.SafeFs.FileExists(path) ? path : null;
     }
 
     private static void CopySidecar(

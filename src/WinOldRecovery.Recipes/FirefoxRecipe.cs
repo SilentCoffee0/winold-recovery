@@ -67,7 +67,11 @@ public sealed class FirefoxRecipe : IRecipe
             "Roaming",
             "Mozilla",
             "Firefox");
-        bool profileGroups = FirefoxProfileGroups.Detected(context.SafeFs, firefox) ||
+        bool profileGroups = FirefoxProfileGroups.Detected(
+                context.SafeFs,
+                firefox,
+                context.Index,
+                firefoxRel) ||
             FirefoxProfileGroups.Detected(context.SafeFs, destFirefox);
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];

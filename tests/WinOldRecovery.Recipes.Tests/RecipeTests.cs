@@ -935,6 +935,36 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Git_Detect_FindsGitconfigFromRecipeIndexWithoutWalkingHomeDotGitconfig()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string xdg = Path.Combine(alice, ".config", "git");
+        Directory.CreateDirectory(xdg);
+        Directory.CreateDirectory(alice);
+        await File.WriteAllTextAsync(Path.Combine(alice, ".gitconfig"), "[user]\n\tname = Walked\n");
+        await File.WriteAllTextAsync(Path.Combine(xdg, "config"), "[user]\n\tname = Indexed\n");
+        await context.Database.InsertNodesAsync(
+        [
+            Indexed(1, null, "config", @"Users\Alice\.config\git\config"),
+        ]);
+
+        GitRecipe recipe = new();
+        RecipeCard fromIndex = Assert.Single(
+            recipe.Detect(WithIndex(context, alice)).Cards,
+            card => card.Facts.GetValueOrDefault("kind") == "config");
+        Assert.Equal("Indexed", fromIndex.Facts["userName"]);
+        Assert.EndsWith(
+            Path.Combine(".config", "git", "config"),
+            fromIndex.Facts["source"].Replace('/', '\\'),
+            StringComparison.OrdinalIgnoreCase);
+        RecipeCard fromDisk = Assert.Single(
+            recipe.Detect(WithoutIndex(context, alice)).Cards,
+            card => card.Facts.GetValueOrDefault("kind") == "config");
+        Assert.Equal("Walked", fromDisk.Facts["userName"]);
+    }
+
+    [Fact]
     public async Task Git_Detect_ListsVendoredReposWithoutAnalyzingStatus()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
@@ -3792,6 +3822,37 @@ public sealed class RecipeTests
         Assert.DoesNotContain("cookies.sqlite", fromIndex.Facts["files"], StringComparison.OrdinalIgnoreCase);
         RecipeCard fromDisk = Assert.Single(recipe.Detect(WithoutIndex(context, alice)).Cards);
         Assert.Equal("walked.default", fromDisk.Facts["name"]);
+    }
+
+    [Fact]
+    public async Task Firefox_Detect_ReadsStoreIdFromRecipeIndexWithoutWalkingInstallsIni()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string firefox = Path.Combine(alice, "AppData", "Roaming", "Mozilla", "Firefox");
+        string walked = Path.Combine(firefox, "Profiles", "walked.default");
+        string indexed = Path.Combine(alice, "Documents", "indexed.ff");
+        Directory.CreateDirectory(walked);
+        Directory.CreateDirectory(indexed);
+        await File.WriteAllTextAsync(Path.Combine(walked, "places.sqlite"), "walk");
+        await File.WriteAllTextAsync(Path.Combine(indexed, "places.sqlite"), "places");
+        await File.WriteAllTextAsync(
+            Path.Combine(firefox, "installs.ini"),
+            "[Install]\nStoreID=aaaaaaaaaaaaaaaa\nDefault=walked.default\n");
+        const string indexedRel = @"Users\Alice\Documents\indexed.ff";
+        await context.Database.InsertNodesAsync(
+        [
+            Indexed(1, null, "indexed.ff", indexedRel, NodeKind.Directory),
+            Indexed(2, 1, "places.sqlite", indexedRel + @"\places.sqlite"),
+        ]);
+
+        FirefoxRecipe recipe = new();
+        RecipeCard fromIndex = Assert.Single(recipe.Detect(WithIndex(context, alice)).Cards);
+        Assert.Equal("indexed.ff", fromIndex.Facts["name"]);
+        Assert.Equal("0", fromIndex.Facts["profileGroups"]);
+        RecipeCard fromDisk = Assert.Single(recipe.Detect(WithoutIndex(context, alice)).Cards);
+        Assert.Equal("walked.default", fromDisk.Facts["name"]);
+        Assert.Equal("1", fromDisk.Facts["profileGroups"]);
     }
 
     [Fact]
