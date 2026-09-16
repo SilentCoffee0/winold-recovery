@@ -15,12 +15,14 @@ public sealed class GpgRecipe : IRecipe
         List<(string RelativePath, string Kind, string Detail)> badges = [];
         foreach (string home in CandidateHomes(context))
         {
-            if (!context.SafeFs.DirectoryExists(home))
+            if (context.Index is { } index)
             {
-                continue;
+                if (!IsIndexedHome(index, context.OldProfileRoot, home))
+                {
+                    continue;
+                }
             }
-
-            if (!IsHome(context.SafeFs, home))
+            else if (!context.SafeFs.DirectoryExists(home) || !IsHome(context.SafeFs, home))
             {
                 continue;
             }
@@ -172,10 +174,7 @@ public sealed class GpgRecipe : IRecipe
             {
                 foreach (string parent in index.ParentsOfChildNamed(child))
                 {
-                    if (IsHome(context.SafeFs, parent))
-                    {
-                        Add(homes, parent);
-                    }
+                    Add(homes, parent);
                 }
             }
         }
@@ -189,6 +188,22 @@ public sealed class GpgRecipe : IRecipe
             (safeFs.DirectoryExists(Path.Combine(home, "private-keys-v1.d")) ||
                 safeFs.FileExists(Path.Combine(home, "pubring.kbx")) ||
                 safeFs.FileExists(Path.Combine(home, "secring.gpg")));
+    }
+
+    private static bool IsIndexedHome(RecipeIndex index, string oldProfileRoot, string home)
+    {
+        string relative = DetectorWalk.RelativeUnder(oldProfileRoot, home);
+        if (string.IsNullOrWhiteSpace(relative) ||
+            relative is "." or ".." ||
+            relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+            Path.IsPathRooted(relative))
+        {
+            return false;
+        }
+
+        return DetectorWalk.IndexedChildFolder(index, relative, "private-keys-v1.d") ||
+            DetectorWalk.IndexedImmediatePath(index, home, relative, "pubring.kbx") is not null ||
+            DetectorWalk.IndexedImmediatePath(index, home, relative, "secring.gpg") is not null;
     }
 
     private static void Add(HashSet<string> homes, string path)

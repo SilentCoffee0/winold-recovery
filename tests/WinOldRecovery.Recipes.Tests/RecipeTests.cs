@@ -2284,6 +2284,34 @@ public sealed class RecipeTests
                 DateTime.UtcNow,
                 0,
                 NodeProblem.None),
+            new PersistedNode(
+                3,
+                "session-1",
+                null,
+                1,
+                "key.pem",
+                @"Users\Alice\Projects\st-home\key.pem",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                4,
+                "session-1",
+                null,
+                1,
+                "config.xml",
+                @"Users\Alice\Projects\st-home\config.xml",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
         ]);
 
         DetectResult fromIndex = new SyncthingRecipe().Detect(
@@ -2353,9 +2381,12 @@ public sealed class RecipeTests
         await using RecipeContext context = await RecipeContext.CreateAsync();
         string alice = Path.Combine(context.Source, "Users", "Alice");
         string custom = Path.Combine(alice, "Documents", "gpg-home");
+        string walked = Path.Combine(alice, "AppData", "Roaming", "gnupg");
         Directory.CreateDirectory(Path.Combine(custom, "private-keys-v1.d"));
+        Directory.CreateDirectory(walked);
         await File.WriteAllTextAsync(Path.Combine(custom, "pubring.kbx"), "pub");
         await File.WriteAllTextAsync(Path.Combine(custom, "private-keys-v1.d", "key"), "key");
+        await File.WriteAllTextAsync(Path.Combine(walked, "pubring.kbx"), "walked");
         await context.Database.InsertNodesAsync(
         [
             new PersistedNode(
@@ -2405,6 +2436,9 @@ public sealed class RecipeTests
         Assert.Contains(
             fromIndex.Cards,
             card => card.Facts["source"].Equals(custom, StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(
+            fromIndex.Cards,
+            card => card.Facts["source"].Equals(walked, StringComparison.OrdinalIgnoreCase));
         DetectResult fromDisk = new GpgRecipe().Detect(
             new ProfileContext(
                 "Alice",
@@ -2417,6 +2451,9 @@ public sealed class RecipeTests
         Assert.DoesNotContain(
             fromDisk.Cards,
             card => card.Facts["source"].Equals(custom, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            fromDisk.Cards,
+            card => card.Facts["source"].Equals(walked, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

@@ -13,16 +13,19 @@ public sealed class SyncthingRecipe : IRecipe
 
     public DetectResult Detect(ProfileContext context)
     {
-        return DetectHomes(context, CandidateHomes(context));
+        return DetectHomes(context, CandidateHomes(context), useIndexIdentity: context.Index is not null);
     }
 
     public DetectResult DetectHome(ProfileContext context, string home)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(home);
-        return DetectHomes(context, [Path.GetFullPath(home)]);
+        return DetectHomes(context, [Path.GetFullPath(home)], useIndexIdentity: false);
     }
 
-    private DetectResult DetectHomes(ProfileContext context, IReadOnlyList<string> homes)
+    private DetectResult DetectHomes(
+        ProfileContext context,
+        IReadOnlyList<string> homes,
+        bool useIndexIdentity)
     {
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
@@ -30,7 +33,7 @@ public sealed class SyncthingRecipe : IRecipe
         string exeVersion = SyncTrayzorExeVersion(context);
         foreach (string home in homes)
         {
-            if (!IsHome(context.SafeFs, home))
+            if (!(useIndexIdentity ? IsIndexedHome(context, home) : IsHome(context.SafeFs, home)))
             {
                 continue;
             }
@@ -445,6 +448,18 @@ public sealed class SyncthingRecipe : IRecipe
             safeFs.FileExists(Path.Combine(home, "key.pem"));
     }
 
+    private static bool IsIndexedHome(ProfileContext context, string home)
+    {
+        if (DetectorWalk.TryIndexedRelative(context, home, out RecipeIndex index, out string relative))
+        {
+            return DetectorWalk.IndexedImmediatePath(index, home, relative, "config.xml") is not null &&
+                DetectorWalk.IndexedImmediatePath(index, home, relative, "cert.pem") is not null &&
+                DetectorWalk.IndexedImmediatePath(index, home, relative, "key.pem") is not null;
+        }
+
+        return IsHome(context.SafeFs, home);
+    }
+
     private static IReadOnlyList<string> CandidateHomes(ProfileContext context)
     {
         HashSet<string> homes = new(StringComparer.OrdinalIgnoreCase);
@@ -478,10 +493,7 @@ public sealed class SyncthingRecipe : IRecipe
         {
             foreach (string parent in index.ParentsOfChildNamed("cert.pem"))
             {
-                if (IsHome(context.SafeFs, parent))
-                {
-                    Add(homes, parent);
-                }
+                Add(homes, parent);
             }
         }
 
