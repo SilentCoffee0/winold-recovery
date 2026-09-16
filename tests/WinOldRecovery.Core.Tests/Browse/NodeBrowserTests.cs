@@ -64,6 +64,30 @@ public sealed class NodeBrowserTests
     }
 
     [Fact]
+    public async Task GetByBadgeKinds_ReturnsOnlyMatchingBadgeNodes()
+    {
+        await using BrowserContext context = await BrowserContext.CreateAsync();
+        await context.InsertAsync(
+        [
+            Node(1, null, "", "root"),
+            Node(2, 1, "vault.kdbx", "vault.kdbx"),
+            Node(3, 1, "cache.tmp", "cache.tmp"),
+            Node(4, 1, "readme.txt", "readme.txt"),
+        ]);
+        await context.Database.InsertBadgesAsync(
+        [
+            new NodeBadgeRow(2, "HighValue", "KeePass"),
+            new NodeBadgeRow(3, "Regeneratable", "Cache"),
+        ]);
+
+        NodeBrowser browser = new(context.Database, "session-1");
+        TreeNodeRow high = Assert.Single(browser.GetByBadgeKinds(["HighValue", "GameSave"]).Rows);
+        Assert.Equal("vault.kdbx", high.Name);
+        TreeNodeRow regen = Assert.Single(browser.GetByBadgeKinds(["Regeneratable"]).Rows);
+        Assert.Equal("cache.tmp", regen.Name);
+    }
+
+    [Fact]
     public async Task Search_FindsSubstringMatches()
     {
         await using BrowserContext context = await BrowserContext.CreateAsync();

@@ -122,6 +122,27 @@ public sealed class NodeBrowser
             parentId: null);
     }
 
+    public NodePage GetByBadgeKinds(IReadOnlyList<string> kinds, int offset = 0)
+    {
+        ArgumentNullException.ThrowIfNull(kinds);
+        if (kinds.Count == 0)
+        {
+            return new NodePage([], 0, false);
+        }
+
+        string list = string.Join(
+            ",",
+            kinds.Select(static kind => "'" + kind.Replace("'", "''", StringComparison.Ordinal) + "'"));
+        return Query(
+            parentFilter: "1 = 1",
+            extraFilter: "id IN (SELECT node_id FROM badges WHERE kind IN (" + list + "))",
+            orderBy: "rel_path COLLATE NOCASE",
+            offset,
+            limit: ChildPageSize,
+            parentId: null,
+            mixedSummaries: false);
+    }
+
     public TreeNodeRow? GetNode(long nodeId)
     {
         NodePage page = Query(

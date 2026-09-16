@@ -58,6 +58,8 @@ public sealed class ShellViewModel : ObservableObject
     private NodeBrowser nodeBrowser;
     private readonly IReadOnlyList<IRecipe> recipeCatalog;
     private readonly IReadOnlyList<ClassificationRule> classificationRules = ClassificationRuleCatalog.LoadEmbedded();
+    private static readonly string[] HighValueBadgeKinds = ["HighValue", "GameSave"];
+    private static readonly string[] RegeneratableBadgeKinds = ["Regeneratable"];
     private readonly FirstRunState firstRun;
     private readonly LocalHelp localHelp;
     private CancellationTokenSource? scanCancellation;
@@ -1103,6 +1105,11 @@ public sealed class ShellViewModel : ObservableObject
                     SelectedNode = nodeBrowser.GetNode(nodeId) ?? SelectedNode;
                 }
 
+                if (value?.Kind is "HighValue" or "Regeneratable")
+                {
+                    ShowClassifiedItems(value.Kind);
+                }
+
                 OnPropertyChanged(nameof(DetailText));
                 OnPropertyChanged(nameof(SelectedRecipeCard));
                 OnPropertyChanged(nameof(RecipeCardSelected));
@@ -1155,6 +1162,11 @@ public sealed class ShellViewModel : ObservableObject
                             component.Title + ": " + component.Summary +
                             (component.Fixed ? " (cannot be recovered)" : " — " + component.SuggestedDefault)),
                     ]);
+            }
+
+            if (SelectedCard?.Kind is "HighValue" or "Regeneratable")
+            {
+                return ClassifiedCardDetail(SelectedCard.Kind);
             }
 
             if (SelectedNode is null)
@@ -1407,6 +1419,8 @@ public sealed class ShellViewModel : ObservableObject
                 : nodeBrowser.Search(SearchText, null, pagedLoaded),
             FilesViewMode.Unknown => nodeBrowser.GetUnknown(null, pagedLoaded),
             FilesViewMode.Problems => nodeBrowser.GetProblems(pagedLoaded),
+            FilesViewMode.HighValue => nodeBrowser.GetByBadgeKinds(HighValueBadgeKinds, pagedLoaded),
+            FilesViewMode.Regeneratable => nodeBrowser.GetByBadgeKinds(RegeneratableBadgeKinds, pagedLoaded),
             _ => nodeBrowser.GetChildren(pagedParentId, pagedLoaded),
         };
 
@@ -2348,6 +2362,47 @@ public sealed class ShellViewModel : ObservableObject
         }
     }
 
+    private void ShowClassifiedItems(string cardKind)
+    {
+        FilesViewMode = cardKind == "Regeneratable"
+            ? FilesViewMode.Regeneratable
+            : FilesViewMode.HighValue;
+        DecidePane = DecidePane.Files;
+    }
+
+    private string ClassifiedCardDetail(string cardKind)
+    {
+        bool regeneratable = cardKind == "Regeneratable";
+        IReadOnlyList<RuleHitCount> hits = lastClassification?.Breakdown
+            .Where(hit => regeneratable
+                ? hit.Kind == ClassificationKind.Regeneratable
+                : hit.Kind is ClassificationKind.HighValue or ClassificationKind.GameSave)
+            .ToArray() ?? [];
+        List<string> lines =
+        [
+            regeneratable
+                ? "Caches and installers. Badged only — never left behind automatically."
+                : "Password vaults, libraries, VM disks, and similar files.",
+            "Listed in All files. Restore or Leave Behind from the tree.",
+        ];
+        foreach (RuleHitCount hit in hits)
+        {
+            ClassificationRule? rule = classificationRules.FirstOrDefault(item => item.Id == hit.RuleId);
+            string line =
+                hit.Badge + ": " +
+                hit.Count.ToString("N0", CultureInfo.InvariantCulture) +
+                " (" + QuantityFormat.Bytes(hit.Bytes) + ")";
+            if (!string.IsNullOrEmpty(rule?.Why))
+            {
+                line += " — " + rule.Why;
+            }
+
+            lines.Add(line);
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
     private void InspectOverviewCard(OverviewCard? card)
     {
         if (card is null || !card.ShowVerbs)
@@ -2669,6 +2724,8 @@ public sealed class ShellViewModel : ObservableObject
                 : nodeBrowser.Search(SearchText, null),
             FilesViewMode.Unknown => nodeBrowser.GetUnknown(null),
             FilesViewMode.Problems => nodeBrowser.GetProblems(),
+            FilesViewMode.HighValue => nodeBrowser.GetByBadgeKinds(HighValueBadgeKinds),
+            FilesViewMode.Regeneratable => nodeBrowser.GetByBadgeKinds(RegeneratableBadgeKinds),
             _ => nodeBrowser.GetChildren(null),
         };
 
@@ -2829,7 +2886,7 @@ public sealed class ShellViewModel : ObservableObject
             Cards.Add(
                 new OverviewCard(
                     "Also found",
-                    "High-value and regeneratable items. Open All files to decide them in the tree.",
+                    "High-value and regeneratable items. Select a card to list them in All files.",
                     string.Empty,
                     string.Empty,
                     NodeId: null,

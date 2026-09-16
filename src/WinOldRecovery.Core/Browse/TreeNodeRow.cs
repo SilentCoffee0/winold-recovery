@@ -13,6 +13,8 @@ public enum FilesViewMode
     Search,
     Unknown,
     Problems,
+    HighValue,
+    Regeneratable,
 }
 
 public sealed record TreeNodeRow(

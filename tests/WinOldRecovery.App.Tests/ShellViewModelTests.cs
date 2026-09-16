@@ -295,6 +295,25 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task HighValueCard_ListsBadgedFilesInAllFiles()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(Path.Combine(source, "Users", "Alice", "NTUSER.DAT"), "hive");
+        await File.WriteAllTextAsync(Path.Combine(source, "Users", "Alice", "vault.kdbx"), "keepass");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        OverviewCard high = Assert.Single(context.ViewModel.Cards, card => card.Kind == "HighValue");
+        context.ViewModel.SelectedCard = high;
+        Assert.Equal(DecidePane.Files, context.ViewModel.DecidePane);
+        Assert.Equal(FilesViewMode.HighValue, context.ViewModel.FilesViewMode);
+        Assert.Contains(context.ViewModel.TreeRows, row => row.Name == "vault.kdbx");
+        Assert.Contains("password vault", context.ViewModel.DetailText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task PauseRestore_IsArmedOnlyWhileARestoreIsRunning()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();
