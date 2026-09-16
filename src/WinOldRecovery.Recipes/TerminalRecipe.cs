@@ -9,29 +9,12 @@ public sealed class TerminalRecipe : IRecipe
 
     public DetectResult Detect(ProfileContext context)
     {
-        string packages = Path.Combine(context.OldProfileRoot, "AppData", "Local", "Packages");
-        if (!context.SafeFs.DirectoryExists(packages))
-        {
-            return new DetectResult([], []);
-        }
-
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
-        foreach (string package in context.SafeFs.EnumerateFileSystemEntries(packages))
+        foreach (string settings in FindSettings(context))
         {
-            if (!context.SafeFs.DirectoryExists(package) || DetectorWalk.IsReparse(package))
-            {
-                continue;
-            }
-
-            string name = Path.GetFileName(package);
-            if (!name.StartsWith("Microsoft.WindowsTerminal", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            string settings = Path.Combine(package, "LocalState", "settings.json");
-            if (!context.SafeFs.FileExists(settings))
+            string? name = PackageName(settings);
+            if (string.IsNullOrEmpty(name))
             {
                 continue;
             }
@@ -151,4 +134,76 @@ public sealed class TerminalRecipe : IRecipe
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite("WindowsTerminal", "Close Windows Terminal before replacing settings.")];
+
+    private static IEnumerable<string> FindSettings(ProfileContext context)
+    {
+        if (context.Index is { } index)
+        {
+            foreach (string json in index.FilesWithExtensions(
+                         [".json"],
+                         skipAppData: false,
+                         relativeUnderProfile: Path.Combine("AppData", "Local", "Packages")))
+            {
+                if (IsTerminalSettings(json))
+                {
+                    yield return json;
+                }
+            }
+
+            yield break;
+        }
+
+        string packages = Path.Combine(context.OldProfileRoot, "AppData", "Local", "Packages");
+        if (!context.SafeFs.DirectoryExists(packages))
+        {
+            yield break;
+        }
+
+        foreach (string package in context.SafeFs.EnumerateFileSystemEntries(packages))
+        {
+            if (!context.SafeFs.DirectoryExists(package) || DetectorWalk.IsReparse(package))
+            {
+                continue;
+            }
+
+            string name = Path.GetFileName(DetectorWalk.StripExtended(package));
+            if (!name.StartsWith("Microsoft.WindowsTerminal", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string settings = Path.Combine(package, "LocalState", "settings.json");
+            if (context.SafeFs.FileExists(settings))
+            {
+                yield return DetectorWalk.StripExtended(settings);
+            }
+        }
+    }
+
+    private static bool IsTerminalSettings(string path)
+    {
+        string normalized = DetectorWalk.StripExtended(path).Replace('/', '\\');
+        return Path.GetFileName(normalized).Equals("settings.json", StringComparison.OrdinalIgnoreCase) &&
+            normalized.Contains("Microsoft.WindowsTerminal", StringComparison.OrdinalIgnoreCase) &&
+            normalized.Contains(@"\LocalState\", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? PackageName(string settingsPath)
+    {
+        string? localState = Path.GetDirectoryName(DetectorWalk.StripExtended(settingsPath));
+        if (string.IsNullOrEmpty(localState) ||
+            !Path.GetFileName(localState).Equals("LocalState", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        string? package = Path.GetDirectoryName(localState);
+        if (string.IsNullOrEmpty(package))
+        {
+            return null;
+        }
+
+        string name = Path.GetFileName(package);
+        return name.StartsWith("Microsoft.WindowsTerminal", StringComparison.OrdinalIgnoreCase) ? name : null;
+    }
 }

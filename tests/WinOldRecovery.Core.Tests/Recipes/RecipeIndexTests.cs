@@ -163,6 +163,45 @@ public sealed class RecipeIndexTests
     }
 
     [Fact]
+    public async Task Index_FindsTerminalSettingsJsonUnderPackages()
+    {
+        await using RecipeIndexContext context = await RecipeIndexContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Created", "0.1.0"));
+        await context.Database.InsertNodesAsync(
+        [
+            Node(1, null, "Windows.old", ""),
+            Node(2, 1, "Alice", @"Users\Alice"),
+            Node(
+                3,
+                2,
+                "settings.json",
+                @"Users\Alice\AppData\Local\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json",
+                NodeKind.File),
+            Node(
+                4,
+                2,
+                "settings.json",
+                @"Users\Alice\AppData\Local\Packages\OtherApp\LocalState\settings.json",
+                NodeKind.File),
+        ]);
+
+        RecipeIndex index = new(
+            context.Database,
+            "session-1",
+            @"Users\Alice",
+            Path.Combine(context.Root, "Users", "Alice"));
+        IReadOnlyList<string> json = index.FilesWithExtensions(
+            [".json"],
+            skipAppData: false,
+            Path.Combine("AppData", "Local", "Packages"));
+        Assert.Equal(2, json.Count);
+        Assert.Contains(
+            json,
+            path => path.Contains("Microsoft.WindowsTerminal", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task Index_FindsWslVhdxUnderAppDataLocal()
     {
         await using RecipeIndexContext context = await RecipeIndexContext.CreateAsync();

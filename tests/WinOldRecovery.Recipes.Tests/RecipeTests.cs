@@ -2197,6 +2197,82 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Terminal_Detect_FindsSettingsFromRecipeIndexWithoutWalkingPackages()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string indexed = Path.Combine(
+            alice,
+            "AppData",
+            "Local",
+            "Packages",
+            "Microsoft.WindowsTerminal_8wekyb3d8bbwe",
+            "LocalState",
+            "settings.json");
+        string walked = Path.Combine(
+            alice,
+            "AppData",
+            "Local",
+            "Packages",
+            "Microsoft.WindowsTerminal_walked",
+            "LocalState",
+            "settings.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(walked)!);
+        await File.WriteAllTextAsync(walked, "{ \"walked\": true }");
+
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "settings.json",
+                @"Users\Alice\AppData\Local\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+
+        RecipeIndex index = new(context.Database, "session-1", @"Users\Alice", alice);
+        DetectResult fromIndex = new TerminalRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner,
+                index));
+        Assert.Equal(
+            indexed,
+            Assert.Single(fromIndex.Cards).Facts["source"]);
+
+        DetectResult fromDisk = new TerminalRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        Assert.Contains(
+            fromDisk.Cards,
+            card => card.Facts["source"].Replace('/', '\\')
+                .EndsWith(@"Packages\Microsoft.WindowsTerminal_walked\LocalState\settings.json", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(
+            fromDisk.Cards,
+            card => card.Facts["package"]
+                .Equals("Microsoft.WindowsTerminal_8wekyb3d8bbwe", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task AnkiWslAndGpg_RestoreWithoutTrashIndexOrRandomSeed()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
