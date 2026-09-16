@@ -200,6 +200,8 @@ public sealed class WslRecipe : IRecipe
             await journal.FailedAsync("register", exception.Message, cancellationToken).ConfigureAwait(false);
             throw;
         }
+
+        await SetDefaultUserAsync(plan, journal, cancellationToken).ConfigureAwait(false);
     }
 
     public static IReadOnlyList<WinOldRecovery.Core.Processes.ProcessRequest> CreateRegisterRequests(
@@ -235,6 +237,86 @@ public sealed class WslRecipe : IRecipe
         return requests;
     }
 
+    public static bool TryParseWslConfUserDefault(string conf, out string userName)
+    {
+        userName = string.Empty;
+        bool inUser = false;
+        using StringReader reader = new(conf);
+        while (reader.ReadLine() is { } line)
+        {
+            string trimmed = line.Trim();
+            if (trimmed.StartsWith('[') && trimmed.EndsWith(']'))
+            {
+                inUser = trimmed.Equals("[user]", StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+
+            if (!inUser || !trimmed.StartsWith("default", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            int equals = trimmed.IndexOf('=');
+            if (equals < 0)
+            {
+                continue;
+            }
+
+            string value = trimmed[(equals + 1)..].Trim();
+            if (IsSafeLinuxUserName(value))
+            {
+                userName = value;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static bool TryParsePasswdName(string passwdLine, out string userName)
+    {
+        userName = string.Empty;
+        int colon = passwdLine.IndexOf(':');
+        if (colon <= 0)
+        {
+            return false;
+        }
+
+        string value = passwdLine[..colon].Trim();
+        if (!IsSafeLinuxUserName(value))
+        {
+            return false;
+        }
+
+        userName = value;
+        return true;
+    }
+
+    public static bool IsSafeLinuxUserName(string value)
+    {
+        if (value.Length is < 1 or > 32)
+        {
+            return false;
+        }
+
+        char first = value[0];
+        if (first is not ('_' or (>= 'a' and <= 'z')))
+        {
+            return false;
+        }
+
+        for (int i = 1; i < value.Length; i++)
+        {
+            char c = value[i];
+            if (c is not ('_' or '-' or (>= 'a' and <= 'z') or (>= '0' and <= '9')))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public static string FormatDefaultUserCommands(string distroName, string defaultUid)
     {
         string uid = string.IsNullOrWhiteSpace(defaultUid) ? "<DefaultUid>" : defaultUid;
@@ -244,6 +326,111 @@ public sealed class WslRecipe : IRecipe
             "wsl.exe -d " + distroName + " -u root getent passwd " + uid,
             "wsl.exe --manage " + distroName + " --set-default-user <name-from-getent>",
             "wsl.exe --terminate " + distroName);
+    }
+
+    private static async Task SetDefaultUserAsync(
+        PlanResult plan,
+        IRecipeJournal journal,
+        CancellationToken cancellationToken)
+    {
+        IProcessRunner runner = plan.Destination!.ProcessRunner;
+        string distroName = plan.Card.Facts["name"];
+        string defaultUid = plan.Card.Facts.GetValueOrDefault("defaultUid") ?? string.Empty;
+        TimeSpan timeout = TimeSpan.FromSeconds(30);
+        await journal.StartedAsync("defaultUser", cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ProcessResult conf = await runner
+                .RunAsync(
+                    new ProcessRequest(
+                        "wsl.exe",
+                        ["-d", distroName, "-u", "root", "cat", "/etc/wsl.conf"],
+                        Timeout: timeout),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (conf.ExitCode == 0 && TryParseWslConfUserDefault(conf.StandardOutput, out _))
+            {
+                await journal.CompletedAsync("defaultUser", cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            string? userName = null;
+            if (!string.IsNullOrWhiteSpace(defaultUid))
+            {
+                ProcessResult passwd = await runner
+                    .RunAsync(
+                        new ProcessRequest(
+                            "wsl.exe",
+                            ["-d", distroName, "-u", "root", "getent", "passwd", defaultUid],
+                            Timeout: timeout),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (passwd.ExitCode != 0 || !TryParsePasswdName(passwd.StandardOutput, out string parsed))
+                {
+                    throw new IOException(
+                        "wsl.exe getent passwd " + defaultUid + " did not return a Linux user name.");
+                }
+
+                userName = parsed;
+            }
+
+            if (userName is null)
+            {
+                await journal.CompletedAsync("defaultUser", cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            ProcessResult manage = await runner
+                .RunAsync(
+                    new ProcessRequest(
+                        "wsl.exe",
+                        ["--manage", distroName, "--set-default-user", userName],
+                        Timeout: timeout),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (manage.ExitCode != 0)
+            {
+                ProcessResult append = await runner
+                    .RunAsync(
+                        new ProcessRequest(
+                            "wsl.exe",
+                            [
+                                "-d",
+                                distroName,
+                                "-u",
+                                "root",
+                                "--",
+                                "sh",
+                                "-c",
+                                "printf '\\n[user]\\ndefault=" + userName + "\\n' >> /etc/wsl.conf",
+                            ],
+                            Timeout: timeout),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (append.ExitCode != 0)
+                {
+                    throw new IOException(
+                        "wsl.exe could not set the default user for " + distroName + ".");
+                }
+            }
+
+            ProcessResult terminate = await runner
+                .RunAsync(
+                    new ProcessRequest("wsl.exe", ["--terminate", distroName], Timeout: timeout),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (terminate.ExitCode != 0)
+            {
+                throw new IOException("wsl.exe --terminate " + distroName + " exited " + terminate.ExitCode + ".");
+            }
+
+            await journal.CompletedAsync("defaultUser", cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            await journal.FailedAsync("defaultUser", exception.Message, cancellationToken).ConfigureAwait(false);
+            throw;
+        }
     }
 
     public RecipeVerifyResult Verify(PlanResult plan)

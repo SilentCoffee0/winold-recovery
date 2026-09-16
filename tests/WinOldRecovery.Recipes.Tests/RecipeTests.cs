@@ -2131,6 +2131,10 @@ public sealed class RecipeTests
             defaultUser,
             request => request.Arguments.Any(static argument =>
                 argument.Contains("Windows.old", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            context.Runner.Requests,
+            request => request.Arguments.Contains("cat") &&
+                request.Arguments.Contains("/etc/wsl.conf"));
         Assert.DoesNotContain(
             context.Runner.Requests,
             request => request.Arguments.Contains("getent") ||
@@ -2200,6 +2204,180 @@ public sealed class RecipeTests
             context.Runner.Requests,
             request => request.Arguments.Contains("-l") ||
                 request.Arguments.Contains("--"));
+    }
+
+    [Fact]
+    public void Wsl_ParsesWslConfDefaultAndPasswdName()
+    {
+        Assert.True(WslRecipe.TryParseWslConfUserDefault("[user]\ndefault=alice\n", out string confUser));
+        Assert.Equal("alice", confUser);
+        Assert.False(WslRecipe.TryParseWslConfUserDefault("[boot]\nsystemd=true\n", out _));
+        Assert.True(WslRecipe.TryParsePasswdName("alice:x:1000:1000::/home/alice:/bin/bash", out string passwdUser));
+        Assert.Equal("alice", passwdUser);
+        Assert.False(WslRecipe.TryParsePasswdName("alice;id:x:1000:1000::/home/alice:/bin/bash", out _));
+        Assert.False(WslRecipe.IsSafeLinuxUserName("Alice"));
+        Assert.False(WslRecipe.IsSafeLinuxUserName("alice;id"));
+    }
+
+    [Fact]
+    public async Task Wsl_DefaultUser_SetsFromGetentWhenConfEmpty()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string wsl = Path.Combine(alice, "AppData", "Local", "wsl", "{guid}", "ext4.vhdx");
+        Directory.CreateDirectory(Path.GetDirectoryName(wsl)!);
+        byte[] vhdx = new byte[512];
+        System.Text.Encoding.ASCII.GetBytes("vhdxfile").CopyTo(vhdx, 0);
+        await File.WriteAllBytesAsync(wsl, vhdx);
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, RecipeCatalog.All);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+        RecipeCard wslCard = Assert.Single(cards, card => card.RecipeId == "wsl");
+        PlanResult planned = host.PlanCard(new WslRecipe(), wslCard, Dest(context));
+        ScriptedWslRunner runner = new()
+        {
+            ConfStdout = string.Empty,
+            GetentStdout = "alice:x:1000:1000::/home/alice:/bin/bash\n",
+        };
+        Dictionary<string, string> facts = new(planned.Card.Facts, StringComparer.Ordinal) { ["defaultUid"] = "1000" };
+        PlanResult plan = planned with
+        {
+            Card = planned.Card with { Facts = facts },
+            Destination = new DestinationContext(context.Destination, context.Exports, context.SafeFs, runner),
+        };
+        await host.ExecuteAsync("session-1", new WslRecipe(), plan);
+        Assert.Contains(
+            runner.Requests,
+            request => request.Arguments.Contains("getent") && request.Arguments.Contains("1000"));
+        ProcessRequest manage = Assert.Single(
+            runner.Requests,
+            request => request.Arguments.Contains("--set-default-user"));
+        Assert.Contains("alice", manage.Arguments);
+        Assert.Contains(
+            runner.Requests,
+            request => request.Arguments.Contains("--terminate"));
+        Assert.DoesNotContain(
+            runner.Requests,
+            request => request.Arguments.Contains("sh"));
+    }
+
+    [Fact]
+    public async Task Wsl_DefaultUser_SkipsWhenWslConfAlreadyHasDefault()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string wsl = Path.Combine(alice, "AppData", "Local", "wsl", "{guid}", "ext4.vhdx");
+        Directory.CreateDirectory(Path.GetDirectoryName(wsl)!);
+        byte[] vhdx = new byte[512];
+        System.Text.Encoding.ASCII.GetBytes("vhdxfile").CopyTo(vhdx, 0);
+        await File.WriteAllBytesAsync(wsl, vhdx);
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, RecipeCatalog.All);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+        RecipeCard wslCard = Assert.Single(cards, card => card.RecipeId == "wsl");
+        PlanResult planned = host.PlanCard(new WslRecipe(), wslCard, Dest(context));
+        ScriptedWslRunner runner = new() { ConfStdout = "[user]\ndefault=bob\n" };
+        Dictionary<string, string> facts = new(planned.Card.Facts, StringComparer.Ordinal) { ["defaultUid"] = "1000" };
+        PlanResult plan = planned with
+        {
+            Card = planned.Card with { Facts = facts },
+            Destination = new DestinationContext(context.Destination, context.Exports, context.SafeFs, runner),
+        };
+        await host.ExecuteAsync("session-1", new WslRecipe(), plan);
+        Assert.Contains(
+            runner.Requests,
+            request => request.Arguments.Contains("cat") && request.Arguments.Contains("/etc/wsl.conf"));
+        Assert.DoesNotContain(
+            runner.Requests,
+            request => request.Arguments.Contains("getent") ||
+                request.Arguments.Contains("--set-default-user") ||
+                request.Arguments.Contains("--terminate"));
+    }
+
+    [Fact]
+    public async Task Wsl_DefaultUser_FallsBackToWslConfWhenManageFails()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string wsl = Path.Combine(alice, "AppData", "Local", "wsl", "{guid}", "ext4.vhdx");
+        Directory.CreateDirectory(Path.GetDirectoryName(wsl)!);
+        byte[] vhdx = new byte[512];
+        System.Text.Encoding.ASCII.GetBytes("vhdxfile").CopyTo(vhdx, 0);
+        await File.WriteAllBytesAsync(wsl, vhdx);
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, RecipeCatalog.All);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+        RecipeCard wslCard = Assert.Single(cards, card => card.RecipeId == "wsl");
+        PlanResult planned = host.PlanCard(new WslRecipe(), wslCard, Dest(context));
+        ScriptedWslRunner runner = new()
+        {
+            GetentStdout = "alice:x:1000:1000::/home/alice:/bin/bash\n",
+            ManageExit = 1,
+        };
+        Dictionary<string, string> facts = new(planned.Card.Facts, StringComparer.Ordinal) { ["defaultUid"] = "1000" };
+        PlanResult plan = planned with
+        {
+            Card = planned.Card with { Facts = facts },
+            Destination = new DestinationContext(context.Destination, context.Exports, context.SafeFs, runner),
+        };
+        await host.ExecuteAsync("session-1", new WslRecipe(), plan);
+        ProcessRequest append = Assert.Single(
+            runner.Requests,
+            request => request.Arguments.Contains("sh"));
+        Assert.Contains(
+            append.Arguments,
+            static argument => argument.Contains("default=alice", StringComparison.Ordinal));
+        Assert.Contains(
+            runner.Requests,
+            request => request.Arguments.Contains("--terminate"));
     }
 
     [Fact]
@@ -3056,6 +3234,38 @@ public sealed class RecipeTests
             await Database.DisposeAsync();
             SqliteConnection.ClearAllPools();
             Directory.Delete(Root, recursive: true);
+        }
+    }
+
+    private sealed class ScriptedWslRunner : IProcessRunner
+    {
+        public List<ProcessRequest> Requests { get; } = [];
+
+        public string ConfStdout { get; init; } = string.Empty;
+
+        public string GetentStdout { get; init; } = string.Empty;
+
+        public int ManageExit { get; init; }
+
+        public Task<ProcessResult> RunAsync(ProcessRequest request, CancellationToken cancellationToken = default)
+        {
+            Requests.Add(request);
+            if (request.Arguments.Contains("cat"))
+            {
+                return Task.FromResult(new ProcessResult(0, ConfStdout, string.Empty));
+            }
+
+            if (request.Arguments.Contains("getent"))
+            {
+                return Task.FromResult(new ProcessResult(0, GetentStdout, string.Empty));
+            }
+
+            if (request.Arguments.Contains("--set-default-user"))
+            {
+                return Task.FromResult(new ProcessResult(ManageExit, string.Empty, string.Empty));
+            }
+
+            return Task.FromResult(new ProcessResult(0, string.Empty, string.Empty));
         }
     }
 
