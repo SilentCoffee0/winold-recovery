@@ -425,11 +425,9 @@ public sealed class SyncthingRecipe : IRecipe
 
     private static IReadOnlyList<string> CandidateHomes(ProfileContext context)
     {
-        List<string> homes =
-        [
-            Path.Combine(context.OldProfileRoot, "AppData", "Local", "Syncthing"),
-            Path.Combine(context.OldProfileRoot, "AppData", "Roaming", "Syncthing"),
-        ];
+        HashSet<string> homes = new(StringComparer.OrdinalIgnoreCase);
+        Add(homes, Path.Combine(context.OldProfileRoot, "AppData", "Local", "Syncthing"));
+        Add(homes, Path.Combine(context.OldProfileRoot, "AppData", "Roaming", "Syncthing"));
         string trayzor = Path.Combine(context.OldProfileRoot, "AppData", "Roaming", "SyncTrayzor", "config.xml");
         if (context.SafeFs.FileExists(trayzor))
         {
@@ -441,7 +439,7 @@ public sealed class SyncthingRecipe : IRecipe
                     element.Name.LocalName.Contains("Home", StringComparison.OrdinalIgnoreCase));
                 if (custom is not null && !string.IsNullOrWhiteSpace(custom.Value) && Path.IsPathRooted(custom.Value))
                 {
-                    homes.Add(custom.Value);
+                    Add(homes, custom.Value);
                 }
             }
             catch (System.Xml.XmlException)
@@ -450,8 +448,31 @@ public sealed class SyncthingRecipe : IRecipe
         }
 
         string sourceRoot = Path.GetFullPath(Path.Combine(context.OldProfileRoot, "..", ".."));
-        homes.Add(Path.Combine(sourceRoot, "ProgramData", "Syncthing"));
-        homes.Add(Path.Combine(sourceRoot, "Windows", "System32", "config", "systemprofile", "AppData", "Local", "Syncthing"));
-        return homes;
+        Add(homes, Path.Combine(sourceRoot, "ProgramData", "Syncthing"));
+        Add(
+            homes,
+            Path.Combine(sourceRoot, "Windows", "System32", "config", "systemprofile", "AppData", "Local", "Syncthing"));
+        if (context.Index is { } index)
+        {
+            foreach (string parent in index.ParentsOfChildNamed("cert.pem"))
+            {
+                if (IsHome(context.SafeFs, parent))
+                {
+                    Add(homes, parent);
+                }
+            }
+        }
+
+        return homes.ToList();
+    }
+
+    private static void Add(HashSet<string> homes, string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        homes.Add(Path.GetFullPath(path));
     }
 }

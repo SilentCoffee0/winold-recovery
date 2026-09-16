@@ -2076,6 +2076,81 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Syncthing_Detect_FindsCustomHomeFromRecipeIndex()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string custom = Path.Combine(alice, "Projects", "st-home");
+        Directory.CreateDirectory(custom);
+        await File.WriteAllTextAsync(Path.Combine(custom, "cert.pem"), CreateCertificatePem());
+        await File.WriteAllTextAsync(Path.Combine(custom, "key.pem"), "key");
+        await File.WriteAllTextAsync(
+            Path.Combine(custom, "config.xml"),
+            """<configuration version="37"></configuration>""");
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "st-home",
+                @"Users\Alice\Projects\st-home",
+                NodeKind.Directory,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                2,
+                "session-1",
+                null,
+                1,
+                "cert.pem",
+                @"Users\Alice\Projects\st-home\cert.pem",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+
+        DetectResult fromIndex = new SyncthingRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner,
+                new RecipeIndex(
+                    context.Database,
+                    "session-1",
+                    @"Users\Alice",
+                    alice)));
+        Assert.Contains(
+            fromIndex.Cards,
+            card => card.Facts["source"].Equals(custom, StringComparison.OrdinalIgnoreCase));
+        DetectResult fromDisk = new SyncthingRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        Assert.DoesNotContain(
+            fromDisk.Cards,
+            card => card.Facts["source"].Equals(custom, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task Anki_Detect_FindsShortcutDashBBaseAndRecordsBackupFacts()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
