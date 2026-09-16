@@ -752,7 +752,9 @@
                                     Command="{Binding CancelRestoreCommand}"
                                     AutomationProperties.Name="Cancel restore" />
                         </StackPanel>
-                        <ListBox MaxHeight="140" ItemsSource="{Binding RestoreJobs}"
+                        <ListBox MaxHeight="168"
+                                 Style="{StaticResource CardListBox}"
+                                 ItemsSource="{Binding RestoreJobs}"
                                  DisplayMemberPath="Display"
                                  AutomationProperties.Name="Restore jobs"
                                  AutomationProperties.AutomationId="RestoreJobsList" />

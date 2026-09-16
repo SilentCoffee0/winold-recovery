@@ -27,11 +27,21 @@ public sealed class RestoreJobRow : ObservableObject
             if (SetProperty(ref status, value))
             {
                 OnPropertyChanged(nameof(Display));
+                OnPropertyChanged(nameof(Glyph));
             }
         }
     }
 
-    public string Display => Status + "  " + Name;
+    public string Display => Glyph + "  " + Name;
+
+    public string Glyph => Status switch
+    {
+        "done" => "✔",
+        "running" => "▶",
+        "paused" => "❚❚",
+        "failed" => "⚠",
+        _ => "○",
+    };
 
     public void SetStatus(string value)
     {

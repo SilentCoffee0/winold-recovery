@@ -246,6 +246,7 @@ public sealed class ShellViewModelTests
         Assert.True(context.ViewModel.ResumeInterruptedCommand.CanExecute(null));
         Assert.Single(context.ViewModel.RestoreJobs);
         Assert.Equal("running", context.ViewModel.RestoreJobs[0].Status);
+        Assert.StartsWith("▶", context.ViewModel.RestoreJobs[0].Display, StringComparison.Ordinal);
 
         context.ViewModel.DismissInterruptedCommand.Execute(null);
         Assert.False(context.ViewModel.InterruptedRestoreVisible);
