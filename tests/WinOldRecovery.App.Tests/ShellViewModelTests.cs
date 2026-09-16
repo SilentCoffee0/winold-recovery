@@ -312,6 +312,16 @@ public sealed class ShellViewModelTests
         Assert.Equal(FilesViewMode.HighValue, context.ViewModel.FilesViewMode);
         Assert.Contains(context.ViewModel.TreeRows, row => row.Name == "vault.kdbx");
         Assert.Contains("password vault", context.ViewModel.DetailText, StringComparison.OrdinalIgnoreCase);
+
+        string pointerPath = CompletedScan.PointerPathFromWorkspace(context.WorkspaceRoot);
+        CompletedScanPointer? pointer = CompletedScan.TryRead(new SafeFs(new SourceGuard()), pointerPath);
+        Assert.NotNull(pointer);
+        context.ViewModel.OfferCompletedScan(pointer);
+        await context.ViewModel.ContinueLastScanCommand.ExecuteAsync(null);
+        OverviewCard reopened = Assert.Single(context.ViewModel.Cards, card => card.Kind == "HighValue");
+        Assert.DoesNotContain("0 bytes", reopened.Facts, StringComparison.Ordinal);
+        context.ViewModel.SelectedCard = reopened;
+        Assert.Contains("password vault", context.ViewModel.DetailText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -1072,6 +1072,36 @@ public sealed class SessionDb : IAsyncDisposable
         return cards;
     }
 
+    public IReadOnlyList<BadgeKindTotal> ListBadgeKindTotals(string sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT badges.kind, badges.detail, COUNT(*), COALESCE(SUM(nodes.size), 0)
+            FROM badges
+            INNER JOIN nodes ON nodes.id = badges.node_id
+            WHERE nodes.session_id = $sessionId
+            GROUP BY badges.kind, badges.detail
+            ORDER BY badges.kind, badges.detail;
+            """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        List<BadgeKindTotal> totals = [];
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            totals.Add(
+                new BadgeKindTotal(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    Convert.ToInt32(reader.GetInt64(2), CultureInfo.InvariantCulture),
+                    reader.GetInt64(3)));
+        }
+
+        return totals;
+    }
+
     public Task SetKvAsync(
         string sessionId,
         string key,

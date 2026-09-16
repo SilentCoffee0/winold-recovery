@@ -68,6 +68,12 @@ public sealed class ClassificationEngineTests
         Assert.Equal(Decision.LeaveBehind, engine.GetEffectiveDecision(appData.Id));
         Assert.True(result.Classification.HighValueCount >= 1);
         Assert.True(result.Classification.RegeneratableCount >= 1);
+        ClassificationSummary fromBadges = ClassificationSummary.FromBadgeTotals(
+            context.Database.ListBadgeKindTotals(context.SessionId));
+        Assert.True(fromBadges.HighValueCount >= 1);
+        Assert.True(fromBadges.HighValueBytes > 0);
+        Assert.True(fromBadges.RegeneratableCount >= 1);
+        Assert.Contains(fromBadges.Breakdown, hit => hit.Badge == "KeePass");
     }
 
     [Fact]

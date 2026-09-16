@@ -1799,6 +1799,12 @@ public sealed class ShellViewModel : ObservableObject
 
         int highValue = ParseStoredInt(CompletedScan.HighValueCountKey);
         int regeneratable = ParseStoredInt(CompletedScan.RegeneratableCountKey);
+        ClassificationSummary classification = ClassificationSummary.FromBadgeTotals(
+            sessionDb.ListBadgeKindTotals(workspace.SessionId));
+        if (classification.HighValueCount == 0 && classification.RegeneratableCount == 0)
+        {
+            classification = new ClassificationSummary(highValue, 0, regeneratable, 0, []);
+        }
         int nodes = ParseStoredInt(CompletedScan.NodesVisitedKey);
         if (nodes == 0)
         {
@@ -1812,7 +1818,7 @@ public sealed class ShellViewModel : ObservableObject
             source,
             new ProfileDetector().Detect(source),
             LoadStoredRecipeCards(),
-            new ClassificationSummary(highValue, 0, regeneratable, 0, []),
+            classification,
             nodes,
             bytes,
             DestinationMap.Parse(sessionDb.GetKv(workspace.SessionId, DestinationMap.KvKey)));
@@ -2393,7 +2399,9 @@ public sealed class ShellViewModel : ObservableObject
         ];
         foreach (RuleHitCount hit in hits)
         {
-            ClassificationRule? rule = classificationRules.FirstOrDefault(item => item.Id == hit.RuleId);
+            ClassificationRule? rule = classificationRules.FirstOrDefault(item =>
+                item.Id == hit.RuleId ||
+                string.Equals(item.Badge, hit.Badge, StringComparison.OrdinalIgnoreCase));
             string line =
                 hit.Badge + ": " +
                 hit.Count.ToString("N0", CultureInfo.InvariantCulture) +

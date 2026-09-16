@@ -1,4 +1,5 @@
 using WinOldRecovery.Core.Decisions;
+using WinOldRecovery.Core.Persistence;
 
 namespace WinOldRecovery.Core.Classification;
 
@@ -53,4 +54,38 @@ public sealed record ClassificationSummary(
     long HighValueBytes,
     int RegeneratableCount,
     long RegeneratableBytes,
-    IReadOnlyList<RuleHitCount> Breakdown);
+    IReadOnlyList<RuleHitCount> Breakdown)
+{
+    public static ClassificationSummary FromBadgeTotals(IReadOnlyList<BadgeKindTotal> totals)
+    {
+        ArgumentNullException.ThrowIfNull(totals);
+        int highCount = 0;
+        long highBytes = 0;
+        int regenCount = 0;
+        long regenBytes = 0;
+        List<RuleHitCount> breakdown = [];
+        foreach (BadgeKindTotal total in totals)
+        {
+            if (!Enum.TryParse(total.Kind, ignoreCase: false, out ClassificationKind kind) ||
+                kind == ClassificationKind.Sensitive)
+            {
+                continue;
+            }
+
+            breakdown.Add(
+                new RuleHitCount(total.Kind + ":" + total.Detail, total.Detail, kind, total.Count, total.Bytes));
+            if (kind is ClassificationKind.HighValue or ClassificationKind.GameSave)
+            {
+                highCount += total.Count;
+                highBytes += total.Bytes;
+            }
+            else if (kind == ClassificationKind.Regeneratable)
+            {
+                regenCount += total.Count;
+                regenBytes += total.Bytes;
+            }
+        }
+
+        return new ClassificationSummary(highCount, highBytes, regenCount, regenBytes, breakdown);
+    }
+}

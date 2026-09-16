@@ -25,6 +25,8 @@ public sealed record NodeAggregateUpdate(
 
 public sealed record NodeBadgeRow(long NodeId, string Kind, string Detail);
 
+public sealed record BadgeKindTotal(string Kind, string Detail, int Count, long Bytes);
+
 public sealed record WalkerCheckpoint(
     long RootNodeId,
     long NextNodeId,
