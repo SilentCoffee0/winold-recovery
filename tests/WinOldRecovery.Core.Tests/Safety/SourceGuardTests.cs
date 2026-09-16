@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
 using System.Text;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Safety;
@@ -66,6 +67,18 @@ public sealed class SourceGuardTests : IDisposable
 
         Assert.True(File.Exists(sourceFile));
         Assert.False(File.Exists(Path.Combine(destinationRoot, "moved.txt")));
+    }
+
+    [Fact]
+    public void I1_SetAccessControlRefusesRegisteredSource()
+    {
+        string sourceFile = Path.Combine(sourceRoot, "id_ed25519");
+        File.WriteAllText(sourceFile, "key");
+        guard.RegisterSourceRoot(sourceRoot);
+        FileSecurity security = new FileInfo(sourceFile).GetAccessControl();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+
+        Assert.Throws<SourceWriteDeniedException>(() => safeFs.SetAccessControl(sourceFile, security));
     }
 
     [Fact]

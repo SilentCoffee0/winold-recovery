@@ -118,9 +118,14 @@ public sealed class SshRecipe : IRecipe
                 continue;
             }
 
+            if (plan.Destination is null)
+            {
+                continue;
+            }
+
             try
             {
-                HardenUserOnlyAcl(write.DestinationPath);
+                HardenUserOnlyAcl(plan.Destination.SafeFs, write.DestinationPath);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Security.SecurityException)
             {
@@ -165,7 +170,7 @@ public sealed class SshRecipe : IRecipe
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) => [];
 
-    internal static void HardenUserOnlyAcl(string path)
+    internal static void HardenUserOnlyAcl(SafeFs safeFs, string path)
     {
         FileInfo file = new(path);
         if (!file.Exists)
@@ -201,7 +206,7 @@ public sealed class SshRecipe : IRecipe
                 new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
                 FileSystemRights.FullControl,
                 AccessControlType.Allow));
-        file.SetAccessControl(security);
+        safeFs.SetAccessControl(path, security);
     }
 
     internal static bool AclAllowsBroadUsers(string path)

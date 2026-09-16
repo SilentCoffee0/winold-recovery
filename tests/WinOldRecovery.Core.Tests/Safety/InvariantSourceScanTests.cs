@@ -16,6 +16,37 @@ public sealed class InvariantSourceScanTests
     }
 
     [Fact]
+    public void I1_MutatingApisStayInsideSafeFsAndPurge()
+    {
+        string[] forbidden =
+        [
+            "File.Delete(",
+            "Directory.Delete(",
+            "File.Move(",
+            "RegLoadKey",
+        ];
+        foreach (string path in SourceFiles())
+        {
+            if (IsAllowedWriteSurface(path))
+            {
+                continue;
+            }
+
+            string text = File.ReadAllText(path);
+            foreach (string token in forbidden)
+            {
+                Assert.False(
+                    text.Contains(token, StringComparison.Ordinal),
+                    path + " uses " + token + " outside SafeFs/Purge.");
+            }
+
+            Assert.False(
+                ContainsDirectSetAccessControl(text),
+                path + " uses SetAccessControl outside SafeFs.");
+        }
+    }
+
+    [Fact]
     public void I5_SourceDoesNotLoadOrMergeRegistryHives()
     {
         foreach (string path in SourceFiles())
@@ -37,6 +68,41 @@ public sealed class InvariantSourceScanTests
             Assert.DoesNotContain("TcpClient", text, StringComparison.Ordinal);
             Assert.DoesNotContain("Socket(", text, StringComparison.Ordinal);
         }
+    }
+
+    private static bool ContainsDirectSetAccessControl(string text)
+    {
+        foreach (string line in text.Split('\n'))
+        {
+            string trimmed = line.Trim();
+            if (trimmed.StartsWith("//", StringComparison.Ordinal) ||
+                trimmed.StartsWith("*", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (!trimmed.Contains("SetAccessControl", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (trimmed.Contains("SafeFs.SetAccessControl", StringComparison.Ordinal) ||
+                trimmed.Contains("safeFs.SetAccessControl", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsAllowedWriteSurface(string path)
+    {
+        string normalized = path.Replace('\\', '/');
+        return normalized.EndsWith("/IO/SafeFs.cs", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("/Purge/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IEnumerable<string> SourceFiles()

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Security.AccessControl;
 using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Native;
 
@@ -131,6 +132,16 @@ public sealed class SafeFs
     {
         string validatedPath = sourceGuard.GetValidatedWritePath(path, purgeToken);
         File.SetAttributes(validatedPath, attributes);
+    }
+
+    public void SetAccessControl(
+        string path,
+        FileSecurity security,
+        PurgeToken? purgeToken = null)
+    {
+        ArgumentNullException.ThrowIfNull(security);
+        string validatedPath = sourceGuard.GetValidatedWritePath(path, purgeToken);
+        new FileInfo(validatedPath).SetAccessControl(security);
     }
 
     public FileSystemInfo CreateSymbolicLink(

@@ -183,7 +183,7 @@ public sealed class RecipeTests
                 [new RecipeWrite(RecipeWriteKind.CopyFile, key, key, null, 1, "files")]);
             Assert.True(SshRecipe.AclAllowsBroadUsers(key));
             Assert.False(new SshRecipe().Verify(plan).Ok);
-            SshRecipe.HardenUserOnlyAcl(key);
+            SshRecipe.HardenUserOnlyAcl(new SafeFs(new SourceGuard()), key);
             Assert.False(SshRecipe.AclAllowsBroadUsers(key));
             Assert.True(new SshRecipe().Verify(plan).Ok);
         }
