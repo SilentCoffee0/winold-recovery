@@ -21,6 +21,8 @@ public sealed class StatusStripTests
         const long free = 10L * 1024 * 1024 * 1024;
         (string okText, SpaceBudgetLevel ok) = StatusStrip.FormatSpaceBudget(100, 100, free);
         Assert.Equal(SpaceBudgetLevel.Ok, ok);
+        Assert.Contains("Selected: 100 bytes of 10.0 GB free", okText, StringComparison.Ordinal);
+        Assert.Contains("need 100 bytes with margin", okText, StringComparison.Ordinal);
         Assert.DoesNotContain("Will not fit", okText, StringComparison.Ordinal);
         Assert.DoesNotContain("Approaching", okText, StringComparison.Ordinal);
 

@@ -48,7 +48,7 @@ public static class StatusStrip
         long freeBytes)
     {
         string core =
-            $"Selected: {selectedBytes} bytes of {freeBytes} free (need {requiredBytes} with margin)";
+            $"Selected: {QuantityFormat.Bytes(selectedBytes)} of {QuantityFormat.Bytes(freeBytes)} free (need {QuantityFormat.Bytes(requiredBytes)} with margin)";
         if (requiredBytes > freeBytes)
         {
             return (core + " Will not fit.", SpaceBudgetLevel.WillNotFit);
