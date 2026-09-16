@@ -8,6 +8,7 @@ public sealed class RecipeIndex
     private readonly string sessionId;
     private readonly string profileRelPrefix;
     private readonly string oldProfileRoot;
+    private readonly string sourceRoot;
 
     public RecipeIndex(
         SessionDb sessionDb,
@@ -21,6 +22,7 @@ public sealed class RecipeIndex
         this.profileRelPrefix = profileRelPrefix ?? string.Empty;
         ArgumentException.ThrowIfNullOrWhiteSpace(oldProfileRoot);
         this.oldProfileRoot = oldProfileRoot;
+        sourceRoot = ResolveSourceRoot(oldProfileRoot, this.profileRelPrefix);
     }
 
     public IReadOnlyList<string> FilesWithExtensions(params string[] extensions)
@@ -75,6 +77,23 @@ public sealed class RecipeIndex
 
     public IReadOnlyList<string> GitWorkingTrees() => ParentsOfChildNamed(".git");
 
+    public IReadOnlyList<string> ParentsOfChildNamedUnder(string relativeUnderSource, string childName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeUnderSource);
+        ArgumentException.ThrowIfNullOrWhiteSpace(childName);
+        string prefix = relativeUnderSource.Replace('/', '\\').Trim('\\');
+        List<string> paths = [];
+        foreach (string relPath in sessionDb.ListRelPathsUnderPrefixByChildName(sessionId, prefix, childName))
+        {
+            if (TryAbsoluteFromSource(relPath, out string absolute))
+            {
+                paths.Add(absolute);
+            }
+        }
+
+        return paths;
+    }
+
     private static string CombinePrefix(string profileRelPrefix, string? relativeUnderProfile)
     {
         string profile = (profileRelPrefix ?? string.Empty).Replace('/', '\\').Trim('\\');
@@ -114,5 +133,26 @@ public sealed class RecipeIndex
             ? oldProfileRoot
             : Path.Combine(oldProfileRoot, underProfile);
         return true;
+    }
+
+    private bool TryAbsoluteFromSource(string nodeRelPath, out string absolute)
+    {
+        string rel = nodeRelPath.Replace('/', '\\').Trim('\\');
+        absolute = string.IsNullOrEmpty(rel) ? sourceRoot : Path.Combine(sourceRoot, rel);
+        return true;
+    }
+
+    private static string ResolveSourceRoot(string oldProfileRoot, string profileRelPrefix)
+    {
+        string profile = oldProfileRoot.Replace('/', '\\').TrimEnd('\\');
+        string prefix = (profileRelPrefix ?? string.Empty).Replace('/', '\\').Trim('\\');
+        if (!string.IsNullOrEmpty(prefix) &&
+            profile.EndsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+            profile.Length > prefix.Length)
+        {
+            return profile[..^prefix.Length].TrimEnd('\\');
+        }
+
+        return profile;
     }
 }

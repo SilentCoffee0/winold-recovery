@@ -248,6 +248,45 @@ public sealed class RecipeIndexTests
             StringComparer.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Index_FindsSteamLibrarySaveFoldersOutsideTheProfile()
+    {
+        await using RecipeIndexContext context = await RecipeIndexContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Created", "0.1.0"));
+        await context.Database.InsertNodesAsync(
+        [
+            Node(1, null, "Windows.old", ""),
+            Node(2, 1, "Celeste", @"Program Files (x86)\Steam\steamapps\common\Celeste"),
+            Node(3, 2, "saves", @"Program Files (x86)\Steam\steamapps\common\Celeste\saves"),
+            Node(4, 1, "Alice", @"Users\Alice"),
+            Node(5, 4, "saves", @"Users\Alice\Documents\saves"),
+        ]);
+
+        RecipeIndex index = new(
+            context.Database,
+            "session-1",
+            @"Users\Alice",
+            Path.Combine(context.Root, "Users", "Alice"));
+        Assert.Equal(
+            Path.Combine(
+                context.Root,
+                "Program Files (x86)",
+                "Steam",
+                "steamapps",
+                "common",
+                "Celeste"),
+            Assert.Single(
+                index.ParentsOfChildNamedUnder(
+                    Path.Combine("Program Files (x86)", "Steam", "steamapps", "common"),
+                    "saves")));
+        Assert.DoesNotContain(
+            index.ParentsOfChildNamedUnder(
+                Path.Combine("Program Files (x86)", "Steam", "steamapps", "common"),
+                "saves"),
+            path => path.Contains("Documents", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static PersistedNode Node(
         long id,
         long? parentId,

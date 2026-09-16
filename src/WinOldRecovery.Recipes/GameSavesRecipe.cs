@@ -57,6 +57,15 @@ public sealed class GameSavesRecipe : IRecipe
         "save",
     ];
 
+    private static readonly string[] SteamCommonRelatives =
+    [
+        Path.Combine("Program Files (x86)", "Steam", "steamapps", "common"),
+        Path.Combine("Program Files", "Steam", "steamapps", "common"),
+        Path.Combine("Steam", "steamapps", "common"),
+    ];
+
+    private static readonly string[] SteamLibrarySaveNames = ["SaveGames", "saves", "save"];
+
     public DetectResult Detect(ProfileContext context)
     {
         List<RecipeCard> cards = [];
@@ -216,6 +225,28 @@ public sealed class GameSavesRecipe : IRecipe
     private static IEnumerable<(string Source, string Relative, string Title)> SteamLibrarySaves(
         ProfileContext context)
     {
+        if (context.Index is { } index)
+        {
+            foreach (string commonRel in SteamCommonRelatives)
+            {
+                foreach (string saveName in SteamLibrarySaveNames)
+                {
+                    foreach (string parent in index.ParentsOfChildNamedUnder(commonRel, saveName))
+                    {
+                        string source = Path.Combine(parent, saveName);
+                        if (!TrySteamLibraryCard(source, saveName, out string relative, out string title))
+                        {
+                            continue;
+                        }
+
+                        yield return (source, relative, title);
+                    }
+                }
+            }
+
+            yield break;
+        }
+
         foreach (string common in SteamCommonFolders(context.OldProfileRoot))
         {
             if (!context.SafeFs.DirectoryExists(common) || DetectorWalk.IsReparse(common))
@@ -251,6 +282,49 @@ public sealed class GameSavesRecipe : IRecipe
                 }
             }
         }
+    }
+
+    private static bool TrySteamLibraryCard(
+        string source,
+        string saveName,
+        out string relative,
+        out string title)
+    {
+        relative = string.Empty;
+        title = string.Empty;
+        string normalized = DetectorWalk.StripExtended(source).Replace('/', '\\');
+        if (!normalized.Contains(@"\steamapps\common\", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string? parent = Path.GetDirectoryName(normalized);
+        if (string.IsNullOrEmpty(parent))
+        {
+            return false;
+        }
+
+        string game = Path.GetFileName(parent);
+        if (saveName.Equals("SaveGames", StringComparison.OrdinalIgnoreCase) &&
+            game.Equals("Saved", StringComparison.OrdinalIgnoreCase))
+        {
+            string? gameDir = Path.GetDirectoryName(parent);
+            if (string.IsNullOrEmpty(gameDir))
+            {
+                return false;
+            }
+
+            game = Path.GetFileName(gameDir);
+        }
+
+        if (string.IsNullOrEmpty(game))
+        {
+            return false;
+        }
+
+        relative = Path.Combine("Saved Games", game, Path.GetFileName(normalized));
+        title = "Steam library — " + game;
+        return true;
     }
 
     private static IEnumerable<string> SteamCommonFolders(string oldProfileRoot)

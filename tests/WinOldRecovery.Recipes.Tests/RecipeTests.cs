@@ -3477,6 +3477,97 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task GameSaves_Detect_FindsSteamLibrarySavesFromRecipeIndexWithoutWalkingCommon()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string indexed = Path.Combine(
+            context.Source,
+            "Program Files (x86)",
+            "Steam",
+            "steamapps",
+            "common",
+            "Celeste",
+            "saves");
+        string walked = Path.Combine(
+            context.Source,
+            "Program Files (x86)",
+            "Steam",
+            "steamapps",
+            "common",
+            "Hollow Knight",
+            "saves");
+        Directory.CreateDirectory(walked);
+        await File.WriteAllTextAsync(Path.Combine(walked, "slot.sav"), "hk");
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "Celeste",
+                @"Program Files (x86)\Steam\steamapps\common\Celeste",
+                NodeKind.Directory,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                2,
+                "session-1",
+                null,
+                1,
+                "saves",
+                @"Program Files (x86)\Steam\steamapps\common\Celeste\saves",
+                NodeKind.Directory,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+
+        RecipeIndex index = new(context.Database, "session-1", @"Users\Alice", alice);
+        DetectResult fromIndex = new GameSavesRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner,
+                index));
+        RecipeCard indexedCard = Assert.Single(
+            fromIndex.Cards,
+            card => card.Title.Contains("Steam library", StringComparison.Ordinal));
+        Assert.Equal(indexed, indexedCard.Facts["source"]);
+        Assert.DoesNotContain(
+            fromIndex.Cards,
+            card => card.Title.Contains("Hollow Knight", StringComparison.Ordinal));
+
+        DetectResult fromDisk = new GameSavesRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        Assert.Contains(
+            fromDisk.Cards,
+            card => card.Title.Contains("Hollow Knight", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            fromDisk.Cards,
+            card => card.Title.Contains("Celeste", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Libraries_Detect_FindsZoteroCalibreJoplinAndLogseq()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
