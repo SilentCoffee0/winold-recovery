@@ -319,6 +319,22 @@ public sealed class ChromiumRecipe : IRecipe
             return new RecipeVerifyResult(false, "Chromium export missing");
         }
 
+        foreach (RecipeWrite write in plan.Writes)
+        {
+            if (write.Kind != RecipeWriteKind.CopyFile ||
+                string.IsNullOrEmpty(write.SourcePath) ||
+                !Path.GetFileName(write.DestinationPath).Equals("Bookmarks", StringComparison.OrdinalIgnoreCase) ||
+                !File.Exists(write.SourcePath))
+            {
+                continue;
+            }
+
+            if (new FileInfo(write.DestinationPath).Length != new FileInfo(write.SourcePath).Length)
+            {
+                return new RecipeVerifyResult(false, "Chromium destination size does not match the source");
+            }
+        }
+
         RecipeWrite? localState = plan.Writes.FirstOrDefault(static write =>
             write.ComponentKey == "bookmarks-transplant" &&
             write.Kind == RecipeWriteKind.WriteContent &&

@@ -1351,6 +1351,15 @@ public sealed class RecipeTests
         Assert.Equal(
             "*~",
             await File.ReadAllTextAsync(Path.Combine(context.Destination, ".gitignore_global")));
+        PlanResult executed = plan with { Destination = Dest(context) };
+        Assert.True(recipe.Verify(executed).Ok);
+        string destIgnore = Path.Combine(context.Destination, ".config", "git", "ignore");
+        await File.WriteAllTextAsync(destIgnore, "x");
+        RecipeVerifyResult truncatedIgnore = recipe.Verify(executed);
+        Assert.False(truncatedIgnore.Ok);
+        Assert.Contains("size", truncatedIgnore.Detail, StringComparison.OrdinalIgnoreCase);
+        await File.WriteAllTextAsync(destIgnore, "*.log");
+        Assert.True(recipe.Verify(executed).Ok);
     }
 
     [Fact]
@@ -2536,12 +2545,19 @@ public sealed class RecipeTests
         Assert.Equal(Decision.Restore, wslCard.Components.Single(component => component.Key == "register").SuggestedDefault);
         PlanResult wslPlan = host.PlanCard(new WslRecipe(), wslCard, Dest(context));
         await host.ExecuteAsync("session-1", new WslRecipe(), wslPlan);
+        string recoveredVhdx = Assert.Single(wslPlan.Writes).DestinationPath;
+        Assert.True(new WslRecipe().Verify(wslPlan).Ok);
+        byte[] originalVhdx = await File.ReadAllBytesAsync(recoveredVhdx);
+        await File.WriteAllBytesAsync(recoveredVhdx, System.Text.Encoding.ASCII.GetBytes("vhdxfile"));
+        RecipeVerifyResult truncatedDisk = new WslRecipe().Verify(wslPlan);
+        Assert.False(truncatedDisk.Ok);
+        Assert.Contains("size", truncatedDisk.Detail, StringComparison.OrdinalIgnoreCase);
+        await File.WriteAllBytesAsync(recoveredVhdx, originalVhdx);
         Assert.True(new WslRecipe().Verify(wslPlan).Ok);
         Assert.Contains(
             context.Runner.Requests,
             request => request.FileName.Equals("wsl.exe", StringComparison.OrdinalIgnoreCase) &&
                 request.Arguments.Contains("--version"));
-        string recoveredVhdx = Assert.Single(wslPlan.Writes).DestinationPath;
         Assert.Contains("recovered", recoveredVhdx, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Windows.old", recoveredVhdx, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
@@ -3223,6 +3239,14 @@ public sealed class RecipeTests
             Assert.Contains("Default (recovered)", destLocalState, StringComparison.Ordinal);
             Assert.Contains("DEST_OS_CRYPT", destLocalState, StringComparison.Ordinal);
             Assert.DoesNotContain(Canary, destLocalState, StringComparison.Ordinal);
+            Assert.True(recipe.Verify(transplantPlan).Ok);
+            string destBookmarks = Path.Combine(destUserData, "Profile 1", "Bookmarks");
+            string originalBookmarks = await File.ReadAllTextAsync(destBookmarks);
+            await File.WriteAllTextAsync(destBookmarks, "truncated");
+            RecipeVerifyResult truncatedBookmarks = recipe.Verify(transplantPlan);
+            Assert.False(truncatedBookmarks.Ok);
+            Assert.Contains("size", truncatedBookmarks.Detail, StringComparison.OrdinalIgnoreCase);
+            await File.WriteAllTextAsync(destBookmarks, originalBookmarks);
             Assert.True(recipe.Verify(transplantPlan).Ok);
         }
         finally

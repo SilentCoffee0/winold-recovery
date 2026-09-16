@@ -316,12 +316,14 @@ internal static class DetectorWalk
     {
         foreach (RecipeWrite write in plan.Writes)
         {
-            if (!File.Exists(write.DestinationPath))
+            bool destDirectory = Directory.Exists(write.DestinationPath);
+            if (!destDirectory && !File.Exists(write.DestinationPath))
             {
                 return new RecipeVerifyResult(false, missingDetail);
             }
 
-            if (sizeMismatchDetail is null ||
+            if (destDirectory ||
+                sizeMismatchDetail is null ||
                 write.Kind != RecipeWriteKind.CopyFile ||
                 string.IsNullOrEmpty(write.SourcePath) ||
                 !File.Exists(write.SourcePath))

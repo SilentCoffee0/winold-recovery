@@ -237,11 +237,14 @@ public sealed class GitRecipe : IRecipe
 
     public RecipeVerifyResult Verify(PlanResult plan)
     {
-        bool ok = plan.Writes.All(static write =>
-            File.Exists(write.DestinationPath) || Directory.Exists(write.DestinationPath));
-        if (!ok)
+        RecipeVerifyResult present = DetectorWalk.FilesPresentMatchingSourceLength(
+            plan,
+            "Git files present",
+            "Git restore missing",
+            "Git destination size does not match the source");
+        if (!present.Ok)
         {
-            return new RecipeVerifyResult(false, "Git restore missing");
+            return present;
         }
 
         if (!HeadsMatch(plan))

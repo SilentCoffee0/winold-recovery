@@ -562,9 +562,14 @@ public sealed class WslRecipe : IRecipe
             return new RecipeVerifyResult(true, "No disk copy planned");
         }
 
-        if (!File.Exists(disk.DestinationPath))
+        RecipeVerifyResult present = DetectorWalk.FilesPresentMatchingSourceLength(
+            plan,
+            "VHDX header present",
+            "VHDX missing",
+            "VHDX destination size does not match the source");
+        if (!present.Ok)
         {
-            return new RecipeVerifyResult(false, "VHDX missing");
+            return present;
         }
 
         using FileStream stream = File.OpenRead(disk.DestinationPath);
