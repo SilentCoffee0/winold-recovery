@@ -148,13 +148,18 @@ public sealed class SshRecipe : IRecipe
 
     public RecipeVerifyResult Verify(PlanResult plan)
     {
+        RecipeVerifyResult present = DetectorWalk.FilesPresentMatchingSourceLength(
+            plan,
+            "SSH files present",
+            "SSH destination missing",
+            "SSH destination size does not match the source");
+        if (!present.Ok)
+        {
+            return present;
+        }
+
         foreach (RecipeWrite write in plan.Writes)
         {
-            if (!File.Exists(write.DestinationPath))
-            {
-                return new RecipeVerifyResult(false, "SSH destination missing");
-            }
-
             if (!NeedsStrictAcl(write.DestinationPath))
             {
                 continue;
@@ -166,7 +171,7 @@ public sealed class SshRecipe : IRecipe
             }
         }
 
-        return new RecipeVerifyResult(true, "SSH files present");
+        return present;
     }
 
     public async Task<RecipeVerifyResult> VerifyAsync(

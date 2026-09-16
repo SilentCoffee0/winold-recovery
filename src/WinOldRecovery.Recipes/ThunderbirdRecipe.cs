@@ -171,9 +171,14 @@ public sealed class ThunderbirdRecipe : IRecipe
 
     public RecipeVerifyResult Verify(PlanResult plan)
     {
-        if (plan.Writes.Any(static write => !File.Exists(write.DestinationPath)))
+        RecipeVerifyResult present = DetectorWalk.FilesPresentMatchingSourceLength(
+            plan,
+            "Thunderbird profile registered",
+            "Thunderbird transplant missing",
+            "Thunderbird destination size does not match the source");
+        if (!present.Ok)
         {
-            return new RecipeVerifyResult(false, "Thunderbird transplant missing");
+            return present;
         }
 
         RecipeVerifyResult? registration = FirefoxVerify.CheckRegistration(plan);

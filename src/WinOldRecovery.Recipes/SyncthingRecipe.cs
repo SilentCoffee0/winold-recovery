@@ -224,9 +224,14 @@ public sealed class SyncthingRecipe : IRecipe
             return new RecipeVerifyResult(false, "Index must never be restored");
         }
 
-        if (!plan.Writes.All(static write => File.Exists(write.DestinationPath)))
+        RecipeVerifyResult present = DetectorWalk.FilesPresentMatchingSourceLength(
+            plan,
+            "Syncthing identity present",
+            "Syncthing destination missing",
+            "Syncthing destination size does not match the source");
+        if (!present.Ok)
         {
-            return new RecipeVerifyResult(false, "Syncthing destination missing");
+            return present;
         }
 
         if (config is not null)

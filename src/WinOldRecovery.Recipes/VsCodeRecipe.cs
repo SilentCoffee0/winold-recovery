@@ -158,16 +158,21 @@ public sealed class VsCodeRecipe : IRecipe
 
     public RecipeVerifyResult Verify(PlanResult plan)
     {
-        if (plan.Writes.Any(static write => !File.Exists(write.DestinationPath)))
+        RecipeVerifyResult present = DetectorWalk.FilesPresentMatchingSourceLength(
+            plan,
+            "VS Code files present",
+            "VS Code destination missing",
+            "VS Code destination size does not match the source");
+        if (!present.Ok)
         {
-            return new RecipeVerifyResult(false, "VS Code destination missing");
+            return present;
         }
 
         RecipeWrite? script = plan.Writes.FirstOrDefault(static write =>
             write.DestinationPath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase));
         if (script is null)
         {
-            return new RecipeVerifyResult(true, "VS Code files present");
+            return present;
         }
 
         string text = File.ReadAllText(script.DestinationPath);

@@ -79,6 +79,14 @@ public sealed class RecipeTests
         created.ExceptWith(before);
 
         Assert.True(new SshRecipe().Verify(plan).Ok);
+        string destKey = Path.Combine(context.Destination, ".ssh", "id_ed25519");
+        byte[] originalKey = await File.ReadAllBytesAsync(destKey);
+        await File.WriteAllTextAsync(destKey, "truncated");
+        RecipeVerifyResult truncatedKey = new SshRecipe().Verify(plan);
+        Assert.False(truncatedKey.Ok);
+        Assert.Contains("size", truncatedKey.Detail, StringComparison.OrdinalIgnoreCase);
+        await File.WriteAllBytesAsync(destKey, originalKey);
+        Assert.True(new SshRecipe().Verify(plan).Ok);
         Assert.Equal(planned, created);
 
         IReadOnlyList<VerifyResultRow> level3 = await host.CollectLevel3Async(
@@ -1914,6 +1922,14 @@ public sealed class RecipeTests
             write => write.DestinationPath.EndsWith("https-key.pem", StringComparison.OrdinalIgnoreCase));
         await host.ExecuteAsync("session-1", new SyncthingRecipe(), plan);
         Assert.True(new SyncthingRecipe().Verify(plan).Ok);
+        string destKeyPem = Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "key.pem");
+        byte[] originalKeyPem = await File.ReadAllBytesAsync(destKeyPem);
+        await File.WriteAllTextAsync(destKeyPem, "truncated");
+        RecipeVerifyResult truncatedIdentity = new SyncthingRecipe().Verify(plan);
+        Assert.False(truncatedIdentity.Ok);
+        Assert.Contains("size", truncatedIdentity.Detail, StringComparison.OrdinalIgnoreCase);
+        await File.WriteAllBytesAsync(destKeyPem, originalKeyPem);
+        Assert.True(new SyncthingRecipe().Verify(plan).Ok);
 
         string destConfig = await File.ReadAllTextAsync(Path.Combine(context.Destination, "AppData", "Local", "Syncthing", "config.xml"));
         Assert.True(SyncthingConfig.AllFoldersPaused(destConfig));
@@ -2482,6 +2498,13 @@ public sealed class RecipeTests
         string destAnki = Path.Combine(context.Destination, "AppData", "Roaming", "Anki2", "User 1");
         Assert.True(File.Exists(Path.Combine(destAnki, "collection.anki2-wal")));
         Assert.True(File.Exists(Path.Combine(destAnki, "collection.media", "image.png")));
+        byte[] originalMedia = await File.ReadAllBytesAsync(Path.Combine(destAnki, "collection.media", "image.png"));
+        await File.WriteAllTextAsync(Path.Combine(destAnki, "collection.media", "image.png"), "x");
+        RecipeVerifyResult truncatedMedia = new AnkiRecipe().Verify(ankiPlan);
+        Assert.False(truncatedMedia.Ok);
+        Assert.Contains("size", truncatedMedia.Detail, StringComparison.OrdinalIgnoreCase);
+        await File.WriteAllBytesAsync(Path.Combine(destAnki, "collection.media", "image.png"), originalMedia);
+        Assert.True(new AnkiRecipe().Verify(ankiPlan).Ok);
         Assert.False(File.Exists(Path.Combine(destAnki, "collection.media.db2")));
         Assert.False(Directory.Exists(Path.Combine(destAnki, "collection.media", "media.trash")));
         File.WriteAllText(Path.Combine(destAnki, "collection.media", "extra.png"), "extra");
@@ -3521,6 +3544,14 @@ public sealed class RecipeTests
         await host.ExecuteAsync("session-1", new VsCodeRecipe(), vscodePlan);
         Assert.True(new VsCodeRecipe().Verify(vscodePlan).Ok);
         Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "Code", "User", "settings.json")));
+        string destSettingsJson = Path.Combine(context.Destination, "AppData", "Roaming", "Code", "User", "settings.json");
+        byte[] originalSettings = await File.ReadAllBytesAsync(destSettingsJson);
+        await File.WriteAllTextAsync(destSettingsJson, "truncated");
+        RecipeVerifyResult truncatedSettingsJson = new VsCodeRecipe().Verify(vscodePlan);
+        Assert.False(truncatedSettingsJson.Ok);
+        Assert.Contains("size", truncatedSettingsJson.Detail, StringComparison.OrdinalIgnoreCase);
+        await File.WriteAllBytesAsync(destSettingsJson, originalSettings);
+        Assert.True(new VsCodeRecipe().Verify(vscodePlan).Ok);
         string cmd = await File.ReadAllTextAsync(Path.Combine(context.Exports, "install-extensions-code.cmd"));
         Assert.Contains("code --install-extension ms-python.python", cmd, StringComparison.Ordinal);
         Assert.DoesNotContain(Canary, cmd, StringComparison.Ordinal);
@@ -3536,6 +3567,14 @@ public sealed class RecipeTests
         Assert.True(new ThunderbirdRecipe().Verify(thunderPlan).Ok);
         Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "Thunderbird", "Profiles", "mail.default-recovered", "key4.db")));
         Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "Thunderbird", "Profiles", "mail.default-recovered", "Mail", "Local Folders", "Inbox")));
+        string destInbox = Path.Combine(context.Destination, "AppData", "Roaming", "Thunderbird", "Profiles", "mail.default-recovered", "Mail", "Local Folders", "Inbox");
+        byte[] originalInbox = await File.ReadAllBytesAsync(destInbox);
+        await File.WriteAllTextAsync(destInbox, "truncated");
+        RecipeVerifyResult truncatedMail = new ThunderbirdRecipe().Verify(thunderPlan);
+        Assert.False(truncatedMail.Ok);
+        Assert.Contains("size", truncatedMail.Detail, StringComparison.OrdinalIgnoreCase);
+        await File.WriteAllBytesAsync(destInbox, originalInbox);
+        Assert.True(new ThunderbirdRecipe().Verify(thunderPlan).Ok);
         Assert.False(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "Thunderbird", "Profiles", "mail.default-recovered", "panacea.dat")));
 
         RecipeCard terminal = Assert.Single(cards, card => card.RecipeId == "windows-terminal");

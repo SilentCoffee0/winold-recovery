@@ -180,9 +180,14 @@ public sealed class AnkiRecipe : IRecipe
             return new RecipeVerifyResult(false, "Regeneratable Anki media index or trash was planned");
         }
 
-        if (plan.Writes.Any(static write => !File.Exists(write.DestinationPath)))
+        RecipeVerifyResult present = DetectorWalk.FilesPresentMatchingSourceLength(
+            plan,
+            "Anki profile files present",
+            "Anki destination missing",
+            "Anki destination size does not match the source");
+        if (!present.Ok)
         {
-            return new RecipeVerifyResult(false, "Anki destination missing");
+            return present;
         }
 
         string? collection = plan.Writes
