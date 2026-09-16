@@ -69,6 +69,14 @@
       "minSize": 1048576
     },
     {
+      "id": "server-data-dir",
+      "kind": "HighValue",
+      "badge": "Database",
+      "why": "Restore only with the same server version, server stopped.",
+      "suggestedDefault": "Undecided",
+      "nameGlobs": ["PG_VERSION", "ibdata1"]
+    },
+    {
       "id": "shell-dotfiles",
       "kind": "HighValue",
       "badge": "Dotfile",
@@ -84,7 +92,9 @@
       "suggestedDefault": "Restore",
       "pathGlobs": [
         "**\\Documents\\PowerShell\\*.ps1",
-        "**\\Documents\\WindowsPowerShell\\*.ps1"
+        "**\\Documents\\WindowsPowerShell\\*.ps1",
+        "**\\Documents\\PowerShell\\Modules",
+        "**\\Documents\\WindowsPowerShell\\Modules"
       ]
     },
     {

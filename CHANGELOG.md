@@ -23,6 +23,7 @@ All notable changes to WinOld Recovery will be documented here.
 - About (next to Log and Help) shows version 0.1.0, the git commit when the build stamped SourceRevisionId, the commit date, and the independent-project trademark note.
 - Startup refuses Windows 8.1, Windows 10 before 1809 (build 17763), and 32-bit processes. Headless `--scan`/`--restore` write `Passed: false` plus that message to the report file.
 - Zotero, Calibre Library, Joplin, and Logseq graphs are recipe cards. Verify requires the catalog file (`zotero.sqlite`, `metadata.db`, `database.sqlite`, or `config.edn`). After a walker checkpoint, Zotero/Calibre/Logseq folders come from the node index.
+- High-value classification badges PostgreSQL `PG_VERSION` and MySQL `ibdata1` as Database (Undecided): restore only with the same server version, server stopped. PowerShell `Modules` under `Documents\PowerShell` / `Documents\WindowsPowerShell` get the same PowerShell badge as profile scripts.
 
 ### Fixed
 
@@ -110,7 +111,8 @@ All notable changes to WinOld Recovery will be documented here.
 - Syncthing recipe: device ID from cert DER, rewritten config with every folder paused and old-profile paths remapped, GUI secrets scrubbed from cards, index never restored.
 - Anki profile restore (WAL + media, no trash/media index), WSL VHDX copy with header verify, GPG keyring restore excluding `random_seed`.
 - Recipe detectors attach tree badges for Firefox, Chrome, Edge, KeePass, GPG, WSL/Docker, Anki, Outlook, Thunderbird, VS Code, Windows Terminal, and Obsidian. Syncthing folders under the old profile are `[Syncthing folder: <label>]`.
-- High-value classification badges PowerShell profile scripts under `Documents\PowerShell` / `Documents\WindowsPowerShell` and `.gitignore_global` / `.ideavimrc` as Dotfile.
+- High-value classification badges PowerShell profile scripts and `Modules` under `Documents\PowerShell` / `Documents\WindowsPowerShell`, and `.gitignore_global` / `.ideavimrc` as Dotfile.
+- High-value classification badges PostgreSQL `PG_VERSION` and MySQL `ibdata1` as Database (Undecided): restore only with the same server version, server stopped.
 - R9 classification: `.vbox`/`.vmx`, `*.db` ≥ 1 MB, Joplin/Logseq, NuGet/Maven/Gradle/Cargo config, `.yarnrc.yml`, certs next to a key, Unreal `SaveGames`, GOG Galaxy Applications, Notion AppData as regeneratable.
 - Regeneratable badges for browser Cache/Code Cache/GPUCache/cache2 (not a random `Documents\Cache`), D3DSCache/DXCache, and `.ollama\models`. Sensitive badges for Login Data, NTUSER.DAT, DPAPI Protect, and the Windows credential vault.
 - Chrome/Edge cards use `Local State` profile names and the `Last Version` file; `os_crypt` keys stay out of card facts. `Local State` is classified Sensitive.

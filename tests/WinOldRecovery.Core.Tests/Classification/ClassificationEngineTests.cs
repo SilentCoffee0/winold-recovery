@@ -113,7 +113,9 @@ public sealed class ClassificationEngineTests
         string windowsPowerShell = Path.Combine(source, "Users", "Alice", "Documents", "WindowsPowerShell");
         Directory.CreateDirectory(powershell);
         Directory.CreateDirectory(windowsPowerShell);
+        Directory.CreateDirectory(Path.Combine(powershell, "Modules", "MyTools"));
         Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Documents", "Modules"));
         await File.WriteAllTextAsync(
             Path.Combine(powershell, "Microsoft.PowerShell_profile.ps1"),
             "Set-Alias ll Get-ChildItem");
@@ -134,13 +136,18 @@ public sealed class ClassificationEngineTests
             @"Users\Alice\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1");
         TreeNodeRow scratch = Find(context, @"Users\Alice\scratch.ps1");
         TreeNodeRow ignore = Find(context, @"Users\Alice\.gitignore_global");
+        TreeNodeRow modules = Find(context, @"Users\Alice\Documents\PowerShell\Modules");
+        TreeNodeRow decoyModules = Find(context, @"Users\Alice\Documents\Modules");
 
         Assert.Contains("PowerShell", pwsh.BadgeText);
         Assert.Contains("PowerShell", windows.BadgeText);
+        Assert.Contains("PowerShell", modules.BadgeText);
         Assert.DoesNotContain("PowerShell", scratch.BadgeText);
+        Assert.DoesNotContain("PowerShell", decoyModules.BadgeText);
         Assert.Contains("Dotfile", ignore.BadgeText);
         DecisionEngine engine = new(context.Database, context.SessionId);
         Assert.Equal(Decision.Restore, engine.GetEffectiveDecision(pwsh.Id));
+        Assert.Equal(Decision.Restore, engine.GetEffectiveDecision(modules.Id));
         Assert.Equal(Decision.Restore, engine.GetEffectiveDecision(ignore.Id));
         Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(scratch.Id));
     }
@@ -223,7 +230,11 @@ public sealed class ClassificationEngineTests
         Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "MyGame", "Saved", "SaveGames"));
         Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "GOG.com", "Galaxy", "Applications", "title"));
         Directory.CreateDirectory(Path.Combine(alice, "AppData", "Roaming", "Notion"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "PostgreSQL", "data"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "MySQL", "data"));
         await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Roaming", "Joplin", "database.sqlite"), "joplin");
+        await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Local", "PostgreSQL", "data", "PG_VERSION"), "16");
+        await File.WriteAllBytesAsync(Path.Combine(alice, "AppData", "Local", "MySQL", "data", "ibdata1"), new byte[64]);
         await File.WriteAllTextAsync(Path.Combine(alice, "Notes", "graph", "logseq", "config.edn"), "{:meta/version 1}");
         await File.WriteAllTextAsync(Path.Combine(alice, ".nuget", "NuGet.Config"), "<configuration />");
         await File.WriteAllTextAsync(Path.Combine(alice, ".m2", "settings.xml"), "<settings />");
@@ -257,8 +268,12 @@ public sealed class ClassificationEngineTests
         TreeNodeRow saves = Find(context, @"Users\Alice\AppData\Local\MyGame\Saved\SaveGames");
         TreeNodeRow gog = Find(context, @"Users\Alice\AppData\Local\GOG.com\Galaxy\Applications");
         TreeNodeRow notion = Find(context, @"Users\Alice\AppData\Roaming\Notion");
+        TreeNodeRow postgres = Find(context, @"Users\Alice\AppData\Local\PostgreSQL\data\PG_VERSION");
+        TreeNodeRow mysql = Find(context, @"Users\Alice\AppData\Local\MySQL\data\ibdata1");
 
         Assert.Contains("Joplin", joplin.BadgeText);
+        Assert.Contains("Database", postgres.BadgeText);
+        Assert.Contains("Database", mysql.BadgeText);
         Assert.Contains("Logseq", logseq.BadgeText);
         Assert.Contains("Dev config", nuget.BadgeText);
         Assert.Contains("Dev config", maven.BadgeText);
@@ -276,6 +291,8 @@ public sealed class ClassificationEngineTests
         Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(yarn.Id));
         Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(gog.Id));
         Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(notion.Id));
+        Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(postgres.Id));
+        Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(mysql.Id));
     }
 
     [Fact]
