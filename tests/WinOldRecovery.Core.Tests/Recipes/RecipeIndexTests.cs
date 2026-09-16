@@ -523,6 +523,88 @@ public sealed class RecipeIndexTests
                 "Tabs_"));
     }
 
+    [Fact]
+    public async Task Index_FindsVsCodeSettingsAndSnippetsUnderUser()
+    {
+        await using RecipeIndexContext context = await RecipeIndexContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Created", "0.1.0"));
+        await context.Database.InsertNodesAsync(
+        [
+            Node(1, null, "Alice", @"Users\Alice"),
+            Node(
+                2,
+                1,
+                "User",
+                @"Users\Alice\AppData\Roaming\Code\User"),
+            Node(
+                3,
+                2,
+                "settings.json",
+                @"Users\Alice\AppData\Roaming\Code\User\settings.json",
+                NodeKind.File),
+            Node(
+                4,
+                2,
+                "snippets",
+                @"Users\Alice\AppData\Roaming\Code\User\snippets"),
+            Node(
+                5,
+                1,
+                "settings.json",
+                @"Users\Alice\AppData\Roaming\Cursor\User\settings.json",
+                NodeKind.File),
+            Node(
+                6,
+                1,
+                "extensions.json",
+                @"Users\Alice\.vscode\extensions\extensions.json",
+                NodeKind.File),
+        ]);
+
+        RecipeIndex index = new(
+            context.Database,
+            "session-1",
+            @"Users\Alice",
+            Path.Combine(context.Root, "Users", "Alice"));
+        Assert.Equal(
+            Path.Combine(
+                context.Root,
+                "Users",
+                "Alice",
+                "AppData",
+                "Roaming",
+                "Code",
+                "User",
+                "settings.json"),
+            Assert.Single(
+                index.FilesNamedUnder(
+                    Path.Combine("AppData", "Roaming", "Code", "User"),
+                    "settings.json",
+                    "keybindings.json",
+                    "tasks.json")));
+        Assert.True(index.HasChildNamed(Path.Combine("AppData", "Roaming", "Code", "User"), "snippets"));
+        Assert.False(index.HasChildNamed(Path.Combine("AppData", "Roaming", "Code", "User"), "profiles"));
+        Assert.Equal(
+            Path.Combine(context.Root, "Users", "Alice", ".vscode", "extensions", "extensions.json"),
+            Assert.Single(
+                index.FilesNamedUnder(Path.Combine(".vscode", "extensions"), "extensions.json")));
+        Assert.Equal(
+            Path.Combine(
+                context.Root,
+                "Users",
+                "Alice",
+                "AppData",
+                "Roaming",
+                "Cursor",
+                "User",
+                "settings.json"),
+            Assert.Single(
+                index.FilesNamedUnder(
+                    Path.Combine("AppData", "Roaming", "Cursor", "User"),
+                    "settings.json")));
+    }
+
     private static PersistedNode Node(
         long id,
         long? parentId,

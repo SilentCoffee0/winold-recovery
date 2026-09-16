@@ -2690,6 +2690,102 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task VsCode_Detect_FindsSettingsFromRecipeIndexWithoutWalkingOtherProducts()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string codeSettings = Path.Combine(alice, "AppData", "Roaming", "Code", "User", "settings.json");
+        string cursorSettings = Path.Combine(alice, "AppData", "Roaming", "Cursor", "User", "settings.json");
+        string snippets = Path.Combine(alice, "AppData", "Roaming", "Code", "User", "snippets", "csharp.json");
+        string extensionsJson = Path.Combine(alice, ".vscode", "extensions", "extensions.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(codeSettings)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(cursorSettings)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(snippets)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(extensionsJson)!);
+        await File.WriteAllTextAsync(codeSettings, """{"editor.fontSize":14}""");
+        await File.WriteAllTextAsync(cursorSettings, """{"walked":true}""");
+        await File.WriteAllTextAsync(snippets, "{}");
+        await File.WriteAllTextAsync(
+            extensionsJson,
+            """[{"identifier":{"id":"ms-dotnettools.csharp"}}]""");
+
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "settings.json",
+                @"Users\Alice\AppData\Roaming\Code\User\settings.json",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                2,
+                "session-1",
+                null,
+                null,
+                "snippets",
+                @"Users\Alice\AppData\Roaming\Code\User\snippets",
+                NodeKind.Directory,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                3,
+                "session-1",
+                null,
+                null,
+                "extensions.json",
+                @"Users\Alice\.vscode\extensions\extensions.json",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+
+        RecipeIndex index = new(context.Database, "session-1", @"Users\Alice", alice);
+        DetectResult fromIndex = new VsCodeRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner,
+                index));
+        RecipeCard indexed = Assert.Single(fromIndex.Cards);
+        Assert.Equal("VS Code settings", indexed.Title);
+        Assert.Contains("settings.json", indexed.Components[0].Summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("ms-dotnettools.csharp", indexed.Facts["extensions"]);
+        Assert.DoesNotContain(fromIndex.Cards, card => card.Title.StartsWith("Cursor", StringComparison.Ordinal));
+
+        DetectResult fromDisk = new VsCodeRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        Assert.Contains(fromDisk.Cards, card => card.Title == "VS Code settings");
+        Assert.Contains(fromDisk.Cards, card => card.Title == "Cursor settings");
+    }
+
+    [Fact]
     public async Task AnkiWslAndGpg_RestoreWithoutTrashIndexOrRandomSeed()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();

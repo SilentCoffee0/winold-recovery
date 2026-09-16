@@ -89,6 +89,32 @@ public sealed class RecipeIndex
         return paths;
     }
 
+    public IReadOnlyList<string> FilesNamedUnder(string relativeUnderProfile, params string[] names)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeUnderProfile);
+        ArgumentNullException.ThrowIfNull(names);
+        List<string> paths = [];
+        foreach (string relPath in sessionDb.ListFileRelPathsByExactNames(
+                     sessionId,
+                     CombinePrefix(profileRelPrefix, relativeUnderProfile),
+                     names))
+        {
+            if (TryAbsolute(relPath, out string absolute))
+            {
+                paths.Add(absolute);
+            }
+        }
+
+        return paths;
+    }
+
+    public bool HasChildNamed(string relativeUnderProfile, string childName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeUnderProfile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(childName);
+        return ParentsOfChildNamedUnderProfile(relativeUnderProfile, childName).Count > 0;
+    }
+
     public IReadOnlyList<string> ParentsOfChildNamed(string childName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(childName);

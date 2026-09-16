@@ -23,31 +23,58 @@ public sealed class VsCodeRecipe : IRecipe
         foreach ((string idSuffix, string title, string userRelative, string extensionsRelative) in Products)
         {
             string user = Path.Combine(context.OldProfileRoot, userRelative);
-            if (!context.SafeFs.DirectoryExists(user))
-            {
-                continue;
-            }
-
             List<string> files = [];
-            foreach (string name in new[] { "settings.json", "keybindings.json", "tasks.json" })
+            bool snippets;
+            bool profiles;
+            if (context.Index is { } index)
             {
-                if (context.SafeFs.FileExists(Path.Combine(user, name)))
+                foreach (string path in index.FilesNamedUnder(
+                             userRelative,
+                             "settings.json",
+                             "keybindings.json",
+                             "tasks.json"))
                 {
-                    files.Add(name);
+                    string name = Path.GetFileName(path);
+                    if (!files.Contains(name, StringComparer.OrdinalIgnoreCase))
+                    {
+                        files.Add(name);
+                    }
                 }
+
+                snippets = index.HasChildNamed(userRelative, "snippets") ||
+                    index.CountFilesUnder(Path.Combine(userRelative, "snippets")) > 0;
+                profiles = index.HasChildNamed(userRelative, "profiles") ||
+                    index.CountFilesUnder(Path.Combine(userRelative, "profiles")) > 0;
+            }
+            else
+            {
+                if (!context.SafeFs.DirectoryExists(user))
+                {
+                    continue;
+                }
+
+                foreach (string name in new[] { "settings.json", "keybindings.json", "tasks.json" })
+                {
+                    if (context.SafeFs.FileExists(Path.Combine(user, name)))
+                    {
+                        files.Add(name);
+                    }
+                }
+
+                snippets = context.SafeFs.DirectoryExists(Path.Combine(user, "snippets"));
+                profiles = context.SafeFs.DirectoryExists(Path.Combine(user, "profiles"));
             }
 
-            bool snippets = context.SafeFs.DirectoryExists(Path.Combine(user, "snippets"));
-            bool profiles = context.SafeFs.DirectoryExists(Path.Combine(user, "profiles"));
             if (files.Count == 0 && !snippets && !profiles)
             {
                 continue;
             }
 
             string extensionsJson = Path.Combine(context.OldProfileRoot, extensionsRelative, "extensions.json");
-            IReadOnlyList<string> extensionIds = context.SafeFs.FileExists(extensionsJson)
-                ? ReadExtensionIds(context.SafeFs.ReadAllText(extensionsJson))
-                : [];
+            IReadOnlyList<string> extensionIds = ReadIndexedOrDiskExtensions(
+                context,
+                extensionsRelative,
+                extensionsJson);
 
             cards.Add(
                 new RecipeCard(
@@ -190,6 +217,27 @@ public sealed class VsCodeRecipe : IRecipe
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite("Code", "Close VS Code, VSCodium, or Cursor before restoring settings.")];
+
+    private static IReadOnlyList<string> ReadIndexedOrDiskExtensions(
+        ProfileContext context,
+        string extensionsRelative,
+        string extensionsJson)
+    {
+        if (context.Index is { } index)
+        {
+            string? indexed = index.FilesNamedUnder(extensionsRelative, "extensions.json").FirstOrDefault();
+            if (indexed is null || !context.SafeFs.FileExists(indexed))
+            {
+                return [];
+            }
+
+            return ReadExtensionIds(context.SafeFs.ReadAllText(indexed));
+        }
+
+        return context.SafeFs.FileExists(extensionsJson)
+            ? ReadExtensionIds(context.SafeFs.ReadAllText(extensionsJson))
+            : [];
+    }
 
     internal static IReadOnlyList<string> ReadExtensionIds(string json)
     {
