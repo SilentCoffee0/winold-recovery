@@ -342,6 +342,19 @@ public sealed class ChromiumRecipe : IRecipe
             }
         }
 
+        RecipeWrite? html = plan.Writes.FirstOrDefault(static write =>
+            write.ComponentKey == "bookmarks-export" &&
+            write.DestinationPath.EndsWith("bookmarks.html", StringComparison.OrdinalIgnoreCase));
+        if (html is not null)
+        {
+            int parsed = CountNetscapeHrefs(File.ReadAllText(html.DestinationPath));
+            if (!int.TryParse(plan.Card.Facts.GetValueOrDefault("count"), out int expected) ||
+                parsed != expected)
+            {
+                return new RecipeVerifyResult(false, "Bookmark HTML count does not match the source");
+            }
+        }
+
         return new RecipeVerifyResult(true, "Chromium exports present");
     }
 
@@ -446,6 +459,24 @@ public sealed class ChromiumRecipe : IRecipe
         catch (IOException)
         {
             return string.Empty;
+        }
+    }
+
+    internal static int CountNetscapeHrefs(string html)
+    {
+        ArgumentNullException.ThrowIfNull(html);
+        int count = 0;
+        int index = 0;
+        while (true)
+        {
+            int found = html.IndexOf("<A HREF=", index, StringComparison.OrdinalIgnoreCase);
+            if (found < 0)
+            {
+                return count;
+            }
+
+            count++;
+            index = found + 8;
         }
     }
 

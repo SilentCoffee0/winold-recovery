@@ -448,7 +448,8 @@ public sealed class RecipeTests
             Dest(context));
         await host.ExecuteAsync("session-1", RecipeCatalog.All.Single(recipe => recipe.Id == "chrome"), chromePlan);
         Assert.True(RecipeCatalog.All.Single(recipe => recipe.Id == "chrome").Verify(chromePlan).Ok);
-        string bookmarks = await File.ReadAllTextAsync(chromePlan.Writes.Single(write => write.DestinationPath.EndsWith("bookmarks.html", StringComparison.Ordinal)).DestinationPath);
+        string bookmarksPath = chromePlan.Writes.Single(write => write.DestinationPath.EndsWith("bookmarks.html", StringComparison.Ordinal)).DestinationPath;
+        string bookmarks = await File.ReadAllTextAsync(bookmarksPath);
         Assert.Contains("NETSCAPE", bookmarks, StringComparison.Ordinal);
         Assert.Contains("example.com", bookmarks, StringComparison.Ordinal);
         Assert.Contains(
@@ -466,6 +467,10 @@ public sealed class RecipeTests
             extensionsHtml,
             StringComparison.Ordinal);
         Assert.Contains("Localized Fixture", extensionsHtml, StringComparison.Ordinal);
+        await File.WriteAllTextAsync(bookmarksPath, bookmarks.Replace("<A HREF=", "<SPAN ", StringComparison.Ordinal));
+        RecipeVerifyResult stripped = RecipeCatalog.All.Single(recipe => recipe.Id == "chrome").Verify(chromePlan);
+        Assert.False(stripped.Ok);
+        Assert.Contains("Bookmark HTML", stripped.Detail, StringComparison.OrdinalIgnoreCase);
 
         RecipeCard firefoxCard = cards.Single(card => card.RecipeId == "firefox");
         PlanResult firefoxPlan = host.PlanCard(new FirefoxRecipe(), firefoxCard, Dest(context));
