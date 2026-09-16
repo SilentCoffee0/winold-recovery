@@ -84,7 +84,7 @@ Global definition of done for any milestone:
 - Chromium Local State labels complete on 15 Sep 2026. Card title uses `profile.info_cache.<dir>.name` plus `user_name`/`gaia_name`; `Last Version` is a fact; `os_crypt` is not stored. Do not tag.
 - Chromium extension locales and Syncthing activity complete on 15 Sep 2026. `__MSG_*__` names resolve from `_locales`. Syncthing facts include last activity, probably-active, and SyncTrayzor `syncthing.exe` FileVersion. Do not tag.
 - OpenSSH Server and WSL size facts complete on 15 Sep 2026. `ProgramData\ssh` is an Undecided card copied to `Recovered\OpenSSH-Server`. WSL cards expose `fileSize` and `lastModified`. Do not tag.
-- Anki custom bases complete on 15 Sep 2026. Start-menu `.lnk` `-b` paths and hive `ANKI_BASE` are scanned; cards record `schema`, `backups`, `newestBackup`, and `addons`. Do not tag.
+- Anki custom bases complete on 15 Sep 2026. Start-menu `.lnk` `-b` paths and hive `ANKI_BASE` are scanned; cards record `schema`, `backups`, `newestBackup`, and `addons`. After a walker checkpoint, Start-menu `.lnk` paths come from the node index. Do not tag.
 - SSH unencrypted-key facts complete on 15 Sep 2026. OpenSSH `none` cipher is read from the PEM header only; cards also store key types and `config`/`known_hosts` counts. Do not tag.
 - Syncthing GUI TLS and custom GUI complete on 15 Sep 2026. `https-cert.pem`/`https-key.pem` default Leave Behind; `gui\` restores when present. Do not tag.
 - WSL allocated-size facts complete on 15 Sep 2026. `GetFileInformationByHandleEx` FileStandardInfo supplies `allocatedSize` beside `fileSize`. Do not tag.

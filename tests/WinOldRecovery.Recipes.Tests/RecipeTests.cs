@@ -2022,6 +2022,64 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Anki_Detect_FindsShortcutDashBBaseFromRecipeIndex()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string custom = Path.Combine(alice, "CustomAnki");
+        string profile = Path.Combine(custom, "Work");
+        Directory.CreateDirectory(Path.Combine(profile, "backups"));
+        WriteSqlite(
+            Path.Combine(profile, "collection.anki2"),
+            """
+            CREATE TABLE notes(id INTEGER PRIMARY KEY, guid TEXT);
+            CREATE TABLE cards(id INTEGER PRIMARY KEY, nid INTEGER);
+            CREATE TABLE col(id INTEGER PRIMARY KEY, ver INTEGER, scm INTEGER);
+            INSERT INTO notes(guid) VALUES ('note-1');
+            INSERT INTO cards(nid) VALUES (1);
+            INSERT INTO col(id, ver, scm) VALUES (1, 18, 18);
+            """);
+        string programs = Path.Combine(alice, "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", "Programs");
+        Directory.CreateDirectory(programs);
+        await File.WriteAllBytesAsync(
+            Path.Combine(programs, "Anki.lnk"),
+            System.Text.Encoding.Unicode.GetBytes("Anki.exe -b \"" + custom + "\""));
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "Anki.lnk",
+                @"Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Anki.lnk",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+
+        DetectResult detected = new AnkiRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner,
+                new RecipeIndex(
+                    context.Database,
+                    "session-1",
+                    @"Users\Alice",
+                    alice)));
+        Assert.Equal("Work", Path.GetFileName(Assert.Single(detected.Cards).Facts["source"]));
+    }
+
+    [Fact]
     public async Task AnkiWslAndGpg_RestoreWithoutTrashIndexOrRandomSeed()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();

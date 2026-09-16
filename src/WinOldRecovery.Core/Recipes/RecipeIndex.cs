@@ -30,11 +30,19 @@ public sealed class RecipeIndex
 
     public IReadOnlyList<string> FilesWithExtensions(IReadOnlyList<string> extensions, bool skipAppData)
     {
+        return FilesWithExtensions(extensions, skipAppData, relativeUnderProfile: null);
+    }
+
+    public IReadOnlyList<string> FilesWithExtensions(
+        IReadOnlyList<string> extensions,
+        bool skipAppData,
+        string? relativeUnderProfile)
+    {
         ArgumentNullException.ThrowIfNull(extensions);
         List<string> paths = [];
         foreach (string relPath in sessionDb.ListFileRelPathsUnderPrefixByExtension(
                      sessionId,
-                     profileRelPrefix,
+                     CombinePrefix(profileRelPrefix, relativeUnderProfile),
                      extensions,
                      skipAppData))
         {
@@ -66,6 +74,18 @@ public sealed class RecipeIndex
     }
 
     public IReadOnlyList<string> GitWorkingTrees() => ParentsOfChildNamed(".git");
+
+    private static string CombinePrefix(string profileRelPrefix, string? relativeUnderProfile)
+    {
+        string profile = (profileRelPrefix ?? string.Empty).Replace('/', '\\').Trim('\\');
+        if (string.IsNullOrWhiteSpace(relativeUnderProfile))
+        {
+            return profile;
+        }
+
+        string extra = relativeUnderProfile.Replace('/', '\\').Trim('\\');
+        return string.IsNullOrEmpty(profile) ? extra : profile + "\\" + extra;
+    }
 
     private bool TryAbsolute(string nodeRelPath, out string absolute)
     {

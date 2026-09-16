@@ -8,12 +8,13 @@ All notable changes to WinOld Recovery will be documented here.
 
 - GUI startup paints MainWindow before `schtasks /Query` source discovery. The cleanup-task query times out after 2 seconds (was 15) and overlaps volume walking. Embedded classification rules load once. Interrupted-restore peek no longer takes an exclusive lock on leftover session databases first.
 - Scan indexing writes nodes with synchronous SQLite inserts, a 64 MB page cache, and memory temp tables. Classify applies suggested defaults in one writer transaction (no per-node undo/subtree CTE). Optional hash-during-scan stores SHA-256 in batches of 64.
-- After a scan, Git/KeePass/Obsidian/Outlook detect uses the node index instead of walking the profile again. Recipe badges resolve in one `IN` lookup. Detect without a walker checkpoint still walks the disk (unit tests).
+- After a scan, Git/KeePass/Obsidian/Outlook and Anki Start-menu `.lnk` detect use the node index instead of walking the profile again. Anki still reads `-b` bytes from those shortcuts. Detect without a walker checkpoint still walks the disk (unit tests).
 
 ### Fixed
 
 - CI and tag-release workflows use `actions/checkout@v5`, `actions/setup-dotnet@v5`, and `actions/upload-artifact@v6` so GitHub-hosted runners stop warning about Node.js 20. Workflow file tests pin those versions instead of `@v4`.
 - SSH private-key ACL hardening goes through `SafeFs.SetAccessControl`, so SourceGuard can refuse a path under a registered Windows.old. Headless `--scan`/`--restore` reports, smoke destination folders, Firefox places copies, and support-bundle zips also go through `SafeFs`. I1 greps mutating file APIs outside `SafeFs`/`Purge`.
+- Scan source cards bind `DisplayLabel` for Narrator while keeping the two-line path/detail visual.
 - Session read connections disable SQLite pooling so `SqliteConnection.ClearAllPools` in one test cannot dispose another test's `GetLatestJournalState` handle (I16 disk-full pause flake).
 - Owner SID tests assert the file ACL owner, not the testhost identity. GitHub Actions TEMP files are owned by `BUILTIN\Administrators`, which is not `WindowsIdentity.GetCurrent()`.
 - I15 kill-and-resume no longer redirects RestoreHarness stdout/stderr (a full pipe can stall the copy). The case has a 15-minute budget and CI runs test projects one at a time (`-m:1`). The tag-release workflow uses the same test settings so a `v*` tag does not reintroduce the parallel-test timeouts.

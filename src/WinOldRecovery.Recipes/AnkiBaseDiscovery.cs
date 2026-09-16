@@ -42,6 +42,7 @@ internal static class AnkiBaseDiscovery
 
     private static IEnumerable<string> ShortcutBases(ProfileContext context)
     {
+        const string programsRel = @"AppData\Roaming\Microsoft\Windows\Start Menu\Programs";
         string programs = Path.Combine(
             context.OldProfileRoot,
             "AppData",
@@ -50,12 +51,22 @@ internal static class AnkiBaseDiscovery
             "Windows",
             "Start Menu",
             "Programs");
-        if (!context.SafeFs.DirectoryExists(programs))
+
+        IEnumerable<string> shortcuts;
+        if (context.Index is { } index)
+        {
+            shortcuts = index.FilesWithExtensions([".lnk"], skipAppData: false, programsRel);
+        }
+        else if (!context.SafeFs.DirectoryExists(programs))
         {
             yield break;
         }
+        else
+        {
+            shortcuts = EnumerateShortcutFiles(context.SafeFs, programs);
+        }
 
-        foreach (string lnk in DetectorWalk.EnumerateFiles(context.SafeFs, programs, 4))
+        foreach (string lnk in shortcuts)
         {
             if (!lnk.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
             {
@@ -75,6 +86,17 @@ internal static class AnkiBaseDiscovery
             foreach (string path in ReadDashBPaths(bytes))
             {
                 yield return path;
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateShortcutFiles(SafeFs safeFs, string programs)
+    {
+        foreach (string lnk in DetectorWalk.EnumerateFiles(safeFs, programs, 4))
+        {
+            if (lnk.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return lnk;
             }
         }
     }
