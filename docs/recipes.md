@@ -12,7 +12,7 @@ Smart cards explain what was found in Windows.old. Leave Behind never deletes; o
 | WSL | `ext4.vhdx` copy | Import is optional and never targets Windows.old |
 | Anki | Collection, WAL, media | Trash and media index rebuild |
 | GPG | Keyring without `random_seed` | Stop gpg-agent first |
-| KeePass, Outlook PST, Thunderbird, VS Code, Terminal, Obsidian | Copy-based restore. Verify requires KeePass key files, dest `.obsidian`, Terminal not overwriting live settings, and no OST writes | OST is left behind (server rebuilds it) |
+| KeePass, Outlook PST, Thunderbird, VS Code, Terminal, Obsidian, Zotero/Calibre/Joplin/Logseq | Copy-based restore. Verify requires KeePass key files, dest `.obsidian`, catalog files (`zotero.sqlite` / `metadata.db` / Joplin `database.sqlite` / Logseq `config.edn`), Terminal not overwriting live settings, and no OST writes | OST is left behind (server rebuilds it) |
 | Game saves | Saved Games, My Games, Steam userdata (including `Program Files (x86)\\Steam\\userdata`), Steam library `steamapps\\common` save folders, Unreal SaveGames, launcher folders, LocalLow publishers, and Steam-compatible AppData save folders | Launcher caches regenerate; save files do not |
 
 Deep dives: [browser-passwords.md](help/browser-passwords.md), [ssh-keys.md](help/ssh-keys.md), [git-repositories.md](help/git-repositories.md), [syncthing-identity.md](help/syncthing-identity.md), [wsl.md](help/wsl.md), [anki.md](help/anki.md), [gpg.md](help/gpg.md), [outlook.md](help/outlook.md).

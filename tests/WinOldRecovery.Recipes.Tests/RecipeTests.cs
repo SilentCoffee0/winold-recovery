@@ -3400,6 +3400,105 @@ public sealed class RecipeTests
                 StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task Libraries_Detect_FindsZoteroCalibreJoplinAndLogseq()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string zotero = Path.Combine(alice, "Projects", "MyRefs");
+        Directory.CreateDirectory(zotero);
+        await File.WriteAllTextAsync(Path.Combine(zotero, "zotero.sqlite"), "zotero");
+        string calibre = Path.Combine(alice, "Calibre Library");
+        Directory.CreateDirectory(calibre);
+        await File.WriteAllTextAsync(Path.Combine(calibre, "metadata.db"), "calibre");
+        await File.WriteAllTextAsync(Path.Combine(calibre, "cover.jpg"), "cover");
+        string joplin = Path.Combine(alice, "AppData", "Roaming", "Joplin");
+        Directory.CreateDirectory(joplin);
+        await File.WriteAllTextAsync(Path.Combine(joplin, "database.sqlite"), "joplin");
+        string graph = Path.Combine(alice, "Documents", "Notes");
+        Directory.CreateDirectory(Path.Combine(graph, "logseq"));
+        await File.WriteAllTextAsync(Path.Combine(graph, "logseq", "config.edn"), "{:meta {}}");
+        await File.WriteAllTextAsync(Path.Combine(graph, "page.md"), "note");
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "MyRefs",
+                @"Users\Alice\Projects\MyRefs",
+                NodeKind.Directory,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                2,
+                "session-1",
+                null,
+                1,
+                "zotero.sqlite",
+                @"Users\Alice\Projects\MyRefs\zotero.sqlite",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+
+        DetectResult fromIndex = new LibrariesRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner,
+                new RecipeIndex(
+                    context.Database,
+                    "session-1",
+                    @"Users\Alice",
+                    alice)));
+        Assert.Contains(fromIndex.Cards, card => card.Facts["kind"] == "zotero");
+        DetectResult fromDisk = new LibrariesRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        Assert.DoesNotContain(fromDisk.Cards, card => card.Facts["kind"] == "zotero");
+        Assert.Contains(fromDisk.Cards, card => card.Facts["kind"] == "calibre");
+        Assert.Contains(fromDisk.Cards, card => card.Facts["kind"] == "joplin");
+        Assert.Contains(fromDisk.Cards, card => card.Facts["kind"] == "logseq");
+
+        RecipeCard calibreCard = Assert.Single(fromDisk.Cards, card => card.Facts["kind"] == "calibre");
+        PlanResult plan = new LibrariesRecipe().Plan(
+            new CardDecisions(calibreCard, new Dictionary<string, Decision> { ["library"] = Decision.Restore }),
+            Dest(context));
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, [new LibrariesRecipe()]);
+        await host.ExecuteAsync("session-1", new LibrariesRecipe(), plan);
+        Assert.True(new LibrariesRecipe().Verify(plan).Ok);
+        PlanResult missingCatalog = plan with
+        {
+            Writes = plan.Writes
+                .Where(static write =>
+                    !Path.GetFileName(write.DestinationPath).Equals("metadata.db", StringComparison.OrdinalIgnoreCase))
+                .ToArray(),
+        };
+        RecipeVerifyResult missing = new LibrariesRecipe().Verify(missingCatalog);
+        Assert.False(missing.Ok);
+        Assert.Contains("metadata.db", missing.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string CreateCertificatePem()
     {
         using System.Security.Cryptography.RSA rsa = System.Security.Cryptography.RSA.Create(2048);

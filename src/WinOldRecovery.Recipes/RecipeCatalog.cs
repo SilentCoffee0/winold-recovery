@@ -22,6 +22,7 @@ public static class RecipeCatalog
         new TerminalRecipe(),
         new ObsidianRecipe(),
         new GameSavesRecipe(),
+        new LibrariesRecipe(),
     ];
 
     public static IReadOnlyList<(string Id, string AbsentTitle)> AbsentLabels { get; } =
@@ -42,5 +43,6 @@ public static class RecipeCatalog
         ("windows-terminal", "Windows Terminal"),
         ("obsidian", "Obsidian"),
         ("game-saves", "Game saves"),
+        ("libraries", "Zotero / Calibre / Joplin / Logseq"),
     ];
 }

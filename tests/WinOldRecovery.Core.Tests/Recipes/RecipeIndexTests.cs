@@ -27,11 +27,13 @@ public sealed class RecipeIndexTests
             Node(8, 7, ".obsidian", @"Users\Alice\Documents\Notes\.obsidian"),
             Node(9, 2, "AppData", @"Users\Alice\AppData"),
             Node(10, 9, "skip.kdbx", @"Users\Alice\AppData\skip.kdbx", NodeKind.File),
+            Node(11, 3, "Zotero", @"Users\Alice\Documents\Zotero"),
+            Node(12, 11, "zotero.sqlite", @"Users\Alice\Documents\Zotero\zotero.sqlite", NodeKind.File),
         ]);
         await context.Database.SetKvAsync(
             "session-1",
             "walker.checkpoint:",
-            SessionDb.SerializeWalkerCheckpoint(new WalkerCheckpoint(1, 11, [])));
+            SessionDb.SerializeWalkerCheckpoint(new WalkerCheckpoint(1, 13, [])));
 
         Assert.True(context.Database.HasWalkerCheckpoint("session-1"));
         RecipeIndex index = new(
@@ -49,6 +51,9 @@ public sealed class RecipeIndexTests
         Assert.Equal(
             Path.Combine(context.Root, "Users", "Alice", "Documents", "Notes"),
             Assert.Single(index.ParentsOfChildNamed(".obsidian")));
+        Assert.Equal(
+            Path.Combine(context.Root, "Users", "Alice", "Documents", "Zotero"),
+            Assert.Single(index.ParentsOfChildNamed("zotero.sqlite")));
 
         IReadOnlyDictionary<string, long> ids = context.Database.FindNodeIds(
             "session-1",
