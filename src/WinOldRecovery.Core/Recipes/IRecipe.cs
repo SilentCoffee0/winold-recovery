@@ -30,7 +30,8 @@ public sealed record ProfileContext(
     string SessionTemporaryDirectory,
     string SessionExportsDirectory,
     SafeFs SafeFs,
-    IProcessRunner ProcessRunner);
+    IProcessRunner ProcessRunner,
+    RecipeIndex? Index = null);
 
 public sealed record DestinationContext(
     string DestinationProfileRoot,

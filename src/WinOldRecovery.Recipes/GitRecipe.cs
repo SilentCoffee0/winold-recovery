@@ -40,9 +40,12 @@ public sealed class GitRecipe : IRecipe
             cards[0] = config with { Facts = facts };
         }
 
-        List<string> trees = DetectorWalk.EnumerateGitWorkingTrees(context.SafeFs, context.OldProfileRoot, 8)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        List<string> trees = context.Index is { } index
+            ? index.GitWorkingTrees().ToList()
+            : DetectorWalk.EnumerateGitWorkingTrees(context.SafeFs, context.OldProfileRoot, 8)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        trees = trees.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         List<string> analysis = [];
         List<string> vendored = [];
         foreach (string tree in trees)

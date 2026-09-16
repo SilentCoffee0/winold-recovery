@@ -1178,6 +1178,181 @@ public sealed class SessionDb : IAsyncDisposable
         return value is null or DBNull ? null : Convert.ToInt64(value, CultureInfo.InvariantCulture);
     }
 
+    public IReadOnlyDictionary<string, long> FindNodeIds(
+        string sessionId,
+        IReadOnlyCollection<string> relPaths)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentNullException.ThrowIfNull(relPaths);
+        Dictionary<string, long> ids = new(StringComparer.OrdinalIgnoreCase);
+        if (relPaths.Count == 0)
+        {
+            return ids;
+        }
+
+        List<string> unique = [];
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string path in relPaths)
+        {
+            if (seen.Add(path))
+            {
+                unique.Add(path);
+            }
+        }
+
+        using SqliteConnection connection = OpenReadConnection();
+        const int chunkSize = 400;
+        for (int offset = 0; offset < unique.Count; offset += chunkSize)
+        {
+            int take = Math.Min(chunkSize, unique.Count - offset);
+            using SqliteCommand command = connection.CreateCommand();
+            List<string> placeholders = new(take);
+            for (int index = 0; index < take; index++)
+            {
+                string name = "$p" + index.ToString(CultureInfo.InvariantCulture);
+                placeholders.Add(name);
+                command.Parameters.AddWithValue(name, unique[offset + index]);
+            }
+
+            command.CommandText =
+                """
+                SELECT rel_path, id
+                FROM nodes
+                WHERE session_id = $sessionId AND rel_path IN (
+                """ + string.Join(", ", placeholders) + ");";
+            command.Parameters.AddWithValue("$sessionId", sessionId);
+            using SqliteDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                ids[reader.GetString(0)] = reader.GetInt64(1);
+            }
+        }
+
+        return ids;
+    }
+
+    public bool HasWalkerCheckpoint(string sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT 1
+            FROM kv
+            WHERE session_id = $sessionId AND key LIKE 'walker.checkpoint%'
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        return command.ExecuteScalar() is not null and not DBNull;
+    }
+
+    public IReadOnlyList<string> ListRelPathsUnderPrefixByChildName(
+        string sessionId,
+        string profileRelPrefix,
+        string childName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(childName);
+        profileRelPrefix ??= string.Empty;
+
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT parent.rel_path
+            FROM nodes AS child
+            INNER JOIN nodes AS parent ON parent.id = child.parent_id
+            WHERE child.session_id = $sessionId
+              AND child.name = $name COLLATE NOCASE
+              AND (
+                    $prefix = ''
+                 OR parent.rel_path = $prefix
+                 OR instr(parent.rel_path, $prefix || '\') = 1
+              )
+              AND instr(parent.rel_path, $prefix || '\AppData\') = 0;
+            """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        command.Parameters.AddWithValue("$name", childName);
+        command.Parameters.AddWithValue("$prefix", profileRelPrefix.Replace('/', '\\').Trim('\\'));
+        List<string> paths = [];
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            paths.Add(reader.GetString(0));
+        }
+
+        return paths;
+    }
+
+    public IReadOnlyList<string> ListFileRelPathsUnderPrefixByExtension(
+        string sessionId,
+        string profileRelPrefix,
+        IReadOnlyList<string> extensions)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentNullException.ThrowIfNull(extensions);
+        profileRelPrefix ??= string.Empty;
+        if (extensions.Count == 0)
+        {
+            return [];
+        }
+
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        List<string> likes = new(extensions.Count);
+        for (int index = 0; index < extensions.Count; index++)
+        {
+            string parameter = "$ext" + index.ToString(CultureInfo.InvariantCulture);
+            likes.Add("lower(name) GLOB " + parameter);
+            string extension = extensions[index];
+            if (!extension.StartsWith(".", StringComparison.Ordinal))
+            {
+                extension = "." + extension;
+            }
+
+            command.Parameters.AddWithValue(parameter, "*" + extension.ToLowerInvariant());
+        }
+
+        command.CommandText =
+            """
+            SELECT rel_path, name
+            FROM nodes
+            WHERE session_id = $sessionId
+              AND kind = 'File'
+              AND (
+            """ + string.Join(" OR ", likes) +
+            """
+              )
+              AND (
+                    $prefix = ''
+                 OR rel_path = $prefix
+                 OR instr(rel_path, $prefix || '\') = 1
+              )
+              AND instr(rel_path, $prefix || '\AppData\') = 0;
+            """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        command.Parameters.AddWithValue("$prefix", profileRelPrefix.Replace('/', '\\').Trim('\\'));
+        List<string> paths = [];
+        using SqliteDataReader reader = command.ExecuteReader();
+        HashSet<string> wanted = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string extension in extensions)
+        {
+            wanted.Add(extension.StartsWith(".", StringComparison.Ordinal) ? extension : "." + extension);
+        }
+
+        while (reader.Read())
+        {
+            string name = reader.GetString(1);
+            if (wanted.Contains(Path.GetExtension(name)))
+            {
+                paths.Add(reader.GetString(0));
+            }
+        }
+
+        return paths;
+    }
+
     public ChildAggregate GetChildAggregates(string sessionId, long parentId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);

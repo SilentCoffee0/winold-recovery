@@ -19,37 +19,37 @@ public sealed class ObsidianRecipe : IRecipe
             context.OldProfileRoot,
         ];
 
-        foreach (string root in roots)
+        IEnumerable<string> vaults = context.Index is { } index
+            ? index.ParentsOfChildNamed(".obsidian")
+            : roots.SelectMany(root => FindVaults(context, root));
+        foreach (string vault in vaults)
         {
-            foreach (string vault in FindVaults(context, root))
+            if (!seen.Add(vault))
             {
-                if (!seen.Add(vault))
-                {
-                    continue;
-                }
-
-                string name = Path.GetFileName(vault);
-                cards.Add(
-                    new RecipeCard(
-                        Id,
-                        "Obsidian vault — " + name,
-                        "A notes vault. The .obsidian folder carries plugins and workspace layout.",
-                        "Vaults are often the only local copy of personal notes.",
-                        "The whole vault folder, including .obsidian plugins.",
-                        "Obsidian Sync or a git remote, if you used one.",
-                        "Workspace layout can be rebuilt. The notes cannot.",
-                        "You keep an empty Obsidian and lose the notes that lived only here.",
-                        [
-                            new RecipeComponent("vault", "Vault", name, Decision.Restore, false, null, false),
-                        ],
-                        context.ProfileName + ":" + DetectorWalk.RelativeUnder(context.OldProfileRoot, vault),
-                        new Dictionary<string, string>
-                        {
-                            ["source"] = vault,
-                            ["relative"] = DetectorWalk.RelativeUnder(context.OldProfileRoot, vault),
-                        }));
-                DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, vault, "Obsidian", name);
+                continue;
             }
+
+            string name = Path.GetFileName(vault);
+            cards.Add(
+                new RecipeCard(
+                    Id,
+                    "Obsidian vault — " + name,
+                    "A notes vault. The .obsidian folder carries plugins and workspace layout.",
+                    "Vaults are often the only local copy of personal notes.",
+                    "The whole vault folder, including .obsidian plugins.",
+                    "Obsidian Sync or a git remote, if you used one.",
+                    "Workspace layout can be rebuilt. The notes cannot.",
+                    "You keep an empty Obsidian and lose the notes that lived only here.",
+                    [
+                        new RecipeComponent("vault", "Vault", name, Decision.Restore, false, null, false),
+                    ],
+                    context.ProfileName + ":" + DetectorWalk.RelativeUnder(context.OldProfileRoot, vault),
+                    new Dictionary<string, string>
+                    {
+                        ["source"] = vault,
+                        ["relative"] = DetectorWalk.RelativeUnder(context.OldProfileRoot, vault),
+                    }));
+            DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, vault, "Obsidian", name);
         }
 
         return new DetectResult(cards, badges);

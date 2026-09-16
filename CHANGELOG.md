@@ -8,6 +8,7 @@ All notable changes to WinOld Recovery will be documented here.
 
 - GUI startup paints MainWindow before `schtasks /Query` source discovery. The cleanup-task query times out after 2 seconds (was 15) and overlaps volume walking. Embedded classification rules load once. Interrupted-restore peek no longer takes an exclusive lock on leftover session databases first.
 - Scan indexing writes nodes with synchronous SQLite inserts, a 64 MB page cache, and memory temp tables. Classify applies suggested defaults in one writer transaction (no per-node undo/subtree CTE). Optional hash-during-scan stores SHA-256 in batches of 64.
+- After a scan, Git/KeePass/Obsidian detect uses the node index instead of walking the profile again. Recipe badges resolve in one `IN` lookup. Detect without a walker checkpoint still walks the disk (unit tests).
 
 ### Fixed
 

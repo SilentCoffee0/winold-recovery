@@ -93,6 +93,16 @@ public sealed class KeePassRecipe : IRecipe
 
     private static IEnumerable<string> FindVaults(ProfileContext context)
     {
+        if (context.Index is { } index)
+        {
+            foreach (string vault in index.FilesWithExtensions(".kdbx", ".kdb"))
+            {
+                yield return vault;
+            }
+
+            yield break;
+        }
+
         string[] roots =
         [
             Path.Combine(context.OldProfileRoot, "Documents"),

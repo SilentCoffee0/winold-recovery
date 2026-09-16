@@ -47,7 +47,7 @@ public sealed class RecipeHost
         IReadOnlyList<ProfileRecord> storedProfiles = sessionDb.ListProfiles(sessionId);
         List<RecipeCard> cards = [];
         List<PersistedRecipeCard> rows = [];
-        List<NodeBadgeRow> badges = [];
+        List<(string RelPath, string Kind, string Detail)> pendingBadges = [];
         HashSet<string> seen = new(StringComparer.Ordinal);
         foreach (DetectedProfile profile in profiles)
         {
@@ -61,7 +61,10 @@ public sealed class RecipeHost
                 sessionTemporaryDirectory,
                 sessionExportsDirectory,
                 safeFs,
-                processRunner);
+                processRunner,
+                sessionDb.HasWalkerCheckpoint(sessionId)
+                    ? new RecipeIndex(sessionDb, sessionId, profile.RelativePath, profile.SourcePath)
+                    : null);
             foreach (IRecipe recipe in recipes)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -90,12 +93,20 @@ public sealed class RecipeHost
                     string nodeRel = string.IsNullOrWhiteSpace(relativePath)
                         ? profile.RelativePath
                         : Path.Combine(profile.RelativePath, relativePath.Replace('/', '\\'));
-                    long? nodeId = sessionDb.FindNodeId(sessionId, nodeRel);
-                    if (nodeId is long id)
-                    {
-                        badges.Add(new NodeBadgeRow(id, kind, detail));
-                    }
+                    pendingBadges.Add((nodeRel, kind, detail));
                 }
+            }
+        }
+
+        IReadOnlyDictionary<string, long> nodeIds = sessionDb.FindNodeIds(
+            sessionId,
+            pendingBadges.ConvertAll(static row => row.RelPath));
+        List<NodeBadgeRow> badges = [];
+        foreach ((string nodeRel, string kind, string detail) in pendingBadges)
+        {
+            if (nodeIds.TryGetValue(nodeRel, out long id))
+            {
+                badges.Add(new NodeBadgeRow(id, kind, detail));
             }
         }
 
