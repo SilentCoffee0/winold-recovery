@@ -194,7 +194,8 @@ public partial class App : Application
                 safeFs,
                 sourceGuard,
                 RecipeCatalog.All,
-                folderPicker: new WpfFolderPicker());
+                folderPicker: new WpfFolderPicker(),
+                textClipboard: new WpfTextClipboard());
             await viewModel.LoadSourcesAsync().ConfigureAwait(true);
 
             if (interrupted is not null)

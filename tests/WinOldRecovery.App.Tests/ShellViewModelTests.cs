@@ -75,6 +75,28 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task CopyPath_WritesTheSelectedSourcePathToTheClipboard()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(
+            Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
+            "hive");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        ExpandDirectories(context);
+        ExpandDirectories(context);
+        context.ViewModel.Expand(FindRow(context, "Alice"));
+        context.ViewModel.Expand(FindRow(context, "Desktop"));
+        TreeNodeRow desktop = FindRow(context, "Desktop");
+        context.ViewModel.SelectedNode = desktop;
+        Assert.True(context.ViewModel.CopyPathCommand.CanExecute(null));
+        context.ViewModel.CopyPathCommand.Execute(null);
+        Assert.Equal(Path.Combine(context.ViewModel.SourceRoot!, desktop.RelPath), context.Clipboard.LastText);
+    }
+
+    [Fact]
     public async Task SubfolderPolicy_RecoveredIsDefaultAndMergeSwitchesDestination()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();
@@ -1157,6 +1179,7 @@ public sealed class ShellViewModelTests
             RecordingProcessRunner runner,
             ShellViewModel viewModel,
             StubFolderPicker picker,
+            CapturingTextClipboard clipboard,
             SessionWorkspace workspace)
         {
             Root = root;
@@ -1164,6 +1187,7 @@ public sealed class ShellViewModelTests
             Runner = runner;
             ViewModel = viewModel;
             Picker = picker;
+            Clipboard = clipboard;
             Workspace = workspace;
         }
 
@@ -1172,6 +1196,7 @@ public sealed class ShellViewModelTests
         public RecordingProcessRunner Runner { get; }
         public ShellViewModel ViewModel { get; }
         public StubFolderPicker Picker { get; }
+        public CapturingTextClipboard Clipboard { get; }
         public SessionWorkspace Workspace { get; }
         public string SessionId => Workspace.SessionId;
         public string WorkspaceRoot => Workspace.RootPath;
@@ -1199,6 +1224,7 @@ public sealed class ShellViewModelTests
                     ? File.ReadAllText(bundled)
                     : "# Limits\n\nChrome and Edge passwords cannot be recovered.\n");
             StubFolderPicker picker = new();
+            CapturingTextClipboard clipboard = new();
             ShellViewModel viewModel = new(
                 database,
                 workspace,
@@ -1211,8 +1237,9 @@ public sealed class ShellViewModelTests
                 firstRunState: null,
                 localHelp: new LocalHelp(helpRoot),
                 folderPicker: picker,
-                processPresence: new NeverRunningProcessPresence());
-            return new ShellTestContext(root, database, runner, viewModel, picker, workspace);
+                processPresence: new NeverRunningProcessPresence(),
+                textClipboard: clipboard);
+            return new ShellTestContext(root, database, runner, viewModel, picker, clipboard, workspace);
         }
 
         public async ValueTask DisposeAsync()
@@ -1228,6 +1255,13 @@ public sealed class ShellViewModelTests
         public string? Folder { get; set; }
 
         public string? PickFolder() => Folder;
+    }
+
+    private sealed class CapturingTextClipboard : ITextClipboard
+    {
+        public string? LastText { get; private set; }
+
+        public void SetText(string text) => LastText = text;
     }
 
     private sealed class StubVolumes(IReadOnlyList<string> roots) : IVolumeRootProvider

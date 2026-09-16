@@ -117,6 +117,7 @@ public sealed class ShellViewModel : ObservableObject
     private string? pausedSourcePath;
     private string sourceHint = string.Empty;
     private readonly IFolderPicker folderPicker;
+    private readonly ITextClipboard textClipboard;
     private readonly IProcessPresence processPresence;
     private bool compactLayout;
     private bool compactInspect;
@@ -155,7 +156,8 @@ public sealed class ShellViewModel : ObservableObject
         FirstRunState? firstRunState = null,
         LocalHelp? localHelp = null,
         IFolderPicker? folderPicker = null,
-        IProcessPresence? processPresence = null)
+        IProcessPresence? processPresence = null,
+        ITextClipboard? textClipboard = null)
     {
         this.sessionDb = sessionDb;
         this.workspace = workspace;
@@ -247,6 +249,7 @@ public sealed class ShellViewModel : ObservableObject
         this.firstRun = firstRunState ?? FirstRunState.FromWorkspace(safeFs, workspace);
         this.localHelp = localHelp ?? LocalHelp.FromAppDirectory();
         this.folderPicker = folderPicker ?? new NullFolderPicker();
+        this.textClipboard = textClipboard ?? new NullTextClipboard();
         this.processPresence = processPresence ?? new Win32ProcessPresence();
         firstRunVisible = !this.firstRun.IsDismissed();
         OpenHelpCommand = new RelayCommand(OpenHelp);
@@ -2327,7 +2330,7 @@ public sealed class ShellViewModel : ObservableObject
             return;
         }
 
-        System.Windows.Clipboard.SetText(Path.Combine(SourceRoot, SelectedNode.RelPath));
+        textClipboard.SetText(Path.Combine(SourceRoot, SelectedNode.RelPath));
     }
 
     private void RebuildCards(IReadOnlyList<DetectedProfile> profiles)
