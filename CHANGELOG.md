@@ -34,7 +34,8 @@ All notable changes to WinOld Recovery will be documented here.
 
 ### Added
 
-- WSL restore with Registration on copies `ext4.vhdx` then records `wsl --shutdown` / `--import-in-place` against the recovered path only (never the file still inside Windows.old). Default-user commands stay listed on the card.
+- WSL restore with Registration on copies `ext4.vhdx` then records `wsl --shutdown` / `--import-in-place` against the recovered path only (never the file still inside Windows.old). Default-user commands stay listed on the card. L3 verify then records `wsl -l -v` and `wsl -d <name> -u root -- true`.
+- I7 watches `RestoreHarness` during a local CopyTree with `netstat -ano` and fails if that PID opens a non-loopback TCP/UDP remote.
 - FlaUI scan→decide→preview→restore→verify→purge on a browsed TEMP fixture passed 16 Sep 2026 (`tools/run-flaui-e2e.ps1`, 23.6 s). A second FlaUI case kills published `--restore` mid-copy and asserts the Resume overlay (27.2 s, two tests). The app refuses a volume-root `Windows.old*` smoke path, forces PreferManualDelete, and will not start the scan until the status line shows `Smoke fixture ready`. Still skipped in CI unless `RUN_FLAUI=1`.
 - Release workflow submits both published EXEs to SignPath when repository variable `SIGNPATH_ENABLED` is `true`, then checksums the signed copies. Without that variable the SignPath steps are skipped and assets stay unsigned.
 - Milestone 0 .NET 10 solution and project dependency structure.

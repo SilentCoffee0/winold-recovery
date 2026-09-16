@@ -266,6 +266,51 @@ public sealed class WslRecipe : IRecipe
         return new RecipeVerifyResult(magic, magic ? "VHDX header present" : "VHDX header missing");
     }
 
+    public async Task<RecipeVerifyResult> VerifyAsync(
+        PlanResult plan,
+        CancellationToken cancellationToken = default)
+    {
+        RecipeVerifyResult header = Verify(plan);
+        if (!header.Ok ||
+            plan.Card.Facts.GetValueOrDefault("register") != "1" ||
+            plan.Destination is null)
+        {
+            return header;
+        }
+
+        string name = plan.Card.Facts["name"];
+        ProcessResult listed = await plan.Destination.ProcessRunner
+            .RunAsync(new ProcessRequest("wsl.exe", ["-l", "-v"], Timeout: TimeSpan.FromSeconds(30)), cancellationToken)
+            .ConfigureAwait(false);
+        if (listed.ExitCode != 0)
+        {
+            return new RecipeVerifyResult(false, "wsl -l -v exited " + listed.ExitCode + ".");
+        }
+
+        if (!string.IsNullOrWhiteSpace(listed.StandardOutput) &&
+            listed.StandardOutput.IndexOf(name, StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            return new RecipeVerifyResult(false, "wsl -l -v does not list " + name + ".");
+        }
+
+        ProcessResult ping = await plan.Destination.ProcessRunner
+            .RunAsync(
+                new ProcessRequest(
+                    "wsl.exe",
+                    ["-d", name, "-u", "root", "--", "true"],
+                    Timeout: TimeSpan.FromSeconds(30)),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (ping.ExitCode != 0)
+        {
+            return new RecipeVerifyResult(
+                false,
+                "wsl -d " + name + " -u root -- true exited " + ping.ExitCode + ".");
+        }
+
+        return new RecipeVerifyResult(true, header.Detail + "; registered");
+    }
+
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite("wsl", "Close WSL before registering a copied disk.")];
 

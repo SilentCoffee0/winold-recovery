@@ -2194,6 +2194,102 @@ public sealed class RecipeTests
             context.Runner.Requests,
             request => request.Arguments.Contains("--import-in-place") ||
                 request.Arguments.Contains("--shutdown"));
+        RecipeVerifyResult verify = await new WslRecipe().VerifyAsync(plan);
+        Assert.True(verify.Ok);
+        Assert.DoesNotContain(
+            context.Runner.Requests,
+            request => request.Arguments.Contains("-l") ||
+                request.Arguments.Contains("--"));
+    }
+
+    [Fact]
+    public async Task Wsl_VerifyAsync_RegisteredRecordsListAndTrue()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string wsl = Path.Combine(alice, "AppData", "Local", "wsl", "{guid}", "ext4.vhdx");
+        Directory.CreateDirectory(Path.GetDirectoryName(wsl)!);
+        byte[] vhdx = new byte[512];
+        System.Text.Encoding.ASCII.GetBytes("vhdxfile").CopyTo(vhdx, 0);
+        await File.WriteAllBytesAsync(wsl, vhdx);
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, RecipeCatalog.All);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+        RecipeCard wslCard = Assert.Single(cards, card => card.RecipeId == "wsl");
+        PlanResult plan = host.PlanCard(new WslRecipe(), wslCard, Dest(context));
+        await host.ExecuteAsync("session-1", new WslRecipe(), plan);
+        RecipeVerifyResult result = await new WslRecipe().VerifyAsync(plan);
+        Assert.True(result.Ok);
+        Assert.Contains("; registered", result.Detail);
+        Assert.Contains(
+            context.Runner.Requests,
+            request => request.Arguments.Contains("-l") && request.Arguments.Contains("-v"));
+        Assert.Contains(
+            context.Runner.Requests,
+            request => request.Arguments.Contains("-d") &&
+                request.Arguments.Contains("root") &&
+                request.Arguments.Contains("true"));
+    }
+
+    [Fact]
+    public async Task Wsl_VerifyAsync_RegisteredFailsWhenWslExitsOne()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string wsl = Path.Combine(alice, "AppData", "Local", "wsl", "{guid}", "ext4.vhdx");
+        Directory.CreateDirectory(Path.GetDirectoryName(wsl)!);
+        byte[] vhdx = new byte[512];
+        System.Text.Encoding.ASCII.GetBytes("vhdxfile").CopyTo(vhdx, 0);
+        await File.WriteAllBytesAsync(wsl, vhdx);
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, RecipeCatalog.All);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+        RecipeCard wslCard = Assert.Single(cards, card => card.RecipeId == "wsl");
+        PlanResult plan = host.PlanCard(new WslRecipe(), wslCard, Dest(context));
+        await host.ExecuteAsync("session-1", new WslRecipe(), plan);
+        PlanResult failing = plan with
+        {
+            Destination = new DestinationContext(
+                context.Destination,
+                context.Exports,
+                context.SafeFs,
+                new ExitOneRunner()),
+        };
+        RecipeVerifyResult result = await new WslRecipe().VerifyAsync(failing);
+        Assert.False(result.Ok);
+        Assert.Contains("wsl -l -v exited 1", result.Detail, StringComparison.Ordinal);
     }
 
     [Fact]
