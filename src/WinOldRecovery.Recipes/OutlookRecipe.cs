@@ -12,6 +12,38 @@ public sealed class OutlookRecipe : IRecipe
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        if (context.Index is { } index)
+        {
+            foreach (string pst in index.FilesWithExtensions([".pst"], skipAppData: false))
+            {
+                if (!IsUnderAny(pst, PstSearchRoots(context.OldProfileRoot)) ||
+                    !seen.Add(Path.GetFullPath(pst)))
+                {
+                    continue;
+                }
+
+                AddPst(context, cards, badges, pst);
+            }
+
+            string localOstRoot = Path.Combine(
+                context.OldProfileRoot,
+                "AppData",
+                "Local",
+                "Microsoft",
+                "Outlook");
+            foreach (string ost in index.FilesWithExtensions([".ost"], skipAppData: false))
+            {
+                if (!IsUnderAny(ost, [localOstRoot]))
+                {
+                    continue;
+                }
+
+                AddOst(context, cards, badges, ost);
+            }
+
+            return new DetectResult(cards, badges);
+        }
+
         foreach (string root in PstSearchRoots(context.OldProfileRoot))
         {
             foreach (string pst in DetectorWalk.EnumerateFiles(context.SafeFs, root, 6))
@@ -22,19 +54,7 @@ public sealed class OutlookRecipe : IRecipe
                     continue;
                 }
 
-                string name = Path.GetFileName(pst);
-                cards.Add(
-                    CreateCard(
-                        context,
-                        "Outlook PST — " + name,
-                        "pst",
-                        pst,
-                        Decision.Restore,
-                        "Open PST in Outlook: File → Open & Export → Open Outlook Data File",
-                        "The PST data file.",
-                        "A copy on another computer or the server mailbox.",
-                        "The archive is unique; Outlook will not recreate it."));
-                DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, pst, "Outlook", name);
+                AddPst(context, cards, badges, pst);
             }
         }
 
@@ -51,23 +71,7 @@ public sealed class OutlookRecipe : IRecipe
                 continue;
             }
 
-            cards.Add(
-                CreateCard(
-                    context,
-                    "Outlook OST — " + Path.GetFileName(ost),
-                    "ost",
-                    ost,
-                    Decision.LeaveBehind,
-                    "OST files are rebuilt from the mail server. Leave them behind unless you have no server copy.",
-                    "Nothing by default. OST is regenerable from the server.",
-                    "Sign in to the same mailbox.",
-                    "Cached mail regenerates after you connect."));
-            DetectorWalk.AddTreeBadge(
-                badges,
-                context.OldProfileRoot,
-                ost,
-                "Outlook",
-                Path.GetFileName(ost));
+            AddOst(context, cards, badges, ost);
         }
 
         return new DetectResult(cards, badges);
@@ -133,6 +137,72 @@ public sealed class OutlookRecipe : IRecipe
                 ["kind"] = kind,
                 ["profileRoot"] = context.OldProfileRoot,
             });
+    }
+
+    private static void AddPst(
+        ProfileContext context,
+        List<RecipeCard> cards,
+        List<(string RelativePath, string Kind, string Detail)> badges,
+        string pst)
+    {
+        string name = Path.GetFileName(pst);
+        cards.Add(
+            CreateCard(
+                context,
+                "Outlook PST — " + name,
+                "pst",
+                pst,
+                Decision.Restore,
+                "Open PST in Outlook: File → Open & Export → Open Outlook Data File",
+                "The PST data file.",
+                "A copy on another computer or the server mailbox.",
+                "The archive is unique; Outlook will not recreate it."));
+        DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, pst, "Outlook", name);
+    }
+
+    private static void AddOst(
+        ProfileContext context,
+        List<RecipeCard> cards,
+        List<(string RelativePath, string Kind, string Detail)> badges,
+        string ost)
+    {
+        cards.Add(
+            CreateCard(
+                context,
+                "Outlook OST — " + Path.GetFileName(ost),
+                "ost",
+                ost,
+                Decision.LeaveBehind,
+                "OST files are rebuilt from the mail server. Leave them behind unless you have no server copy.",
+                "Nothing by default. OST is regenerable from the server.",
+                "Sign in to the same mailbox.",
+                "Cached mail regenerates after you connect."));
+        DetectorWalk.AddTreeBadge(
+            badges,
+            context.OldProfileRoot,
+            ost,
+            "Outlook",
+            Path.GetFileName(ost));
+    }
+
+    private static bool IsUnderAny(string path, IEnumerable<string> roots)
+    {
+        string full = Path.GetFullPath(path);
+        foreach (string root in roots)
+        {
+            string rootFull = Path.GetFullPath(root);
+            if (full.Equals(rootFull, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (full.StartsWith(rootFull.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static IEnumerable<string> PstSearchRoots(string profileRoot)

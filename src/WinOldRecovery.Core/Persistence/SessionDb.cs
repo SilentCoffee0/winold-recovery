@@ -1288,7 +1288,8 @@ public sealed class SessionDb : IAsyncDisposable
     public IReadOnlyList<string> ListFileRelPathsUnderPrefixByExtension(
         string sessionId,
         string profileRelPrefix,
-        IReadOnlyList<string> extensions)
+        IReadOnlyList<string> extensions,
+        bool skipAppData = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
         ArgumentNullException.ThrowIfNull(extensions);
@@ -1329,10 +1330,11 @@ public sealed class SessionDb : IAsyncDisposable
                  OR rel_path = $prefix
                  OR instr(rel_path, $prefix || '\') = 1
               )
-              AND instr(rel_path, $prefix || '\AppData\') = 0;
+              AND ($skipAppData = 0 OR instr(rel_path, $prefix || '\AppData\') = 0);
             """;
         command.Parameters.AddWithValue("$sessionId", sessionId);
         command.Parameters.AddWithValue("$prefix", profileRelPrefix.Replace('/', '\\').Trim('\\'));
+        command.Parameters.AddWithValue("$skipAppData", skipAppData ? 1 : 0);
         List<string> paths = [];
         using SqliteDataReader reader = command.ExecuteReader();
         HashSet<string> wanted = new(StringComparer.OrdinalIgnoreCase);

@@ -25,12 +25,18 @@ public sealed class RecipeIndex
 
     public IReadOnlyList<string> FilesWithExtensions(params string[] extensions)
     {
+        return FilesWithExtensions(extensions, skipAppData: true);
+    }
+
+    public IReadOnlyList<string> FilesWithExtensions(IReadOnlyList<string> extensions, bool skipAppData)
+    {
         ArgumentNullException.ThrowIfNull(extensions);
         List<string> paths = [];
         foreach (string relPath in sessionDb.ListFileRelPathsUnderPrefixByExtension(
                      sessionId,
                      profileRelPrefix,
-                     extensions))
+                     extensions,
+                     skipAppData))
         {
             if (TryAbsolute(relPath, out string absolute))
             {

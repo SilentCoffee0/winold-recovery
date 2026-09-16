@@ -57,6 +57,40 @@ public sealed class RecipeIndexTests
         Assert.Equal(5, ids[@"Users\Alice\Documents\notes"]);
     }
 
+    [Fact]
+    public async Task Index_IncludesOutlookAppDataPstWhenAppDataIsAllowed()
+    {
+        await using RecipeIndexContext context = await RecipeIndexContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Created", "0.1.0"));
+        await context.Database.InsertNodesAsync(
+        [
+            Node(1, null, "Windows.old", ""),
+            Node(2, 1, "Alice", @"Users\Alice"),
+            Node(3, 2, "archive.pst", @"Users\Alice\Documents\Outlook Files\archive.pst", NodeKind.File),
+            Node(4, 2, "roaming.pst", @"Users\Alice\AppData\Roaming\Microsoft\Outlook\roaming.pst", NodeKind.File),
+            Node(5, 2, "user.ost", @"Users\Alice\AppData\Local\Microsoft\Outlook\user.ost", NodeKind.File),
+        ]);
+
+        RecipeIndex index = new(
+            context.Database,
+            "session-1",
+            @"Users\Alice",
+            Path.Combine(context.Root, "Users", "Alice"));
+        Assert.Equal(
+            Path.Combine(context.Root, "Users", "Alice", "Documents", "Outlook Files", "archive.pst"),
+            Assert.Single(index.FilesWithExtensions(".pst")));
+        IReadOnlyList<string> pst = index.FilesWithExtensions([".pst"], skipAppData: false);
+        Assert.Equal(2, pst.Count);
+        Assert.Contains(
+            Path.Combine(context.Root, "Users", "Alice", "AppData", "Roaming", "Microsoft", "Outlook", "roaming.pst"),
+            pst,
+            StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(
+            Path.Combine(context.Root, "Users", "Alice", "AppData", "Local", "Microsoft", "Outlook", "user.ost"),
+            Assert.Single(index.FilesWithExtensions([".ost"], skipAppData: false)));
+    }
+
     private static PersistedNode Node(
         long id,
         long? parentId,
