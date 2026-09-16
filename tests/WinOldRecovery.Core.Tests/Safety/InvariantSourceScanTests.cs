@@ -71,7 +71,15 @@ public sealed class InvariantSourceScanTests
             string text = File.ReadAllText(path);
             Assert.DoesNotContain("HttpClient", text, StringComparison.Ordinal);
             Assert.DoesNotContain("TcpClient", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("UdpClient", text, StringComparison.Ordinal);
             Assert.DoesNotContain("Socket(", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("SocketsHttpHandler", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("WebClient", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("HttpWebRequest", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("FtpWebRequest", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("WebRequest.Create", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("HttpListener", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("Dns.GetHost", text, StringComparison.Ordinal);
         }
     }
 
