@@ -25,6 +25,7 @@ public sealed class ClassificationEngineTests
         Assert.All(
             SuggestedDefaultTable.Entries.Where(static entry => entry.Id != "appdata-whole"),
             entry => Assert.NotEqual(Decision.LeaveBehind, entry.Decision));
+        Assert.Same(rules, ClassificationRuleCatalog.LoadEmbedded());
     }
 
     [Fact]

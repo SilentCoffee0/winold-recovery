@@ -1172,19 +1172,51 @@ public sealed class ShellViewModel : ObservableObject
 
     public async Task LoadSourcesAsync(CancellationToken cancellationToken = default)
     {
+        bool preserveStatus = InterruptedRestoreVisible
+            || ScanStatus.StartsWith("Smoke fixture ready", StringComparison.Ordinal);
+        List<SourceCandidate> keptBrowsed = [];
+        foreach (SourceCandidate existing in Sources)
+        {
+            if (existing.Kind == SourceCandidateKind.BrowsedFolder)
+            {
+                keptBrowsed.Add(existing);
+            }
+        }
+
+        if (!preserveStatus)
+        {
+            ScanStatus = "Looking for Windows.old folders…";
+        }
+
         Sources.Clear();
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        foreach (SourceCandidate kept in keptBrowsed)
+        {
+            if (seen.Add(kept.Path))
+            {
+                Sources.Add(kept);
+            }
+        }
+
         foreach (SourceCandidate candidate in await sourceDiscovery.DiscoverAsync(cancellationToken)
                      .ConfigureAwait(false))
         {
-            Sources.Add(candidate);
+            if (seen.Add(candidate.Path))
+            {
+                Sources.Add(candidate);
+            }
         }
 
-        if (Sources.Count > 0)
+        if (string.IsNullOrEmpty(SelectedSourcePath) && Sources.Count > 0)
         {
             SelectedSourcePath = Sources[0].Path;
         }
 
         OnPropertyChanged(nameof(Sources));
+        if (!preserveStatus)
+        {
+            ScanStatus = "Choose a Windows.old folder, then scan.";
+        }
     }
 
     public bool CanGoTo(WorkflowStep step)

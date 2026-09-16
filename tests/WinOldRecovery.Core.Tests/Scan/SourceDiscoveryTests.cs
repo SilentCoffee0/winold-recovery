@@ -118,6 +118,7 @@ public sealed class SourceDiscoveryTests : IDisposable
         Assert.Equal("schtasks.exe", request.FileName);
         Assert.Equal("/Query", request.Arguments[0]);
         Assert.Equal(SourceDiscovery.SetupCleanupTaskName, request.Arguments[2]);
+        Assert.Equal(TimeSpan.FromSeconds(2), request.Timeout);
         Assert.DoesNotContain("/Change", request.Arguments, StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain("/Create", request.Arguments, StringComparer.OrdinalIgnoreCase);
         Assert.DoesNotContain("/Delete", request.Arguments, StringComparer.OrdinalIgnoreCase);

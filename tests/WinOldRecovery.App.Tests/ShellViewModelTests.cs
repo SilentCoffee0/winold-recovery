@@ -188,6 +188,13 @@ public sealed class ShellViewModelTests
         Assert.Equal(WorkflowStep.Scan, context.ViewModel.CurrentStep);
         Assert.False(context.ViewModel.InterruptedRestoreVisible);
         Assert.False(ShellViewModel.TouchesVolumeRootPreviousInstallation(source));
+        await context.ViewModel.LoadSourcesAsync();
+        Assert.Contains("Smoke fixture ready (OldInstall)", context.ViewModel.ScanStatus, StringComparison.Ordinal);
+        Assert.Equal(SourceCandidateKind.BrowsedFolder, Assert.Single(context.ViewModel.Sources).Kind);
+        Assert.Equal(
+            PathCanonicalizer.NormalizeLexically(source),
+            context.ViewModel.SelectedSourcePath,
+            StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]

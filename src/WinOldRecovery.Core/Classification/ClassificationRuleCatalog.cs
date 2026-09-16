@@ -15,7 +15,11 @@ public static class ClassificationRuleCatalog
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public static IReadOnlyList<ClassificationRule> LoadEmbedded()
+    private static readonly Lazy<IReadOnlyList<ClassificationRule>> EmbeddedRules = new(LoadAll, isThreadSafe: true);
+
+    public static IReadOnlyList<ClassificationRule> LoadEmbedded() => EmbeddedRules.Value;
+
+    private static IReadOnlyList<ClassificationRule> LoadAll()
     {
         Assembly assembly = typeof(ClassificationRuleCatalog).Assembly;
         string[] names =

@@ -31,10 +31,8 @@ public sealed class SourceDiscovery
     public async Task<IReadOnlyList<SourceCandidate>> DiscoverAsync(
         CancellationToken cancellationToken = default)
     {
-        CleanupTaskStatus cleanupTask = await QueryCleanupTaskAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        List<SourceCandidate> candidates = [];
+        Task<CleanupTaskStatus> cleanupQuery = QueryCleanupTaskAsync(cancellationToken);
+        List<(string Path, SourceCandidateKind Kind)> found = [];
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
 
         foreach (string volumeRoot in volumeRootProvider.GetFixedVolumeRoots())
@@ -49,15 +47,21 @@ public sealed class SourceDiscovery
             {
                 if (seen.Add(windowsOld))
                 {
-                    candidates.Add(Inspect(windowsOld, SourceCandidateKind.WindowsOld, cleanupTask));
+                    found.Add((windowsOld, SourceCandidateKind.WindowsOld));
                 }
             }
 
             if (LooksLikeOldSystemVolume(volumeRoot) && seen.Add(volumeRoot))
             {
-                candidates.Add(
-                    Inspect(volumeRoot, SourceCandidateKind.OldSystemVolume, cleanupTask));
+                found.Add((volumeRoot, SourceCandidateKind.OldSystemVolume));
             }
+        }
+
+        CleanupTaskStatus cleanupTask = await cleanupQuery.ConfigureAwait(false);
+        List<SourceCandidate> candidates = new(found.Count);
+        foreach ((string path, SourceCandidateKind kind) in found)
+        {
+            candidates.Add(Inspect(path, kind, cleanupTask));
         }
 
         return candidates
@@ -98,7 +102,7 @@ public sealed class SourceDiscovery
                 new ProcessRequest(
                     "schtasks.exe",
                     ["/Query", "/TN", SetupCleanupTaskName, "/FO", "LIST"],
-                    Timeout: TimeSpan.FromSeconds(15)),
+                    Timeout: TimeSpan.FromSeconds(2)),
                 cancellationToken)
             .ConfigureAwait(false);
 

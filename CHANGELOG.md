@@ -4,6 +4,10 @@ All notable changes to WinOld Recovery will be documented here.
 
 ## Unreleased
 
+### Changed
+
+- GUI startup paints MainWindow before `schtasks /Query` source discovery. The cleanup-task query times out after 2 seconds (was 15) and overlaps volume walking. Embedded classification rules load once. Interrupted-restore peek no longer takes an exclusive lock on leftover session databases first.
+
 ### Fixed
 
 - CI and tag-release workflows use `actions/checkout@v5`, `actions/setup-dotnet@v5`, and `actions/upload-artifact@v6` so GitHub-hosted runners stop warning about Node.js 20. Workflow file tests pin those versions instead of `@v4`.

@@ -114,11 +114,6 @@ public static class InterruptedRestore
                 continue;
             }
 
-            if (IsDatabaseInUse(databasePath))
-            {
-                continue;
-            }
-
             if (!TryPeekIncompleteJournal(databasePath, out bool hasIncomplete))
             {
                 continue;
@@ -224,23 +219,6 @@ public static class InterruptedRestore
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SqliteException)
         {
             return false;
-        }
-    }
-
-    private static bool IsDatabaseInUse(string databasePath)
-    {
-        try
-        {
-            using FileStream stream = new(
-                databasePath,
-                FileMode.Open,
-                FileAccess.ReadWrite,
-                FileShare.None);
-            return false;
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            return true;
         }
     }
 

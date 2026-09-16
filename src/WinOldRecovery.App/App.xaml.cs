@@ -196,7 +196,6 @@ public partial class App : Application
                 RecipeCatalog.All,
                 folderPicker: new WpfFolderPicker(),
                 textClipboard: new WpfTextClipboard());
-            await viewModel.LoadSourcesAsync().ConfigureAwait(true);
 
             if (interrupted is not null)
             {
@@ -209,6 +208,13 @@ public partial class App : Application
             window.Show();
             MainWindow = window;
             startupWindow.Close();
+            // schtasks /Query used to block first paint (15 s timeout). Discover
+            // after Show, and skip it when smoke/resume already picked a source.
+            if (string.IsNullOrEmpty(viewModel.SelectedSourcePath) &&
+                !viewModel.InterruptedRestoreVisible)
+            {
+                await viewModel.LoadSourcesAsync().ConfigureAwait(true);
+            }
         }
         catch (Exception exception)
         {
