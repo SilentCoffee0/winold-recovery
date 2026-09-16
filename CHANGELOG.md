@@ -6,7 +6,7 @@ All notable changes to WinOld Recovery will be documented here.
 
 ### Fixed
 
-- CI and tag-release workflows use `actions/checkout@v5`, `actions/setup-dotnet@v5`, and `actions/upload-artifact@v6` so GitHub-hosted runners stop warning about Node.js 20.
+- CI and tag-release workflows use `actions/checkout@v5`, `actions/setup-dotnet@v5`, and `actions/upload-artifact@v6` so GitHub-hosted runners stop warning about Node.js 20. Workflow file tests pin those versions instead of `@v4`.
 - SSH private-key ACL hardening goes through `SafeFs.SetAccessControl`, so SourceGuard can refuse a path under a registered Windows.old. Headless `--scan`/`--restore` reports, smoke destination folders, Firefox places copies, and support-bundle zips also go through `SafeFs`. I1 greps mutating file APIs outside `SafeFs`/`Purge`.
 - Session read connections disable SQLite pooling so `SqliteConnection.ClearAllPools` in one test cannot dispose another test's `GetLatestJournalState` handle (I16 disk-full pause flake).
 - Owner SID tests assert the file ACL owner, not the testhost identity. GitHub Actions TEMP files are owned by `BUILTIN\Administrators`, which is not `WindowsIdentity.GetCurrent()`.
@@ -34,6 +34,7 @@ All notable changes to WinOld Recovery will be documented here.
 
 ### Added
 
+- WSL restore with Registration on copies `ext4.vhdx` then records `wsl --shutdown` / `--import-in-place` against the recovered path only (never the file still inside Windows.old). Default-user commands stay listed on the card.
 - FlaUI scan→decide→preview→restore→verify→purge on a browsed TEMP fixture passed 16 Sep 2026 (`tools/run-flaui-e2e.ps1`, 23.6 s). A second FlaUI case kills published `--restore` mid-copy and asserts the Resume overlay (27.2 s, two tests). The app refuses a volume-root `Windows.old*` smoke path, forces PreferManualDelete, and will not start the scan until the status line shows `Smoke fixture ready`. Still skipped in CI unless `RUN_FLAUI=1`.
 - Release workflow submits both published EXEs to SignPath when repository variable `SIGNPATH_ENABLED` is `true`, then checksums the signed copies. Without that variable the SignPath steps are skipped and assets stay unsigned.
 - Milestone 0 .NET 10 solution and project dependency structure.

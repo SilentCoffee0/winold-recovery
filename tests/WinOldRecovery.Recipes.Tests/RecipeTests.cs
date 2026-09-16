@@ -2101,9 +2101,21 @@ public sealed class RecipeTests
             context.Runner.Requests,
             request => request.FileName.Equals("wsl.exe", StringComparison.OrdinalIgnoreCase) &&
                 request.Arguments.Contains("--version"));
-        Assert.DoesNotContain(
+        string recoveredVhdx = Assert.Single(wslPlan.Writes).DestinationPath;
+        Assert.Contains("recovered", recoveredVhdx, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Windows.old", recoveredVhdx, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            context.Runner.Requests,
+            request => request.FileName.Equals("wsl.exe", StringComparison.OrdinalIgnoreCase) &&
+                request.Arguments.Contains("--shutdown"));
+        ProcessRequest import = Assert.Single(
             context.Runner.Requests,
             request => request.Arguments.Contains("--import-in-place"));
+        Assert.Contains(recoveredVhdx, import.Arguments);
+        Assert.DoesNotContain(
+            context.Runner.Requests,
+            request => request.Arguments.Contains("--import-in-place") &&
+                request.Arguments.Any(argument => argument.Contains(wsl, StringComparison.OrdinalIgnoreCase)));
         IReadOnlyList<WinOldRecovery.Core.Processes.ProcessRequest> register = WslRecipe.CreateRegisterRequests("Ubuntu", "C:\\tmp\\ext4.vhdx");
         Assert.Equal("wsl.exe", register[0].FileName);
         Assert.Contains("--import-in-place", register[1].Arguments);
@@ -2139,6 +2151,49 @@ public sealed class RecipeTests
                 request.Environment.TryGetValue("GNUPGHOME", out string? home) &&
                 home is not null &&
                 home.EndsWith(Path.Combine("AppData", "Roaming", "gnupg"), StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Wsl_RegisterLeaveBehindDoesNotImportInPlace()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string wsl = Path.Combine(alice, "AppData", "Local", "wsl", "{guid}", "ext4.vhdx");
+        Directory.CreateDirectory(Path.GetDirectoryName(wsl)!);
+        byte[] vhdx = new byte[512];
+        System.Text.Encoding.ASCII.GetBytes("vhdxfile").CopyTo(vhdx, 0);
+        await File.WriteAllBytesAsync(wsl, vhdx);
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, RecipeCatalog.All);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+        RecipeCard wslCard = Assert.Single(cards, card => card.RecipeId == "wsl");
+        Dictionary<string, Decision> decisions = wslCard.Components.ToDictionary(
+            static component => component.Key,
+            static component => component.Key == "register" ? Decision.LeaveBehind : Decision.Restore);
+        PlanResult plan = new WslRecipe().Plan(new CardDecisions(wslCard, decisions), Dest(context))
+            with { Destination = Dest(context) };
+        Assert.Equal("0", plan.Card.Facts["register"]);
+        await host.ExecuteAsync("session-1", new WslRecipe(), plan);
+        Assert.DoesNotContain(
+            context.Runner.Requests,
+            request => request.Arguments.Contains("--import-in-place") ||
+                request.Arguments.Contains("--shutdown"));
     }
 
     [Fact]

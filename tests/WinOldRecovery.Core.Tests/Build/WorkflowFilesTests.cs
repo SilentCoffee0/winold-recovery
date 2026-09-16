@@ -12,7 +12,12 @@ public sealed class WorkflowFilesTests
         Assert.Contains("dotnet test WinOldRecovery.slnx --configuration Release --no-build --no-restore", workflow);
         Assert.Contains("-p:PublishProfile=win-x64", workflow);
         Assert.Contains("WinOldRecovery.exe", workflow);
-        Assert.Contains("actions/upload-artifact@v4", workflow);
+        Assert.Contains("actions/checkout@v5", workflow);
+        Assert.Contains("actions/setup-dotnet@v5", workflow);
+        Assert.Contains("actions/upload-artifact@v6", workflow);
+        Assert.DoesNotContain("actions/checkout@v4", workflow);
+        Assert.DoesNotContain("actions/setup-dotnet@v4", workflow);
+        Assert.DoesNotContain("actions/upload-artifact@v4", workflow);
         Assert.DoesNotContain("/MIR", workflow);
         Assert.DoesNotContain("/PURGE", workflow);
         Assert.DoesNotContain("/MOV", workflow);
@@ -29,6 +34,10 @@ public sealed class WorkflowFilesTests
         Assert.Contains("v*", workflow);
         Assert.Contains("SHA256", workflow);
         Assert.Contains("gh release create", workflow);
+        Assert.Contains("actions/checkout@v5", workflow);
+        Assert.Contains("actions/setup-dotnet@v5", workflow);
+        Assert.DoesNotContain("actions/checkout@v4", workflow);
+        Assert.DoesNotContain("actions/setup-dotnet@v4", workflow);
         Assert.DoesNotContain("v0.1.0-m0", workflow);
         Assert.DoesNotContain("/MIR", workflow);
         Assert.DoesNotContain("/PURGE", workflow);

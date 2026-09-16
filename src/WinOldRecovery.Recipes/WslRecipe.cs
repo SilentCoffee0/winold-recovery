@@ -148,14 +148,58 @@ public sealed class WslRecipe : IRecipe
             "recovered",
             decisions.Card.Facts["name"],
             Path.GetFileName(source));
+        Dictionary<string, string> facts = new(decisions.Card.Facts, StringComparer.Ordinal);
+        facts["register"] = RecipeDecisions.ShouldRestore(decisions, "register") ? "1" : "0";
         return new PlanResult(
-            decisions.Card,
+            decisions.Card with { Facts = facts },
             [new RecipeWrite(RecipeWriteKind.CopyFile, source, dest, null, 1, "disk")]);
     }
 
-    public Task ExecuteAsync(PlanResult plan, IRecipeJournal journal, CancellationToken cancellationToken = default)
+    public async Task ExecuteAsync(PlanResult plan, IRecipeJournal journal, CancellationToken cancellationToken = default)
     {
-        return Task.CompletedTask;
+        if (plan.Card.Facts.GetValueOrDefault("register") != "1" ||
+            plan.Destination is null)
+        {
+            return;
+        }
+
+        RecipeWrite? disk = plan.Writes.FirstOrDefault(static write => write.ComponentKey == "disk");
+        if (disk is null)
+        {
+            return;
+        }
+
+        string destinationVhdx = Path.GetFullPath(disk.DestinationPath);
+        string sourceVhdx = Path.GetFullPath(plan.Card.Facts["source"]);
+        string sourcePrefix = sourceVhdx.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if (destinationVhdx.Equals(sourceVhdx, StringComparison.OrdinalIgnoreCase) ||
+            destinationVhdx.StartsWith(sourcePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("WSL register refuses a disk that is still under Windows.old.");
+        }
+
+        await journal.StartedAsync("register", cancellationToken).ConfigureAwait(false);
+        try
+        {
+            foreach (ProcessRequest request in CreateRegisterRequests(plan.Card.Facts["name"], destinationVhdx))
+            {
+                ProcessResult result = await plan.Destination.ProcessRunner
+                    .RunAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
+                if (result.ExitCode != 0)
+                {
+                    throw new IOException(
+                        "wsl.exe " + string.Join(' ', request.Arguments) + " exited " + result.ExitCode + ".");
+                }
+            }
+
+            await journal.CompletedAsync("register", cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            await journal.FailedAsync("register", exception.Message, cancellationToken).ConfigureAwait(false);
+            throw;
+        }
     }
 
     public static IReadOnlyList<WinOldRecovery.Core.Processes.ProcessRequest> CreateRegisterRequests(
