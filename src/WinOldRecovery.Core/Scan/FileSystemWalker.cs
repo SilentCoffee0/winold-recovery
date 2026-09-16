@@ -368,14 +368,14 @@ public sealed class FileSystemWalker
             problem);
     }
 
-    private async Task FlushIfNeededAsync(WalkState state, CancellationToken cancellationToken)
+    private Task FlushIfNeededAsync(WalkState state, CancellationToken cancellationToken)
     {
         if (pendingNodes.Count + pendingUpdates.Count < InsertBatchSize)
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        await FlushAsync(state, cancellationToken).ConfigureAwait(false);
+        return FlushAsync(state, cancellationToken);
     }
 
     private async Task FlushAsync(WalkState state, CancellationToken cancellationToken)
@@ -649,7 +649,7 @@ public sealed class FileSystemWalker
 
     private static string CombinePath(string parent, string name)
     {
-        return PathCanonicalizer.ToExtendedPath(Path.Combine(parent, name));
+        return parent.EndsWith('\\') ? parent + name : parent + "\\" + name;
     }
 
     private static string StripExtendedPrefix(string path)
@@ -682,13 +682,13 @@ public sealed class FileSystemWalker
             return;
         }
 
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        if (!force && now < counters.NextProgress)
+        long now = Environment.TickCount64;
+        if (!force && now < counters.NextProgressTick)
         {
             return;
         }
 
-        counters.NextProgress = now + ProgressInterval;
+        counters.NextProgressTick = now + (long)ProgressInterval.TotalMilliseconds;
         progress.Report(
             new WalkProgress(
                 counters.NodesVisited,
@@ -714,7 +714,7 @@ public sealed class FileSystemWalker
         public int EncryptedSkipped { get; set; }
         public int FilesSeen { get; set; }
         public int FoldersSeen { get; set; }
-        public DateTimeOffset NextProgress { get; set; }
+        public long NextProgressTick { get; set; }
     }
 
     private sealed class WalkState

@@ -65,6 +65,29 @@ public sealed class DecisionEngineTests
     }
 
     [Fact]
+    public async Task SetSuggestedDefaults_AppliesEachNodeWithoutRewritingUntouchedChildren()
+    {
+        await using DecisionTestContext context = await DecisionTestContext.CreateAsync();
+        await context.InsertTreeAsync();
+        DecisionEngine engine = new(context.Database, "session-1");
+        await engine.SetSuggestedDefaultsAsync(
+            new Dictionary<long, Decision>
+            {
+                [context.Child] = Decision.LeaveBehind,
+                [context.Sibling] = Decision.Restore,
+            });
+
+        Assert.Equal(Decision.LeaveBehind, engine.GetEffectiveDecision(context.Child));
+        Assert.Equal(Decision.Restore, engine.GetEffectiveDecision(context.Sibling));
+        Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(context.Grandchild));
+        Assert.Equal(Decision.Undecided, engine.GetEffectiveDecision(context.Root));
+
+        await engine.SetUserDecisionAsync(context.Root, Decision.Restore);
+        Assert.Equal(Decision.Restore, engine.GetEffectiveDecision(context.Child));
+        Assert.Equal(Decision.Restore, engine.GetEffectiveDecision(context.Grandchild));
+    }
+
+    [Fact]
     public async Task ApplyUserDecisionToMatching_SkipsRegeneratableBadges()
     {
         await using DecisionTestContext context = await DecisionTestContext.CreateAsync();

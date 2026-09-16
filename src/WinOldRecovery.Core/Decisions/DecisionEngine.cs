@@ -36,6 +36,49 @@ public sealed class DecisionEngine
         return SetDecisionAsync(nodeId, decision, DecisionSource.SuggestedDefault, cancellationToken);
     }
 
+    public Task SetSuggestedDefaultsAsync(
+        IReadOnlyDictionary<long, Decision> decisions,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(decisions);
+        if (decisions.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        string at = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+        return sessionDb.WriteAsync(
+            async (connection, token) =>
+            {
+                using SqliteTransaction transaction = connection.BeginTransaction();
+                await using SqliteCommand command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText =
+                    """
+                    INSERT INTO decisions(node_id, decision, source, decided_at_utc)
+                    VALUES ($nodeId, $decision, 'SuggestedDefault', $at)
+                    ON CONFLICT(node_id, source) DO UPDATE SET
+                        decision = excluded.decision,
+                        decided_at_utc = excluded.decided_at_utc;
+                    """;
+                SqliteParameter nodeId = command.Parameters.Add("$nodeId", SqliteType.Integer);
+                SqliteParameter decision = command.Parameters.Add("$decision", SqliteType.Text);
+                SqliteParameter atParam = command.Parameters.Add("$at", SqliteType.Text);
+                foreach ((long id, Decision value) in decisions)
+                {
+                    token.ThrowIfCancellationRequested();
+                    nodeId.Value = id;
+                    decision.Value = value.ToString();
+                    atParam.Value = at;
+                    command.ExecuteNonQuery();
+                    RefreshEffectiveSelf(connection, id, transaction);
+                }
+
+                transaction.Commit();
+            },
+            cancellationToken);
+    }
+
     public async Task ClearUserDecisionAsync(
         long nodeId,
         CancellationToken cancellationToken = default)
@@ -282,7 +325,14 @@ public sealed class DecisionEngine
                         "$at",
                         DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
                     await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
-                    await RefreshEffectiveAsync(connection, nodeId, token).ConfigureAwait(false);
+                    if (source == DecisionSource.User)
+                    {
+                        await RefreshEffectiveAsync(connection, nodeId, token).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        RefreshEffectiveSelf(connection, nodeId);
+                    }
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -344,6 +394,44 @@ public sealed class DecisionEngine
         }
 
         return JsonSerializer.Deserialize<List<UndoEntry>>(json) ?? [];
+    }
+
+    private static void RefreshEffectiveSelf(
+        SqliteConnection connection,
+        long nodeId,
+        SqliteTransaction? transaction = null)
+    {
+        using SqliteCommand command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            WITH RECURSIVE ancestors(id, parent_id, depth) AS (
+                SELECT id, parent_id, 0
+                FROM nodes
+                WHERE id = $rootId
+                UNION ALL
+                SELECT parent.id, parent.parent_id, ancestors.depth + 1
+                FROM ancestors
+                INNER JOIN nodes AS parent ON parent.id = ancestors.parent_id
+            ),
+            user_pick AS (
+                SELECT d.decision
+                FROM ancestors AS a
+                INNER JOIN decisions AS d
+                    ON d.node_id = a.id AND d.source = 'User'
+                ORDER BY a.depth
+                LIMIT 1
+            )
+            UPDATE nodes
+            SET eff_decision = COALESCE(
+                (SELECT decision FROM user_pick),
+                (SELECT decision FROM decisions
+                 WHERE node_id = $rootId AND source = 'SuggestedDefault'),
+                'Undecided')
+            WHERE id = $rootId;
+            """;
+        command.Parameters.AddWithValue("$rootId", nodeId);
+        command.ExecuteNonQuery();
     }
 
     private static async Task RefreshEffectiveAsync(

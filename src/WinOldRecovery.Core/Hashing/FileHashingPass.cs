@@ -69,6 +69,7 @@ public sealed class FileHashingPass
         }
 
         int hashed = 0;
+        List<(string Key, string Value)> pending = [];
         foreach ((long id, string relPath, long _) in files)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -77,19 +78,27 @@ public sealed class FileHashingPass
             {
                 await using FileStream stream = safeFs.OpenRead(path);
                 byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
-                string hex = Convert.ToHexString(hash);
-                await sessionDb.SetKvAsync(
-                        sessionId,
+                pending.Add(
+                    (
                         "filehash." + id.ToString(CultureInfo.InvariantCulture),
-                        hex,
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                        Convert.ToHexString(hash)));
                 hashed++;
+                if (pending.Count >= 64)
+                {
+                    await sessionDb.SetKvBatchAsync(sessionId, pending, cancellationToken)
+                        .ConfigureAwait(false);
+                    pending.Clear();
+                }
             }
             catch (Exception exception) when (
                 exception is IOException or UnauthorizedAccessException)
             {
             }
+        }
+
+        if (pending.Count > 0)
+        {
+            await sessionDb.SetKvBatchAsync(sessionId, pending, cancellationToken).ConfigureAwait(false);
         }
 
         return hashed;

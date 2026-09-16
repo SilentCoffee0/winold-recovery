@@ -1,4 +1,3 @@
-using WinOldRecovery.Core.Browse;
 using WinOldRecovery.Core.Decisions;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Persistence;
@@ -40,6 +39,21 @@ public sealed class ClassificationEngine
 
         MatchScratch scratch = new();
         Dictionary<long, IReadOnlyList<string>> childNames = new();
+        Dictionary<string, long> nodesByRelPath = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> wantedRelPaths = [];
+        foreach (DetectedProfile profile in profiles)
+        {
+            foreach (StandardFolderMatch folder in profile.StandardFolders)
+            {
+                if (folder.PresentInSource && folder.RelativePathInSource is not null)
+                {
+                    wantedRelPaths.Add(folder.RelativePathInSource);
+                }
+            }
+
+            wantedRelPaths.Add(Path.Combine("Users", profile.Name, "AppData"));
+        }
+
         int index = 0;
         sessionDb.EnumerateClassificationNodes(
             sessionId,
@@ -48,6 +62,11 @@ public sealed class ClassificationEngine
                 if ((index++ & 4095) == 0)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                }
+
+                if (wantedRelPaths.Contains(node.RelPath))
+                {
+                    nodesByRelPath[node.RelPath] = node.Id;
                 }
 
                 MatchNode(
@@ -66,8 +85,6 @@ public sealed class ClassificationEngine
                     sourceRoot);
             });
 
-        DecisionEngine decisions = new(sessionDb, sessionId);
-        NodeBrowser browser = new(sessionDb, sessionId);
         foreach (DetectedProfile profile in profiles)
         {
             foreach (StandardFolderMatch folder in profile.StandardFolders)
@@ -77,23 +94,21 @@ public sealed class ClassificationEngine
                     continue;
                 }
 
-                TreeNodeRow? node = browser.FindByRelPath(folder.RelativePathInSource);
-                if (node is null)
+                if (!nodesByRelPath.TryGetValue(folder.RelativePathInSource, out long nodeId))
                 {
                     continue;
                 }
 
                 if (SuggestedDefaultTable.IsRestoreStandardFolder(folder.KnownName))
                 {
-                    scratch.Suggested[node.Id] = Decision.Restore;
+                    scratch.Suggested[nodeId] = Decision.Restore;
                 }
             }
 
             string appDataRel = Path.Combine("Users", profile.Name, "AppData");
-            TreeNodeRow? appData = browser.FindByRelPath(appDataRel);
-            if (appData is not null)
+            if (nodesByRelPath.TryGetValue(appDataRel, out long appDataId))
             {
-                scratch.Suggested[appData.Id] = Decision.LeaveBehind;
+                scratch.Suggested[appDataId] = Decision.LeaveBehind;
             }
         }
 
@@ -105,12 +120,9 @@ public sealed class ClassificationEngine
             await sessionDb.MarkNodesSensitiveAsync(sensitiveIds, cancellationToken).ConfigureAwait(false);
         }
 
-        foreach ((long nodeId, Decision decision) in scratch.Suggested)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            await decisions.SetSuggestedDefaultAsync(nodeId, decision, cancellationToken)
-                .ConfigureAwait(false);
-        }
+        DecisionEngine decisions = new(sessionDb, sessionId);
+        await decisions.SetSuggestedDefaultsAsync(scratch.Suggested, cancellationToken)
+            .ConfigureAwait(false);
 
         int highCount = 0;
         long highBytes = 0;
@@ -390,7 +402,10 @@ public sealed class ClassificationEngine
                 names.Any ||
                     pathGlobs.Length > 0 ||
                     directoryNames is not null ||
-                    pathContains.Length > 0);
+                    pathContains.Length > 0 ||
+                    rule.SiblingGlobs.Count > 0 ||
+                    rule.ChildGlobs.Count > 0 ||
+                    !string.IsNullOrEmpty(rule.HeaderHex));
         }
 
         return compiled;

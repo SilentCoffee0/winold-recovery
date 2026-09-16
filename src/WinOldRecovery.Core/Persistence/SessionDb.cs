@@ -226,6 +226,7 @@ public sealed class SessionDb : IAsyncDisposable
 
                 foreach (PersistedNode node in nodes)
                 {
+                    token.ThrowIfCancellationRequested();
                     id.Value = node.Id;
                     sessionId.Value = node.SessionId;
                     profileId.Value = (object?)node.ProfileId ?? DBNull.Value;
@@ -242,7 +243,7 @@ public sealed class SessionDb : IAsyncDisposable
                         : DBNull.Value;
                     attributes.Value = node.Attributes;
                     problem.Value = node.Problem.ToString();
-                    await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                    command.ExecuteNonQuery();
                 }
 
                 transaction.Commit();
@@ -281,11 +282,12 @@ public sealed class SessionDb : IAsyncDisposable
 
                 foreach (NodeAggregateUpdate update in updates)
                 {
+                    token.ThrowIfCancellationRequested();
                     id.Value = update.Id;
                     aggSize.Value = update.AggSize;
                     aggFiles.Value = update.AggFiles;
                     problem.Value = update.Problem.ToString();
-                    await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                    command.ExecuteNonQuery();
                 }
 
                 transaction.Commit();
@@ -320,10 +322,11 @@ public sealed class SessionDb : IAsyncDisposable
 
                 foreach (NodeBadgeRow badge in badges)
                 {
+                    token.ThrowIfCancellationRequested();
                     nodeId.Value = badge.NodeId;
                     kind.Value = badge.Kind;
                     detail.Value = badge.Detail;
-                    await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                    command.ExecuteNonQuery();
                 }
 
                 transaction.Commit();
@@ -500,8 +503,9 @@ public sealed class SessionDb : IAsyncDisposable
                 SqliteParameter id = command.Parameters.Add("$id", SqliteType.Integer);
                 foreach (long nodeId in nodeIds)
                 {
+                    token.ThrowIfCancellationRequested();
                     id.Value = nodeId;
-                    await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                    command.ExecuteNonQuery();
                 }
 
                 transaction.Commit();
@@ -1024,6 +1028,47 @@ public sealed class SessionDb : IAsyncDisposable
             cancellationToken);
     }
 
+    public Task SetKvBatchAsync(
+        string sessionId,
+        IReadOnlyList<(string Key, string Value)> pairs,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentNullException.ThrowIfNull(pairs);
+        if (pairs.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        return WriteAsync(
+            async (connection, token) =>
+            {
+                using SqliteTransaction transaction = connection.BeginTransaction();
+                await using SqliteCommand command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText =
+                    """
+                    INSERT INTO kv(session_id, key, value)
+                    VALUES ($sessionId, $key, $value)
+                    ON CONFLICT(session_id, key) DO UPDATE SET value = excluded.value;
+                    """;
+                SqliteParameter sessionParam = command.Parameters.Add("$sessionId", SqliteType.Text);
+                SqliteParameter key = command.Parameters.Add("$key", SqliteType.Text);
+                SqliteParameter value = command.Parameters.Add("$value", SqliteType.Text);
+                foreach ((string pairKey, string pairValue) in pairs)
+                {
+                    token.ThrowIfCancellationRequested();
+                    sessionParam.Value = sessionId;
+                    key.Value = pairKey;
+                    value.Value = pairValue;
+                    command.ExecuteNonQuery();
+                }
+
+                transaction.Commit();
+            },
+            cancellationToken);
+    }
+
     public string? GetKv(string sessionId, string key)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
@@ -1446,6 +1491,9 @@ public sealed class SessionDb : IAsyncDisposable
             PRAGMA synchronous = NORMAL;
             PRAGMA foreign_keys = ON;
             PRAGMA busy_timeout = 5000;
+            PRAGMA temp_store = MEMORY;
+            PRAGMA cache_size = -65536;
+            PRAGMA wal_autocheckpoint = 10000;
             """;
         await settingsCommand
             .ExecuteNonQueryAsync(cancellationToken)
