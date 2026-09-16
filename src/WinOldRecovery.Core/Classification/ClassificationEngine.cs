@@ -39,7 +39,7 @@ public sealed class ClassificationEngine
         ArgumentNullException.ThrowIfNull(profiles);
 
         MatchScratch scratch = new();
-        Dictionary<long, IReadOnlyList<string>> childNames = new();
+        Dictionary<long, List<string>> childNames = sessionDb.LoadChildNamesByParent(sessionId);
         Dictionary<string, long> nodesByRelPath = new(StringComparer.OrdinalIgnoreCase);
         HashSet<string> wantedRelPaths = [];
         foreach (DetectedProfile profile in profiles)
@@ -75,16 +75,7 @@ public sealed class ClassificationEngine
                 MatchNode(
                     node,
                     scratch,
-                    id =>
-                    {
-                        if (!childNames.TryGetValue(id, out IReadOnlyList<string>? names))
-                        {
-                            names = sessionDb.ListChildNames(sessionId, id);
-                            childNames[id] = names;
-                        }
-
-                        return names;
-                    },
+                    id => childNames.TryGetValue(id, out List<string>? names) ? names : null,
                     sourceRoot);
             });
 

@@ -37,11 +37,26 @@ public sealed record TreeNodeRow(
     long RestoreBytes = 0,
     long LeaveBehindBytes = 0,
     long UndecidedBytes = 0,
-    bool IsGroupHeader = false)
+    bool IsGroupHeader = false,
+    int Depth = 0,
+    bool IsExpanded = false,
+    double PercentOfParent = 0)
 {
     public bool IsReparse => Kind is NodeKind.Junction or NodeKind.Symlink or NodeKind.MountPoint;
 
     public bool CanRestore => !IsReparse && !IsGroupHeader;
+
+    public bool CanExpand =>
+        !IsGroupHeader && Kind == NodeKind.Directory && ChildCount > 0;
+
+    public int DepthPx => Math.Max(0, Depth) * 16;
+
+    public string TreeGlyph => CanExpand ? (IsExpanded ? "▾" : "▸") : "  ";
+
+    public string PercentLabel =>
+        IsReparse || IsGroupHeader || PercentOfParent <= 0
+            ? "—"
+            : PercentOfParent.ToString("0.0", CultureInfo.InvariantCulture) + " %";
 
     public string DisplayName
     {

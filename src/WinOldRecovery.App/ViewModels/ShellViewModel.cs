@@ -209,10 +209,16 @@ public sealed class ShellViewModel : ObservableObject
             static card => card is { ShowVerbs: true });
         AnalyzeGitCommand = new AsyncRelayCommand(AnalyzeGitAsync, CanAnalyzeGit);
         ExpandCommand = new RelayCommand<TreeNodeRow>(Expand);
+        ToggleExpandCommand = new RelayCommand<TreeNodeRow>(ToggleExpand);
         ShowCardsCommand = new RelayCommand(
             () =>
             {
                 compactInspect = false;
+                if (scanCompleted)
+                {
+                    CurrentStep = WorkflowStep.Decide;
+                }
+
                 DecidePane = DecidePane.Cards;
                 OnPropertyChanged(nameof(CompactInspect));
             },
@@ -221,6 +227,11 @@ public sealed class ShellViewModel : ObservableObject
             () =>
             {
                 compactInspect = false;
+                if (scanCompleted)
+                {
+                    CurrentStep = WorkflowStep.Decide;
+                }
+
                 DecidePane = DecidePane.Files;
                 OnPropertyChanged(nameof(CompactInspect));
             },
@@ -325,6 +336,8 @@ public sealed class ShellViewModel : ObservableObject
     public IAsyncRelayCommand<OverviewCard> LeaveOverviewCardCommand { get; }
     public IAsyncRelayCommand AnalyzeGitCommand { get; }
     public IRelayCommand<TreeNodeRow> ExpandCommand { get; }
+
+    public IRelayCommand<TreeNodeRow> ToggleExpandCommand { get; }
     public IRelayCommand ShowCardsCommand { get; }
     public IRelayCommand ShowFilesCommand { get; }
     public IRelayCommand ShowInspectCommand { get; }
@@ -462,7 +475,12 @@ public sealed class ShellViewModel : ObservableObject
 
             SetProperty(ref currentStep, value);
             OnPropertyChanged(nameof(WindowTitle));
+            OnPropertyChanged(nameof(IsScanStep));
             OnPropertyChanged(nameof(IsDecideStep));
+            OnPropertyChanged(nameof(IsPreviewStep));
+            OnPropertyChanged(nameof(IsRestoreStep));
+            OnPropertyChanged(nameof(IsVerifyStep));
+            OnPropertyChanged(nameof(IsPurgeStep));
             if (value == WorkflowStep.Purge)
             {
                 RefreshPurgeSummary();
@@ -474,10 +492,20 @@ public sealed class ShellViewModel : ObservableObject
 
     public bool ScanCompleted => scanCompleted;
 
+    public bool IsScanStep => CurrentStep == WorkflowStep.Scan;
+
     public bool IsDecideStep => CurrentStep == WorkflowStep.Decide;
 
+    public bool IsPreviewStep => CurrentStep == WorkflowStep.Preview;
+
+    public bool IsRestoreStep => CurrentStep == WorkflowStep.Restore;
+
+    public bool IsVerifyStep => CurrentStep == WorkflowStep.Verify;
+
+    public bool IsPurgeStep => CurrentStep == WorkflowStep.Purge;
+
     public string DecideHint { get; } =
-        "Pick what to copy this time. Restore an app or folder without marking everything else Leave Behind — skip with Later (Undecided) and come back. Leave Behind still does not delete Windows.old.";
+        "Select what to copy, then Restore. Only the selection is marked; everything else stays Undecided so you can come back. Leave Behind still does not delete Windows.old.";
 
     public bool RestoreCompleted => restoreCompleted;
 
@@ -1380,7 +1408,7 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         NodePage page = nodeBrowser.GetChildren(row.Id);
-        ReplaceRowsUnder(row, page.Rows);
+        ReplaceRowsUnder(row with { IsExpanded = true }, page.Rows);
         ApplyPaging(page, row.Id);
     }
 
@@ -1394,7 +1422,7 @@ public sealed class ShellViewModel : ObservableObject
         int index = IndexOfRow(row.Id);
         if (index >= 0 && ExclusiveSubtreeEnd(index) > index + 1)
         {
-            ReplaceRowsUnder(row, []);
+            ReplaceRowsUnder(row with { IsExpanded = false }, []);
             if (pagedParentId == row.Id)
             {
                 ApplyPaging(new NodePage([], 0, false), row.Id);
@@ -2877,7 +2905,7 @@ public sealed class ShellViewModel : ObservableObject
             _ => nodeBrowser.GetChildren(null),
         };
 
-        foreach (TreeNodeRow row in PresentRows(page.Rows, append: false))
+        foreach (TreeNodeRow row in LayoutSiblings(PresentRows(page.Rows, append: false), 0, 0))
         {
             TreeRows.Add(row);
         }
@@ -3099,8 +3127,9 @@ public sealed class ShellViewModel : ObservableObject
             TreeRows.RemoveAt(i);
         }
 
+        TreeRows[index] = parent;
         int insertAt = index + 1;
-        foreach (TreeNodeRow child in children)
+        foreach (TreeNodeRow child in LayoutSiblings(children, parent.Depth + 1, parent.AggSize))
         {
             TreeRows.Insert(insertAt++, child);
         }
@@ -3117,10 +3146,54 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         int insertAt = ExclusiveSubtreeEnd(index);
-        foreach (TreeNodeRow child in children)
+        foreach (TreeNodeRow child in LayoutSiblings(children, parent.Depth + 1, parent.AggSize))
         {
             TreeRows.Insert(insertAt++, child);
         }
+    }
+
+    private static IReadOnlyList<TreeNodeRow> LayoutSiblings(
+        IReadOnlyList<TreeNodeRow> rows,
+        int depth,
+        long parentBytes)
+    {
+        if (rows.Count == 0)
+        {
+            return rows;
+        }
+
+        long total = parentBytes;
+        if (total <= 0)
+        {
+            foreach (TreeNodeRow row in rows)
+            {
+                total += row.AggSize;
+            }
+        }
+
+        List<TreeNodeRow> laidOut = new(rows.Count);
+        foreach (TreeNodeRow row in rows)
+        {
+            laidOut.Add(LayoutRow(row, depth, false, total));
+        }
+
+        return laidOut;
+    }
+
+    private static TreeNodeRow WithTreeLayout(TreeNodeRow fresh, TreeNodeRow layout)
+    {
+        return fresh with
+        {
+            Depth = layout.Depth,
+            IsExpanded = layout.IsExpanded,
+            PercentOfParent = layout.PercentOfParent,
+        };
+    }
+
+    private static TreeNodeRow LayoutRow(TreeNodeRow row, int depth, bool expanded, long parentBytes)
+    {
+        double percent = parentBytes > 0 ? 100.0 * row.AggSize / parentBytes : 0;
+        return row with { Depth = depth, IsExpanded = expanded, PercentOfParent = percent };
     }
 
     private int IndexOfRow(long id)
@@ -3192,10 +3265,11 @@ public sealed class ShellViewModel : ObservableObject
         {
             for (int i = 0; i < TreeRows.Count; i++)
             {
-                TreeNodeRow? fresh = nodeBrowser.GetNode(TreeRows[i].Id);
+                TreeNodeRow existing = TreeRows[i];
+                TreeNodeRow? fresh = nodeBrowser.GetNode(existing.Id);
                 if (fresh is not null)
                 {
-                    TreeRows[i] = fresh;
+                    TreeRows[i] = WithTreeLayout(fresh, existing);
                 }
             }
 
@@ -3208,7 +3282,8 @@ public sealed class ShellViewModel : ObservableObject
 
         if (SelectedNode is not null)
         {
-            SelectedNode = nodeBrowser.GetNode(SelectedNode.Id) ?? SelectedNode;
+            TreeNodeRow? listed = TreeRows.FirstOrDefault(row => row.Id == SelectedNode.Id);
+            SelectedNode = listed ?? nodeBrowser.GetNode(SelectedNode.Id) ?? SelectedNode;
         }
 
         RebuildCards(lastProfiles);

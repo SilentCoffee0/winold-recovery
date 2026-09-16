@@ -26,7 +26,7 @@ Guiding rules:
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Step bar**: six steps, linear. Steps become enabled as prerequisites are met. Going back is always allowed except during a running restore.
+- **Step bar**: six tabs (Scan, Decide, Preview, Restore, Verify, Purge). Steps become enabled as prerequisites are met. Going back is always allowed except during a running restore. The Scan source picker is only on the Scan tab so Decide can use the full pane for cards and the file tree.
 - **Status strip** (always visible):
   - Source-integrity indicator: "● Windows.old untouched" (green) until purge; during purge "Deleting…"; after purge "Windows.old removed".
   - Space budget: bytes selected for restore vs. free space on the destination volume(s). Turns amber at 90 % of free space minus the safety margin, red when it does not fit.
@@ -80,7 +80,7 @@ Scanning C:\Windows.old …
 
 ## 3. Step 2 — Decide
 
-The core screen. Two panes: **Overview/cards** on the left, **detail** on the right. A top toggle switches the left pane between **Apps & folders** (known apps, then personal folders) and **All files** (the tree). Restore is this pass; **Later** keeps the item Undecided so it can be restored afterwards. Leave Behind still does not delete.
+The core screen. Two panes: **Overview/cards** on the left, **detail** on the right. A top toggle switches the left pane between **Apps & folders** (known apps, then personal folders) and **All files** (the tree). **Restore** marks only the selection; items you did not select stay Undecided so you can restore them later. Leave Behind still does not delete.
 
 ### 3.1 Cards view
 
@@ -135,7 +135,7 @@ Cards for absent apps are collapsed to one line ("SSH keys: none found in this p
    ⊘ Application Data          junction  —        —            —           [points to new install]
 ```
 
-- **Virtualized** tree; expanding a node with 50,000 children must not freeze. Children beyond 2,000 per node are paged with a "show all" affordance.
+- **Virtualized** tree; expanding a node with 50,000 children must not freeze. Children beyond 2,000 per node are paged with a "show all" affordance. Folders show ▸/▾ and indent like Explorer; Size and **% of parent** sit next to the name.
 - **Decision column** shows the effective decision. Inherited decisions are dimmed and labelled "(inherited)". Mixed subtrees show "mixed" and a small stacked-bar (restore/leave/undecided by bytes).
 - **Badges** are classification results, never decisions. Examples: `[KeePass]`, `[High value]`, `[Regeneratable]`, `[Installer]`, `[Cloud placeholder]`, `[Encrypted (EFS)]`, `[Access denied]`, `[Long path]`, `[Git repo: unpushed]`, `[Syncthing folder]`, `[Symlink]`.
 - Junctions and symlinks appear greyed with ⊘ and cannot be selected for restore. Tooltip shows the target.

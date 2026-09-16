@@ -63,6 +63,53 @@ public sealed class RecipeIndexTests
     }
 
     [Fact]
+    public async Task Index_CountsImmediateChildDirectoriesUnderAppData()
+    {
+        await using RecipeIndexContext context = await RecipeIndexContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Created", "0.1.0"));
+        await context.Database.InsertNodesAsync(
+        [
+            Node(
+                1,
+                null,
+                "Extensions",
+                @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default\Extensions"),
+            Node(
+                2,
+                1,
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default\Extensions\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+            Node(
+                3,
+                1,
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default\Extensions\bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+            Node(
+                4,
+                2,
+                "1.0.0",
+                @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default\Extensions\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\1.0.0"),
+            Node(
+                5,
+                2,
+                "manifest.json",
+                @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default\Extensions\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\manifest.json",
+                NodeKind.File),
+        ]);
+
+        RecipeIndex index = new(
+            context.Database,
+            "session-1",
+            @"Users\Alice",
+            Path.Combine(context.Root, "Users", "Alice"));
+        Assert.Equal(
+            2,
+            index.CountChildDirectories(
+                Path.Combine("AppData", "Local", "Google", "Chrome", "User Data", "Default", "Extensions")));
+    }
+
+    [Fact]
     public async Task Index_IncludesOutlookAppDataPstWhenAppDataIsAllowed()
     {
         await using RecipeIndexContext context = await RecipeIndexContext.CreateAsync();

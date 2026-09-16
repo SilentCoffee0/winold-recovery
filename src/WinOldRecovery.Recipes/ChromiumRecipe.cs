@@ -53,7 +53,10 @@ public sealed class ChromiumRecipe : IRecipe
                 continue;
             }
 
-            int extensionCount = CountExtensionFolders(context.SafeFs, Path.Combine(entry, "Extensions"));
+            int extensionCount = CountExtensionFolders(
+                context,
+                Path.Combine(entry, "Extensions"),
+                Path.Combine(relativeUserData, name, "Extensions"));
             bool hasHistory = context.SafeFs.FileExists(Path.Combine(entry, "History"));
             bool hasSessions = HasSessionFiles(context.SafeFs, Path.Combine(entry, "Sessions"));
             bool hasAutofill = context.SafeFs.FileExists(Path.Combine(entry, "Web Data"));
@@ -502,9 +505,17 @@ public sealed class ChromiumRecipe : IRecipe
         return -1;
     }
 
-    private static int CountExtensionFolders(SafeFs safeFs, string extensionsRoot)
+    private static int CountExtensionFolders(
+        ProfileContext context,
+        string extensionsRoot,
+        string relativeUnderProfile)
     {
-        if (!safeFs.DirectoryExists(extensionsRoot))
+        if (context.Index is { } index)
+        {
+            return index.CountChildDirectories(relativeUnderProfile);
+        }
+
+        if (!context.SafeFs.DirectoryExists(extensionsRoot))
         {
             return 0;
         }
@@ -512,9 +523,9 @@ public sealed class ChromiumRecipe : IRecipe
         int count = 0;
         try
         {
-            foreach (string entry in safeFs.EnumerateFileSystemEntries(extensionsRoot))
+            foreach (string entry in context.SafeFs.EnumerateFileSystemEntries(extensionsRoot))
             {
-                if (safeFs.DirectoryExists(entry))
+                if (context.SafeFs.DirectoryExists(entry))
                 {
                     count++;
                 }

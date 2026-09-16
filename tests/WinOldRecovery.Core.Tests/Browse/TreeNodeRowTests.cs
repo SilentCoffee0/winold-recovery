@@ -155,6 +155,39 @@ public sealed class TreeNodeRowTests
         Assert.NotEqual(DecisionDisplay.SuggestedTooltip, row.DecisionTooltip);
     }
 
+    [Fact]
+    public void DirectoryWithChildren_ShowsFoldGlyphIndentAndPercent()
+    {
+        TreeNodeRow closed = new(
+            1,
+            null,
+            "Users",
+            "Users",
+            NodeKind.Directory,
+            0,
+            500,
+            10,
+            null,
+            NodeProblem.None,
+            Decision.Undecided,
+            false,
+            false,
+            4,
+            [],
+            Depth: 1,
+            IsExpanded: false,
+            PercentOfParent: 42.5);
+        Assert.True(closed.CanExpand);
+        Assert.Equal("▸", closed.TreeGlyph);
+        Assert.Equal(16, closed.DepthPx);
+        Assert.Equal("42.5 %", closed.PercentLabel);
+        Assert.Equal("▾", (closed with { IsExpanded = true }).TreeGlyph);
+        TreeNodeRow file = closed with { Kind = NodeKind.File, ChildCount = 0, PercentOfParent = 0 };
+        Assert.False(file.CanExpand);
+        Assert.Equal("  ", file.TreeGlyph);
+        Assert.Equal("—", file.PercentLabel);
+    }
+
     private static TreeNodeRow Row(
         NodeKind kind,
         string name,

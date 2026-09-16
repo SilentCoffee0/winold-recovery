@@ -66,6 +66,14 @@ public sealed class RecipeIndex
             excludeFolderName);
     }
 
+    public int CountChildDirectories(string relativeUnderProfile)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeUnderProfile);
+        return sessionDb.CountChildDirectories(
+            sessionId,
+            CombinePrefix(profileRelPrefix, relativeUnderProfile));
+    }
+
     public IReadOnlyList<string> FilesNamed(params string[] names)
     {
         ArgumentNullException.ThrowIfNull(names);

@@ -431,6 +431,63 @@ public sealed class ClassificationEngineTests
     }
 
     [Fact]
+    public async Task Classify_ThousandsOfBinDirectoriesDoNotQuerySqlitePerFolder()
+    {
+        await using ClassifyContext context = await ClassifyContext.CreateAsync();
+        List<PersistedNode> batch = [Node(1, null, string.Empty, "root", NodeKind.Directory, 0)];
+        long id = 1;
+        const int matched = 4000;
+        const int lonely = 4000;
+        for (int index = 0; index < matched; index++)
+        {
+            long parentId = ++id;
+            string parent = "p" + index.ToString("D4");
+            batch.Add(Node(parentId, 1, parent, parent, NodeKind.Directory, 0));
+            batch.Add(Node(++id, parentId, parent + "\\bin", "bin", NodeKind.Directory, 0));
+            batch.Add(
+                Node(++id, parentId, parent + "\\App.csproj", "App.csproj", NodeKind.File, 10));
+            if (batch.Count >= 5000)
+            {
+                await context.Database.InsertNodesAsync(batch);
+                batch.Clear();
+            }
+        }
+
+        for (int index = 0; index < lonely; index++)
+        {
+            long parentId = ++id;
+            string parent = "l" + index.ToString("D4");
+            batch.Add(Node(parentId, 1, parent, parent, NodeKind.Directory, 0));
+            batch.Add(Node(++id, parentId, parent + "\\bin", "bin", NodeKind.Directory, 0));
+            if (batch.Count >= 5000)
+            {
+                await context.Database.InsertNodesAsync(batch);
+                batch.Clear();
+            }
+        }
+
+        if (batch.Count > 0)
+        {
+            await context.Database.InsertNodesAsync(batch);
+        }
+
+        ClassificationEngine classifier = new(context.Database, context.SafeFs);
+        Stopwatch clock = Stopwatch.StartNew();
+        ClassificationSummary summary = await classifier.ClassifyAsync(
+            context.SessionId,
+            context.Root,
+            []);
+        clock.Stop();
+
+        Assert.Equal(matched, summary.RegeneratableCount);
+        Assert.True(
+            clock.Elapsed < TimeSpan.FromSeconds(3),
+            "ClassifyAsync for sibling-glob bin folders took " +
+            clock.Elapsed.TotalSeconds.ToString("0.000") +
+            " s.");
+    }
+
+    [Fact]
     public async Task Classify_OneMillionScaleLikeNodesMatchUnderFiveSeconds()
     {
         await using ClassifyContext context = await ClassifyContext.CreateAsync();

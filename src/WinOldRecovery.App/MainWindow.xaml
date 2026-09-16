@@ -239,16 +239,21 @@
 
                 <Grid Grid.Row="1">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <DockPanel Grid.Row="0" LastChildFill="True">
+                        <DockPanel.Style>
+                            <Style TargetType="DockPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsScanStep}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DockPanel.Style>
                         <Button DockPanel.Dock="Right" Margin="8,0,0,0" VerticalAlignment="Top"
                                 Content="Browse…" Command="{Binding BrowseSourceCommand}"
                                 AutomationProperties.Name="Browse for Windows.old"
@@ -292,7 +297,17 @@
                         </StackPanel>
                     </DockPanel>
 
-                    <DockPanel Grid.Row="1" Margin="0,8,0,8">
+                    <DockPanel Grid.Row="0" Margin="0,8,0,8">
+                        <DockPanel.Style>
+                            <Style TargetType="DockPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDecideStep}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DockPanel.Style>
                         <Border DockPanel.Dock="Top"
                                 AutomationProperties.Name="Decide hint">
                             <Border.Style>
@@ -516,6 +531,7 @@
                               VirtualizingPanel.VirtualizationMode="Recycling"
                               TextSearch.TextPath="Name"
                               SelectionChanged="OnFilesSelectionChanged"
+                              MouseDoubleClick="OnFilesDoubleClick"
                               AutomationProperties.Name="Recoverable files">
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem">
@@ -563,8 +579,28 @@
                         </ListView.ContextMenu>
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Name" DisplayMemberBinding="{Binding DisplayName}" Width="220" />
+                                <GridViewColumn Header="Name" Width="280">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border Width="{Binding DepthPx}" Background="Transparent" />
+                                                <Button Style="{StaticResource QuietButton}"
+                                                        MinWidth="22"
+                                                        MinHeight="22"
+                                                        Padding="0"
+                                                        Margin="0,0,4,0"
+                                                        Content="{Binding TreeGlyph}"
+                                                        Command="{Binding DataContext.ToggleExpandCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding CanExpand}"
+                                                        AutomationProperties.Name="Fold or expand folder" />
+                                                <TextBlock VerticalAlignment="Center" Text="{Binding DisplayName}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                                 <GridViewColumn Header="Size" DisplayMemberBinding="{Binding SizeLabel}" Width="90" />
+                                <GridViewColumn Header="%" DisplayMemberBinding="{Binding PercentLabel}" Width="56" />
                                 <GridViewColumn Header="Files" DisplayMemberBinding="{Binding FilesLabel}" Width="70" />
                                 <GridViewColumn Header="Modified" DisplayMemberBinding="{Binding ModifiedLabel}" Width="110" />
                                 <GridViewColumn Header="Decision" Width="160">
@@ -607,25 +643,34 @@
                         </TextBox>
                     </DockPanel>
 
-                    <StackPanel Grid.Row="2" Margin="0,4,0,0">
+                    <StackPanel Grid.Row="1" Margin="0,4,0,0">
                         <Border Style="{StaticResource CommandBar}">
                         <WrapPanel>
                         <Button Style="{StaticResource AccentButton}" Content="{Binding ScanButtonLabel}" Command="{Binding ScanCommand}" Margin="0,0,8,8"
+                                Visibility="{Binding IsScanStep, Converter={StaticResource VisibleWhenTrue}}"
                                 AutomationProperties.Name="Start scan" AutomationProperties.AutomationId="ScanButton" />
                         <Button Content="Pause" Command="{Binding PauseScanCommand}" Margin="0,0,8,8"
+                                Visibility="{Binding IsScanStep, Converter={StaticResource VisibleWhenTrue}}"
                                 AutomationProperties.Name="Pause scan" />
                         <Button Content="Cancel" Command="{Binding CancelScanCommand}" Margin="0,0,8,8"
+                                Visibility="{Binding IsScanStep, Converter={StaticResource VisibleWhenTrue}}"
                                 AutomationProperties.Name="Cancel scan" />
-                        <Button Content="Restore (R)" Command="{Binding RestoreCommand}" Margin="0,0,8,8"
-                                AutomationProperties.Name="Mark restore" />
+                        <Button Content="Restore selection (R)" Command="{Binding RestoreCommand}" Margin="0,0,8,8"
+                                Visibility="{Binding IsDecideStep, Converter={StaticResource VisibleWhenTrue}}"
+                                ToolTip="Marks only the selected apps or files Restore. Everything else stays Undecided."
+                                AutomationProperties.Name="Restore the selection" />
                         <Button Content="Leave Behind (L)" Command="{Binding LeaveBehindCommand}" Margin="0,0,8,8"
+                                Visibility="{Binding IsDecideStep, Converter={StaticResource VisibleWhenTrue}}"
                                 AutomationProperties.Name="Mark leave behind" />
                         <Button Content="Undecided (U)" Command="{Binding UndecidedCommand}" Margin="0,0,8,8"
+                                Visibility="{Binding IsDecideStep, Converter={StaticResource VisibleWhenTrue}}"
                                 AutomationProperties.Name="Mark undecided" />
                         <Button Content="Undo (Ctrl+Z)" Command="{Binding UndoDecisionCommand}" Margin="0,0,8,8"
+                                Visibility="{Binding IsDecideStep, Converter={StaticResource VisibleWhenTrue}}"
                                 AutomationProperties.Name="Undo last decision"
                                 AutomationProperties.AutomationId="UndoDecisionButton" />
                         <Button Content="Open Folder (O)" Command="{Binding OpenFolderCommand}" Margin="0,0,8,8"
+                                Visibility="{Binding IsDecideStep, Converter={StaticResource VisibleWhenTrue}}"
                                 AutomationProperties.Name="Open folder" />
                         <Button Content="Preview plan" Command="{Binding PreparePreviewCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Preview plan"
@@ -634,26 +679,30 @@
                                 AutomationProperties.Name="Run restore"
                                 AutomationProperties.AutomationId="RunRestoreButton" />
                         <Button Content="Cancel restore" Command="{Binding CancelRestoreCommand}" Margin="0,0,8,8"
+                                Visibility="{Binding IsRestoreStep, Converter={StaticResource VisibleWhenTrue}}"
                                 AutomationProperties.Name="Cancel restore"
                                 AutomationProperties.AutomationId="CancelRestoreButton" />
                         <Button Content="Pause restore" Command="{Binding PauseRestoreCommand}" Margin="0,0,8,8"
+                                Visibility="{Binding IsRestoreStep, Converter={StaticResource VisibleWhenTrue}}"
                                 AutomationProperties.Name="Pause restore"
                                 AutomationProperties.AutomationId="PauseRestoreButton" />
                         <Button Content="Verify" Command="{Binding ExecuteVerifyCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Run verify"
                                 AutomationProperties.AutomationId="RunVerifyButton" />
                         <Button Content="Expand" Command="{Binding ExpandCommand}" CommandParameter="{Binding SelectedNode}" Margin="0,0,8,8"
+                                Visibility="{Binding IsDecideStep, Converter={StaticResource VisibleWhenTrue}}"
                                 AutomationProperties.Name="Expand folder" />
                         <Button Content="Show more" Command="{Binding ShowMoreCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Show more children"
                                 Visibility="{Binding TreeTruncated, Converter={StaticResource VisibleWhenTrue}}" />
                         <Button Content="Reveal in tree" Command="{Binding RevealInTreeCommand}" Margin="0,0,8,8"
+                                Visibility="{Binding IsDecideStep, Converter={StaticResource VisibleWhenTrue}}"
                                 AutomationProperties.Name="Reveal in tree" />
                         <TextBlock Margin="4,8,8,8" VerticalAlignment="Center" Text="{Binding PagingStatus}" />
                         </WrapPanel>
                         </Border>
                     </StackPanel>
-                    <DockPanel Grid.Row="3">
+                    <DockPanel Grid.Row="0">
                         <DockPanel.Style>
                             <Style TargetType="DockPanel">
                                 <Setter Property="Visibility" Value="Collapsed" />
@@ -756,7 +805,7 @@
                             </ListBox.ItemTemplate>
                         </ListBox>
                     </DockPanel>
-                    <DockPanel Grid.Row="4" Margin="0,8,0,0">
+                    <DockPanel Grid.Row="0" Margin="0,8,0,0">
                         <DockPanel.Style>
                             <Style TargetType="DockPanel">
                                 <Setter Property="Visibility" Value="Collapsed" />
@@ -797,7 +846,7 @@
                                  AutomationProperties.Name="Restore jobs"
                                  AutomationProperties.AutomationId="RestoreJobsList" />
                     </DockPanel>
-                    <DockPanel Grid.Row="5" Margin="0,8,0,0">
+                    <DockPanel Grid.Row="0" Margin="0,8,0,0">
                         <DockPanel.Style>
                             <Style TargetType="DockPanel">
                                 <Setter Property="Visibility" Value="Collapsed" />
@@ -831,7 +880,7 @@
                                     AutomationProperties.AutomationId="GoToPurgeButton" />
                         </StackPanel>
                     </DockPanel>
-                    <StackPanel Grid.Row="6" Margin="0,8,0,0">
+                    <StackPanel Grid.Row="0" Margin="0,8,0,0">
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
                                 <Setter Property="Visibility" Value="Collapsed" />

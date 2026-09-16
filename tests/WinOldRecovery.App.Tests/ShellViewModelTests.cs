@@ -888,15 +888,15 @@ public sealed class ShellViewModelTests
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();
         string source = Path.Combine(context.Root, "Windows.old");
-        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Stuff"));
         await File.WriteAllTextAsync(
             Path.Combine(source, "Users", "Alice", "NTUSER.DAT"),
             "hive");
         await File.WriteAllTextAsync(
-            Path.Combine(source, "Users", "Alice", "Desktop", "a.txt"),
+            Path.Combine(source, "Users", "Alice", "Stuff", "a.txt"),
             "a");
         await File.WriteAllTextAsync(
-            Path.Combine(source, "Users", "Alice", "Desktop", "b.txt"),
+            Path.Combine(source, "Users", "Alice", "Stuff", "b.txt"),
             "b");
         context.ViewModel.SelectedSourcePath = source;
         await context.ViewModel.ScanCommand.ExecuteAsync(null);
@@ -904,7 +904,7 @@ public sealed class ShellViewModelTests
         ExpandDirectories(context);
         ExpandDirectories(context);
         context.ViewModel.Expand(FindRow(context, "Alice"));
-        context.ViewModel.Expand(FindRow(context, "Desktop"));
+        context.ViewModel.Expand(FindRow(context, "Stuff"));
 
         TreeNodeRow a = FindRow(context, "a.txt");
         TreeNodeRow b = FindRow(context, "b.txt");
@@ -913,6 +913,13 @@ public sealed class ShellViewModelTests
 
         Assert.Equal(Decision.Restore, FindRow(context, "a.txt").EffectiveDecision);
         Assert.Equal(Decision.Restore, FindRow(context, "b.txt").EffectiveDecision);
+        Assert.Equal(Decision.Undecided, FindRow(context, "Stuff").EffectiveDecision);
+        Assert.False(FindRow(context, "Stuff").HasOwnUserDecision);
+
+        TreeNodeRow stuff = FindRow(context, "Stuff");
+        Assert.Equal("▾", stuff.TreeGlyph);
+        Assert.True(FindRow(context, "a.txt").Depth > stuff.Depth);
+        Assert.Contains("%", stuff.PercentLabel, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1133,7 +1140,8 @@ public sealed class ShellViewModelTests
         await context.ViewModel.ScanCommand.ExecuteAsync(null);
 
         Assert.True(context.ViewModel.IsDecideStep);
-        Assert.Contains("Later", context.ViewModel.DecideHint, StringComparison.Ordinal);
+        Assert.False(context.ViewModel.IsScanStep);
+        Assert.Contains("Only the selection is marked", context.ViewModel.DecideHint, StringComparison.Ordinal);
         List<OverviewCard> cards = [.. context.ViewModel.Cards];
         int apps = cards.FindIndex(card => card.Kind == "Section" && card.Title == "Apps");
         int sshCard = cards.FindIndex(card => card.Kind == "ssh");

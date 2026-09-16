@@ -2,6 +2,7 @@
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Media;
 using WinOldRecovery.App.ViewModels;
 using WinOldRecovery.Core.Browse;
 
@@ -125,5 +126,34 @@ public partial class MainWindow : Window
         }
 
         ViewModel.ReplaceSelection(rows);
+    }
+
+    private void OnFilesDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) is not null)
+        {
+            return;
+        }
+
+        if (ViewModel.SelectedNode is { CanExpand: true } row)
+        {
+            ViewModel.ToggleExpand(row);
+        }
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? current)
+        where T : DependencyObject
+    {
+        while (current is not null)
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
     }
 }

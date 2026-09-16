@@ -3488,6 +3488,107 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Chromium_Detect_CountsExtensionsFromRecipeIndexWithoutWalking()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string extensions = Path.Combine(
+            alice,
+            "AppData",
+            "Local",
+            "Google",
+            "Chrome",
+            "User Data",
+            "Default",
+            "Extensions");
+        Directory.CreateDirectory(Path.Combine(extensions, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+        Directory.CreateDirectory(Path.Combine(extensions, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+        Directory.CreateDirectory(Path.Combine(extensions, "cccccccccccccccccccccccccccccccc"));
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, "AppData", "Local", "Google", "Chrome", "User Data", "Default", "Bookmarks"),
+            """{"roots":{"bookmark_bar":{"children":[]}}}""");
+        const string extensionsRel =
+            @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default\Extensions";
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "Extensions",
+                extensionsRel,
+                NodeKind.Directory,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                2,
+                "session-1",
+                null,
+                1,
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                extensionsRel + @"\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                NodeKind.Directory,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                3,
+                "session-1",
+                null,
+                1,
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                extensionsRel + @"\bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                NodeKind.Directory,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+
+        ChromiumRecipe recipe = new(
+            "chrome",
+            "Google Chrome",
+            Path.Combine("AppData", "Local", "Google", "Chrome", "User Data"));
+        RecipeCard fromIndex = Assert.Single(
+            recipe.Detect(
+                new ProfileContext(
+                    "Alice",
+                    alice,
+                    context.Destination,
+                    context.Temp,
+                    context.Exports,
+                    context.SafeFs,
+                    context.Runner,
+                    new RecipeIndex(
+                        context.Database,
+                        "session-1",
+                        @"Users\Alice",
+                        alice))).Cards);
+        Assert.Equal("2", fromIndex.Facts["extensions"]);
+        RecipeCard fromDisk = Assert.Single(
+            recipe.Detect(
+                new ProfileContext(
+                    "Alice",
+                    alice,
+                    context.Destination,
+                    context.Temp,
+                    context.Exports,
+                    context.SafeFs,
+                    context.Runner)).Cards);
+        Assert.Equal("3", fromDisk.Facts["extensions"]);
+    }
+
+    [Fact]
     public async Task Chromium_Transplant_DisabledWhenDestLastVersionOlder()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();

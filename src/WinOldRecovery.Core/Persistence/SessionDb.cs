@@ -507,6 +507,36 @@ public sealed class SessionDb : IAsyncDisposable
         return names;
     }
 
+    public Dictionary<long, List<string>> LoadChildNamesByParent(string sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT parent_id, name
+            FROM nodes
+            WHERE session_id = $sessionId AND parent_id IS NOT NULL;
+            """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        Dictionary<long, List<string>> names = [];
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            long parentId = reader.GetInt64(0);
+            if (!names.TryGetValue(parentId, out List<string>? children))
+            {
+                children = [];
+                names[parentId] = children;
+            }
+
+            children.Add(reader.GetString(1));
+        }
+
+        return names;
+    }
+
     private static ClassificationNodeRow ReadClassificationNodeRow(SqliteDataReader reader)
     {
         return new ClassificationNodeRow(
@@ -1630,6 +1660,32 @@ public sealed class SessionDb : IAsyncDisposable
             """ + RelPathPrefixSql("rel_path", prefix) + excludeSql + ";";
         command.Parameters.AddWithValue("$sessionId", sessionId);
         BindRelPathPrefix(command, prefix);
+        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
+    public int CountChildDirectories(string sessionId, string parentRelPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        string prefix = (parentRelPath ?? string.Empty).Replace('/', '\\').Trim('\\');
+        if (string.IsNullOrEmpty(prefix))
+        {
+            return 0;
+        }
+
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT COUNT(*)
+            FROM nodes AS child
+            INNER JOIN nodes AS parent ON parent.id = child.parent_id
+            WHERE child.session_id = $sessionId
+              AND parent.session_id = $sessionId
+              AND parent.rel_path = $prefix
+              AND child.kind = 'Directory';
+            """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        command.Parameters.AddWithValue("$prefix", prefix);
         return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 
