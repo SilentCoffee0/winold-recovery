@@ -15,27 +15,28 @@ public sealed class AnkiRecipe : IRecipe
         List<(string RelativePath, string Kind, string Detail)> badges = [];
         foreach (string baseFolder in AnkiBaseDiscovery.CandidateBases(context))
         {
-            if (!context.SafeFs.DirectoryExists(baseFolder))
-            {
-                continue;
-            }
-
             foreach (string profile in AnkiProfileDirectories(context, baseFolder))
             {
-                if (!context.SafeFs.DirectoryExists(profile))
-                {
-                    continue;
-                }
-
                 string collection = Path.Combine(profile, "collection.anki2");
-                if (!context.SafeFs.FileExists(collection))
+                bool hasWal;
+                if (TryIndexRelative(context, profile, out RecipeIndex index, out string profileRelative) &&
+                    DetectorWalk.IndexedImmediatePath(index, profile, profileRelative, "collection.anki2") is not null)
                 {
-                    continue;
+                    hasWal = DetectorWalk.IndexedImmediatePath(index, profile, profileRelative, "collection.anki2-wal") is not null;
+                }
+                else
+                {
+                    if (!context.SafeFs.DirectoryExists(profile) ||
+                        !context.SafeFs.FileExists(collection))
+                    {
+                        continue;
+                    }
+
+                    hasWal = context.SafeFs.FileExists(Path.Combine(profile, "collection.anki2-wal"));
                 }
 
                 (int notes, int cardCount, string integrity, string schema) = ReadCollectionFacts(context, collection, Path.GetFileName(profile));
                 int media = CountMedia(context, Path.Combine(profile, "collection.media"));
-                bool hasWal = context.SafeFs.FileExists(Path.Combine(profile, "collection.anki2-wal"));
                 (int backups, string newestBackup) = CountBackups(context, Path.Combine(profile, "backups"));
                 int addons = CountAddons(context, Path.Combine(baseFolder, "addons21"));
                 string destAnki = Path.Combine(context.DestinationProfileRoot, "AppData", "Roaming", "Anki2");

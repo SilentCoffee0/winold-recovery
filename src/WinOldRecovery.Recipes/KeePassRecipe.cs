@@ -25,10 +25,27 @@ public sealed class KeePassRecipe : IRecipe
             List<string> keys = [];
             foreach (string extension in new[] { ".keyx", ".key" })
             {
-                string sibling = Path.Combine(directory, stem + extension);
-                if (context.SafeFs.FileExists(sibling))
+                string keyName = stem + extension;
+                if (context.Index is { } index)
                 {
-                    keys.Add(sibling);
+                    string relative = DetectorWalk.RelativeUnder(context.OldProfileRoot, directory);
+                    string? indexed = DetectorWalk.IndexedImmediatePath(
+                        index,
+                        directory,
+                        string.IsNullOrWhiteSpace(relative) || relative == "." ? null : relative,
+                        keyName);
+                    if (indexed is not null)
+                    {
+                        keys.Add(indexed);
+                    }
+                }
+                else
+                {
+                    string sibling = Path.Combine(directory, keyName);
+                    if (context.SafeFs.FileExists(sibling))
+                    {
+                        keys.Add(sibling);
+                    }
                 }
             }
 

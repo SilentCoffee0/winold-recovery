@@ -112,7 +112,10 @@ public sealed class WslRecipe : IRecipe
         }
 
         string wsl1 = Path.Combine(context.OldProfileRoot, "AppData", "Local", "lxss");
-        if (context.SafeFs.DirectoryExists(wsl1))
+        bool wsl1Present = context.Index is { } index
+            ? DetectorWalk.IndexedChildFolder(index, Path.Combine("AppData", "Local"), "lxss")
+            : context.SafeFs.DirectoryExists(wsl1);
+        if (wsl1Present)
         {
             cards.Add(
                 new RecipeCard(

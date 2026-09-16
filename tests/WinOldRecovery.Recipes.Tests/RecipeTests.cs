@@ -2725,6 +2725,36 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Wsl_Detect_FindsLxssFromRecipeIndexWithoutWalkingLocal()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string lxss = Path.Combine(alice, "AppData", "Local", "lxss");
+        Directory.CreateDirectory(lxss);
+        const string localRel = @"Users\Alice\AppData\Local";
+        await context.Database.InsertNodesAsync(
+        [
+            Indexed(1, null, "Local", localRel, NodeKind.Directory),
+        ]);
+
+        WslRecipe recipe = new();
+        Assert.DoesNotContain(
+            recipe.Detect(WithIndex(context, alice)).Cards,
+            card => card.Facts.GetValueOrDefault("wsl1") == "1");
+        RecipeCard fromDisk = Assert.Single(recipe.Detect(WithoutIndex(context, alice)).Cards);
+        Assert.Equal("1", fromDisk.Facts["wsl1"]);
+        Assert.Equal(lxss, fromDisk.Facts["source"]);
+
+        await context.Database.InsertNodesAsync(
+        [
+            Indexed(2, 1, "lxss", localRel + @"\lxss", NodeKind.Directory),
+        ]);
+        RecipeCard fromIndex = Assert.Single(recipe.Detect(WithIndex(context, alice)).Cards);
+        Assert.Equal("1", fromIndex.Facts["wsl1"]);
+        Assert.Equal(lxss, fromIndex.Facts["source"]);
+    }
+
+    [Fact]
     public async Task Terminal_Detect_FindsSettingsFromRecipeIndexWithoutWalkingPackages()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
@@ -3977,6 +4007,8 @@ public sealed class RecipeTests
             CREATE TABLE notes(id INTEGER PRIMARY KEY, guid TEXT);
             CREATE TABLE cards(id INTEGER PRIMARY KEY, nid INTEGER);
             """);
+        await File.WriteAllTextAsync(Path.Combine(user1, "collection.anki2-wal"), "wal");
+        await File.WriteAllTextAsync(Path.Combine(user2, "collection.anki2-wal"), "wal");
         const string user1Rel = @"Users\Alice\AppData\Roaming\Anki2\User 1";
         await context.Database.InsertNodesAsync(
         [
@@ -3987,10 +4019,46 @@ public sealed class RecipeTests
         AnkiRecipe recipe = new();
         RecipeCard fromIndex = Assert.Single(recipe.Detect(WithIndex(context, alice)).Cards);
         Assert.Contains("User 1", fromIndex.Title, StringComparison.Ordinal);
+        Assert.DoesNotContain("WAL", fromIndex.WhatIsRestored, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(
             recipe.Detect(WithIndex(context, alice)).Cards,
             card => card.Title.Contains("User 2", StringComparison.Ordinal));
-        Assert.Equal(2, recipe.Detect(WithoutIndex(context, alice)).Cards.Count);
+        IReadOnlyList<RecipeCard> fromDisk = recipe.Detect(WithoutIndex(context, alice)).Cards;
+        Assert.Equal(2, fromDisk.Count);
+        RecipeCard fromDiskUser1 = Assert.Single(
+            fromDisk,
+            card => card.Title.Contains("User 1", StringComparison.Ordinal));
+        Assert.Contains("WAL", fromDiskUser1.WhatIsRestored, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task KeePass_Detect_FindsSiblingKeysFromRecipeIndexWithoutWalkingDocuments()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string passwords = Path.Combine(alice, "Documents", "Passwords");
+        Directory.CreateDirectory(passwords);
+        await File.WriteAllTextAsync(Path.Combine(passwords, "indexed.kdbx"), "keepass");
+        await File.WriteAllTextAsync(Path.Combine(passwords, "indexed.keyx"), "key");
+        await File.WriteAllTextAsync(Path.Combine(passwords, "walked.kdbx"), "keepass");
+        await File.WriteAllTextAsync(Path.Combine(passwords, "walked.keyx"), "key");
+        const string indexedRel = @"Users\Alice\Documents\Passwords";
+        await context.Database.InsertNodesAsync(
+        [
+            Indexed(1, null, "Passwords", indexedRel, NodeKind.Directory),
+            Indexed(2, 1, "indexed.kdbx", indexedRel + @"\indexed.kdbx"),
+        ]);
+
+        KeePassRecipe recipe = new();
+        RecipeCard fromIndex = Assert.Single(recipe.Detect(WithIndex(context, alice)).Cards);
+        Assert.EndsWith("indexed.kdbx", fromIndex.Facts["source"], StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(string.Empty, fromIndex.Facts["keys"]);
+        IReadOnlyList<RecipeCard> fromDisk = recipe.Detect(WithoutIndex(context, alice)).Cards;
+        Assert.Equal(2, fromDisk.Count);
+        RecipeCard fromDiskIndexed = Assert.Single(
+            fromDisk,
+            card => card.Facts["source"].EndsWith("indexed.kdbx", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("indexed.keyx", fromDiskIndexed.Facts["keys"], StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
