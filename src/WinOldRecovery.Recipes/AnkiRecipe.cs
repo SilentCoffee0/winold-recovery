@@ -180,8 +180,52 @@ public sealed class AnkiRecipe : IRecipe
             return new RecipeVerifyResult(false, "Regeneratable Anki media index or trash was planned");
         }
 
-        bool ok = plan.Writes.All(static write => File.Exists(write.DestinationPath));
-        return new RecipeVerifyResult(ok, ok ? "Anki profile files present" : "Anki destination missing");
+        if (plan.Writes.Any(static write => !File.Exists(write.DestinationPath)))
+        {
+            return new RecipeVerifyResult(false, "Anki destination missing");
+        }
+
+        string? collection = plan.Writes
+            .Select(static write => write.DestinationPath)
+            .FirstOrDefault(static path =>
+                path.EndsWith("collection.anki2", StringComparison.OrdinalIgnoreCase));
+        if (collection is null)
+        {
+            return new RecipeVerifyResult(true, "Anki profile files present");
+        }
+
+        try
+        {
+            using SqliteConnection connection = ReadOnlySqlite.OpenReadOnly(collection);
+            string integrity = Scalar(connection, "PRAGMA integrity_check;") ?? "unknown";
+            if (!integrity.Equals("ok", StringComparison.OrdinalIgnoreCase))
+            {
+                return new RecipeVerifyResult(false, "Anki collection integrity " + integrity);
+            }
+
+            if (plan.Card.Facts.TryGetValue("notes", out string? expectedNotes) &&
+                int.TryParse(expectedNotes, System.Globalization.CultureInfo.InvariantCulture, out int wanted) &&
+                TableCount(connection, "notes") != wanted)
+            {
+                return new RecipeVerifyResult(false, "Anki note count mismatch");
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or SqliteException)
+        {
+            return new RecipeVerifyResult(false, "Anki collection unreadable");
+        }
+
+        if (plan.Card.Facts.TryGetValue("newestBackup", out string? newest) &&
+            !string.IsNullOrWhiteSpace(newest) &&
+            plan.Writes.Any(static write => write.ComponentKey == "backups") &&
+            !plan.Writes.Any(write =>
+                write.DestinationPath.EndsWith(newest, StringComparison.OrdinalIgnoreCase)))
+        {
+            return new RecipeVerifyResult(false, "Anki newest backup missing");
+        }
+
+        return new RecipeVerifyResult(true, "Anki collection integrity ok");
     }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>

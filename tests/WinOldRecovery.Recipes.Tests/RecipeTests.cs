@@ -2140,6 +2140,7 @@ public sealed class RecipeTests
         PlanResult ankiPlan = host.PlanCard(new AnkiRecipe(), ankiCard, Dest(context));
         await host.ExecuteAsync("session-1", new AnkiRecipe(), ankiPlan);
         Assert.True(new AnkiRecipe().Verify(ankiPlan).Ok);
+        Assert.Contains("integrity ok", new AnkiRecipe().Verify(ankiPlan).Detail, StringComparison.OrdinalIgnoreCase);
         string destAnki = Path.Combine(context.Destination, "AppData", "Roaming", "Anki2", "User 1");
         Assert.True(File.Exists(Path.Combine(destAnki, "collection.anki2-wal")));
         Assert.True(File.Exists(Path.Combine(destAnki, "collection.media", "image.png")));

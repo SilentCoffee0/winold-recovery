@@ -10,6 +10,7 @@ All notable changes to WinOld Recovery will be documented here.
 - Scan indexing writes nodes with synchronous SQLite inserts, a 64 MB page cache, and memory temp tables. Classify applies suggested defaults in one writer transaction (no per-node undo/subtree CTE). Optional hash-during-scan stores SHA-256 in batches of 64. Node inserts use 48-row `VALUES` statements, badges use 96-row `INSERT OR IGNORE`, folder-size rollups use 32-row `CASE` updates, and hash kv uses 64-row upserts. Schema v4 adds `(session_id, name)` and `(session_id, rel_path)` indexes so post-scan recipe detect can use prefix GLOB instead of scanning every node.
 - GUI startup peeks leftover session databases and creates the new session folder at the same time. An unused new session is deleted when an interrupted restore is reopened.
 - After a scan, Git/KeePass/Obsidian/Outlook and Anki Start-menu `.lnk` detect use the node index instead of walking the profile again. Anki still reads `-b` bytes from those shortcuts. Detect without a walker checkpoint still walks the disk (unit tests).
+- Anki L3 verify opens the restored `collection.anki2` for `PRAGMA integrity_check` and note-count compare, and fails if the newest `.colpkg` was planned but missing.
 
 ### Fixed
 
