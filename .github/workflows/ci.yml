@@ -11,10 +11,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up .NET 10
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
 
@@ -52,7 +52,7 @@ jobs:
           Write-Host "Published $($files[0].Name) ($($files[0].Length) bytes)"
 
       - name: Upload unsigned x64 artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: WinOldRecovery-win-x64
           path: src/WinOldRecovery.App/bin/publish/win-x64/WinOldRecovery.exe
@@ -74,7 +74,7 @@ jobs:
           -p:PublishProfile=win-arm64
 
       - name: Upload unsigned ARM64 artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: WinOldRecovery-win-arm64
           path: src/WinOldRecovery.App/bin/publish/win-arm64/WinOldRecovery.exe
