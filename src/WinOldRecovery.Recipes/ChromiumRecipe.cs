@@ -38,7 +38,11 @@ public sealed class ChromiumRecipe : IRecipe
 
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
-        ChromiumUserDataMeta localState = ChromiumLocalState.Read(context.SafeFs, userData);
+        ChromiumUserDataMeta localState = ChromiumLocalState.Read(
+            context.SafeFs,
+            userData,
+            context.Index,
+            relativeUserData);
         foreach (string entry in profiles)
         {
             string name = Path.GetFileName(entry);

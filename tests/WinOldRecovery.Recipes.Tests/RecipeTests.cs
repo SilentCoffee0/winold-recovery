@@ -2318,6 +2318,36 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Syncthing_Detect_ReadsGuiTlsFromRecipeIndexWithoutWalkingHome()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string home = Path.Combine(alice, "AppData", "Local", "Syncthing");
+        Directory.CreateDirectory(Path.Combine(home, "gui"));
+        await File.WriteAllTextAsync(Path.Combine(home, "cert.pem"), CreateCertificatePem());
+        await File.WriteAllTextAsync(Path.Combine(home, "key.pem"), "key");
+        await File.WriteAllTextAsync(Path.Combine(home, "config.xml"), """<configuration version="37"></configuration>""");
+        await File.WriteAllTextAsync(Path.Combine(home, "https-cert.pem"), "gui-cert");
+        await File.WriteAllTextAsync(Path.Combine(home, "gui", "theme.css"), "css");
+        const string homeRel = @"Users\Alice\AppData\Local\Syncthing";
+        await context.Database.InsertNodesAsync(
+        [
+            Indexed(1, null, "Syncthing", homeRel, NodeKind.Directory),
+            Indexed(2, 1, "cert.pem", homeRel + @"\cert.pem"),
+            Indexed(3, 1, "key.pem", homeRel + @"\key.pem"),
+            Indexed(4, 1, "config.xml", homeRel + @"\config.xml"),
+        ]);
+
+        SyncthingRecipe recipe = new();
+        RecipeCard fromIndex = Assert.Single(recipe.Detect(WithIndex(context, alice)).Cards);
+        Assert.Equal("0", fromIndex.Facts["guiTls"]);
+        Assert.Equal("0", fromIndex.Facts["hasGui"]);
+        RecipeCard fromDisk = Assert.Single(recipe.Detect(WithoutIndex(context, alice)).Cards);
+        Assert.Equal("1", fromDisk.Facts["guiTls"]);
+        Assert.Equal("1", fromDisk.Facts["hasGui"]);
+    }
+
+    [Fact]
     public async Task Gpg_Detect_FindsRelocatedHomeFromRecipeIndex()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
@@ -3961,6 +3991,10 @@ public sealed class RecipeTests
         await File.WriteAllTextAsync(Path.Combine(defaultProfile, "Web Data"), "w");
         await File.WriteAllTextAsync(Path.Combine(extra, "History"), "h");
         await File.WriteAllTextAsync(Path.Combine(extra, "Web Data"), "w");
+        await File.WriteAllTextAsync(Path.Combine(userData, "Last Version"), "131.0.6778.86\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(userData, "Local State"),
+            """{"profile":{"info_cache":{"Default":{"name":"Work","user_name":"alice@example.invalid"}}}}""");
         const string defaultRel = @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default";
         await context.Database.InsertNodesAsync(
         [
@@ -3978,12 +4012,16 @@ public sealed class RecipeTests
         Assert.Equal("1", fromIndex.Facts["sessionsPresent"]);
         Assert.Equal("0", fromIndex.Facts["historyPresent"]);
         Assert.Equal("0", fromIndex.Facts["autofillPresent"]);
+        Assert.Equal("Default", fromIndex.Facts["displayName"]);
+        Assert.Equal(string.Empty, fromIndex.Facts["browserVersion"]);
         IReadOnlyList<RecipeCard> fromDisk = recipe.Detect(WithoutIndex(context, alice)).Cards;
         Assert.Equal(2, fromDisk.Count);
         Assert.Contains(fromDisk, card => card.Facts["folder"] == "Profile 1");
         RecipeCard fromDiskDefault = Assert.Single(fromDisk, card => card.Facts["folder"] == "Default");
         Assert.Equal("1", fromDiskDefault.Facts["historyPresent"]);
         Assert.Equal("1", fromDiskDefault.Facts["autofillPresent"]);
+        Assert.Equal("Work", fromDiskDefault.Facts["displayName"]);
+        Assert.Equal("131.0.6778.86", fromDiskDefault.Facts["browserVersion"]);
     }
 
     [Fact]

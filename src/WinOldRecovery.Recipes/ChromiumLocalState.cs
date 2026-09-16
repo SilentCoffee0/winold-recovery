@@ -2,16 +2,21 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using WinOldRecovery.Core.IO;
+using WinOldRecovery.Core.Recipes;
 
 namespace WinOldRecovery.Recipes;
 
 internal static class ChromiumLocalState
 {
-    public static ChromiumUserDataMeta Read(SafeFs safeFs, string userData)
+    public static ChromiumUserDataMeta Read(
+        SafeFs safeFs,
+        string userData,
+        RecipeIndex? index = null,
+        string? relativeUserData = null)
     {
         string version = string.Empty;
         string lastVersion = Path.Combine(userData, "Last Version");
-        if (safeFs.FileExists(lastVersion))
+        if (HasImmediateFile(safeFs, index, userData, relativeUserData, "Last Version"))
         {
             try
             {
@@ -24,7 +29,7 @@ internal static class ChromiumLocalState
 
         Dictionary<string, ChromiumProfileLabel> profiles = new(StringComparer.OrdinalIgnoreCase);
         string localState = Path.Combine(userData, "Local State");
-        if (!safeFs.FileExists(localState))
+        if (!HasImmediateFile(safeFs, index, userData, relativeUserData, "Local State"))
         {
             return new ChromiumUserDataMeta(version, profiles);
         }
@@ -114,6 +119,21 @@ internal static class ChromiumLocalState
             property.ValueKind == JsonValueKind.String
             ? property.GetString() ?? string.Empty
             : string.Empty;
+    }
+
+    private static bool HasImmediateFile(
+        SafeFs safeFs,
+        RecipeIndex? index,
+        string directory,
+        string? relativeUnderProfile,
+        string name)
+    {
+        if (index is not null)
+        {
+            return DetectorWalk.IndexedImmediatePath(index, directory, relativeUnderProfile, name) is not null;
+        }
+
+        return safeFs.FileExists(Path.Combine(directory, name));
     }
 }
 

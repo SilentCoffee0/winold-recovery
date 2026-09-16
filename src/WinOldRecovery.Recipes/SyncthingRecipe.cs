@@ -53,9 +53,20 @@ public sealed class SyncthingRecipe : IRecipe
             int devices = SyncthingConfig.DeviceCount(document);
             string scrubbed = SyncthingConfig.ScrubSecrets(xml);
             DateTimeOffset activity = LastActivity(context.SafeFs, home);
-            bool guiTls = context.SafeFs.FileExists(Path.Combine(home, "https-cert.pem")) ||
-                context.SafeFs.FileExists(Path.Combine(home, "https-key.pem"));
-            bool hasGui = context.SafeFs.DirectoryExists(Path.Combine(home, "gui"));
+            bool guiTls;
+            bool hasGui;
+            if (DetectorWalk.TryIndexedRelative(context, home, out RecipeIndex index, out string relative))
+            {
+                guiTls = DetectorWalk.IndexedImmediatePath(index, home, relative, "https-cert.pem") is not null ||
+                    DetectorWalk.IndexedImmediatePath(index, home, relative, "https-key.pem") is not null;
+                hasGui = DetectorWalk.IndexedChildFolder(index, relative, "gui");
+            }
+            else
+            {
+                guiTls = context.SafeFs.FileExists(Path.Combine(home, "https-cert.pem")) ||
+                    context.SafeFs.FileExists(Path.Combine(home, "https-key.pem"));
+                hasGui = context.SafeFs.DirectoryExists(Path.Combine(home, "gui"));
+            }
             List<RecipeComponent> components =
             [
                 new RecipeComponent("identity", "Identity", "cert.pem and key.pem", Decision.Restore, false, null, true),
