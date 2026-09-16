@@ -27,6 +27,7 @@ public sealed class InvariantSourceScanTests
             "File.WriteAllText(",
             "File.WriteAllBytes(",
             "Directory.CreateDirectory(",
+            "ZipFile.CreateFromDirectory(",
             "RegLoadKey",
         ];
         foreach (string path in SourceFiles())

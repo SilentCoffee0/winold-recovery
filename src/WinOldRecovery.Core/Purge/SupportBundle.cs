@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Sessions;
 
@@ -22,7 +21,7 @@ public static class SupportBundle
             safeFs.DeleteFile(zipPath);
         }
 
-        ZipFile.CreateFromDirectory(bundleDirectory, zipPath);
+        safeFs.CreateZipFromDirectory(bundleDirectory, zipPath);
         return zipPath;
     }
 

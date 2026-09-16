@@ -6,7 +6,7 @@ All notable changes to WinOld Recovery will be documented here.
 
 ### Fixed
 
-- SSH private-key ACL hardening goes through `SafeFs.SetAccessControl`, so SourceGuard can refuse a path under a registered Windows.old. Headless `--scan`/`--restore` reports, smoke destination folders, and Firefox places copies also go through `SafeFs`. I1 greps mutating file APIs outside `SafeFs`/`Purge`.
+- SSH private-key ACL hardening goes through `SafeFs.SetAccessControl`, so SourceGuard can refuse a path under a registered Windows.old. Headless `--scan`/`--restore` reports, smoke destination folders, Firefox places copies, and support-bundle zips also go through `SafeFs`. I1 greps mutating file APIs outside `SafeFs`/`Purge`.
 - Session read connections disable SQLite pooling so `SqliteConnection.ClearAllPools` in one test cannot dispose another test's `GetLatestJournalState` handle (I16 disk-full pause flake).
 - Owner SID tests assert the file ACL owner, not the testhost identity. GitHub Actions TEMP files are owned by `BUILTIN\Administrators`, which is not `WindowsIdentity.GetCurrent()`.
 - I15 kill-and-resume no longer redirects RestoreHarness stdout/stderr (a full pipe can stall the copy). The case has a 15-minute budget and CI runs test projects one at a time (`-m:1`). The tag-release workflow uses the same test settings so a `v*` tag does not reintroduce the parallel-test timeouts.

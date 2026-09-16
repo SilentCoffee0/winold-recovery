@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO.Compression;
 using System.Security.AccessControl;
 using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Native;
@@ -236,5 +237,13 @@ public sealed class SafeFs
         using FileStream input = OpenRead(sourcePath);
         using FileStream output = OpenWrite(destinationPath, FileMode.Create, purgeToken);
         input.CopyTo(output);
+    }
+
+    public void CreateZipFromDirectory(string sourceDirectory, string zipPath, PurgeToken? purgeToken = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(zipPath);
+        string validatedZip = sourceGuard.GetValidatedWritePath(zipPath, purgeToken);
+        ZipFile.CreateFromDirectory(sourceDirectory, validatedZip);
     }
 }

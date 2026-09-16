@@ -82,6 +82,19 @@ public sealed class SourceGuardTests : IDisposable
     }
 
     [Fact]
+    public void I1_CreateZipFromDirectoryRefusesRegisteredSource()
+    {
+        string staging = Path.Combine(destinationRoot, "bundle");
+        Directory.CreateDirectory(staging);
+        File.WriteAllText(Path.Combine(staging, "log.txt"), "n");
+        guard.RegisterSourceRoot(sourceRoot);
+        string zipPath = Path.Combine(sourceRoot, "support-bundle.zip");
+
+        Assert.Throws<SourceWriteDeniedException>(() => safeFs.CreateZipFromDirectory(staging, zipPath));
+        Assert.False(File.Exists(zipPath));
+    }
+
+    [Fact]
     public void PrefixSiblingIsNotTreatedAsAChild()
     {
         guard.RegisterSourceRoot(sourceRoot);
