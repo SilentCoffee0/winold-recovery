@@ -40,6 +40,54 @@
       "why": "GOG Galaxy application data. Leave Undecided unless you know the titles.",
       "suggestedDefault": "Undecided",
       "pathContains": ["\\GOG.com\\Galaxy\\Applications"]
+    },
+    {
+      "id": "minecraft",
+      "kind": "GameSave",
+      "badge": "Game save",
+      "why": "Minecraft world saves and launcher data.",
+      "suggestedDefault": "Restore",
+      "pathContains": ["\\.minecraft"]
+    },
+    {
+      "id": "epic-games",
+      "kind": "GameSave",
+      "badge": "Game save",
+      "why": "Epic Games launcher or game Saved folders.",
+      "suggestedDefault": "Restore",
+      "pathContains": ["\\EpicGamesLauncher\\", "\\Epic Games\\"]
+    },
+    {
+      "id": "ubisoft",
+      "kind": "GameSave",
+      "badge": "Game save",
+      "why": "Ubisoft Connect save data.",
+      "suggestedDefault": "Restore",
+      "pathContains": ["\\Ubisoft Game Launcher\\", "\\Ubisoft\\"]
+    },
+    {
+      "id": "ea-origin",
+      "kind": "GameSave",
+      "badge": "Game save",
+      "why": "EA / Origin game data.",
+      "suggestedDefault": "Restore",
+      "pathContains": ["\\Electronic Arts\\", "\\Origin\\"]
+    },
+    {
+      "id": "blizzard",
+      "kind": "GameSave",
+      "badge": "Game save",
+      "why": "Battle.net / Blizzard game data.",
+      "suggestedDefault": "Restore",
+      "pathContains": ["\\Battle.net\\", "\\Blizzard Entertainment\\"]
+    },
+    {
+      "id": "riot-games",
+      "kind": "GameSave",
+      "badge": "Game save",
+      "why": "Riot Games client or title data.",
+      "suggestedDefault": "Restore",
+      "pathContains": ["\\Riot Games\\"]
     }
   ]
 }

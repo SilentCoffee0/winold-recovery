@@ -139,6 +139,43 @@ public sealed class ClassificationEngineTests
     }
 
     [Fact]
+    public async Task Classify_BadgesKnownPublisherGameFolders()
+    {
+        await using ClassifyContext context = await ClassifyContext.CreateAsync();
+        string alice = Path.Combine(context.Root, "Windows.old", "Users", "Alice");
+        Directory.CreateDirectory(Path.Combine(alice, "Desktop"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Roaming", ".minecraft", "saves", "world"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "EpicGamesLauncher", "Saved"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "Ubisoft Game Launcher"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Roaming", "Electronic Arts", "EA Desktop"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Roaming", "Battle.net"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "Riot Games", "Riot Client"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Roaming", "NotAGame"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "NTUSER.DAT"), "hive");
+        await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Roaming", ".minecraft", "saves", "world", "level.dat"), "save");
+        await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Local", "EpicGamesLauncher", "Saved", "Config.ini"), "epic");
+        await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Local", "Ubisoft Game Launcher", "settings.yml"), "ubi");
+        await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Roaming", "Electronic Arts", "EA Desktop", "user.ini"), "ea");
+        await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Roaming", "Battle.net", "Battle.net.config"), "bnet");
+        await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Local", "Riot Games", "Riot Client", "config.yaml"), "riot");
+        await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Roaming", "NotAGame", "notes.txt"), "plain");
+
+        ScanOrchestrator orchestrator = new(context.Database, context.SafeFs, context.Guard);
+        await orchestrator.RunAsync(
+            context.SessionId,
+            Path.Combine(context.Root, "Windows.old"),
+            Path.Combine(context.Root, "tmp"));
+
+        Assert.Contains("Game save", Find(context, @"Users\Alice\AppData\Roaming\.minecraft\saves\world\level.dat").BadgeText);
+        Assert.Contains("Game save", Find(context, @"Users\Alice\AppData\Local\EpicGamesLauncher\Saved\Config.ini").BadgeText);
+        Assert.Contains("Game save", Find(context, @"Users\Alice\AppData\Local\Ubisoft Game Launcher\settings.yml").BadgeText);
+        Assert.Contains("Game save", Find(context, @"Users\Alice\AppData\Roaming\Electronic Arts\EA Desktop\user.ini").BadgeText);
+        Assert.Contains("Game save", Find(context, @"Users\Alice\AppData\Roaming\Battle.net\Battle.net.config").BadgeText);
+        Assert.Contains("Game save", Find(context, @"Users\Alice\AppData\Local\Riot Games\Riot Client\config.yaml").BadgeText);
+        Assert.DoesNotContain("Game save", Find(context, @"Users\Alice\AppData\Roaming\NotAGame\notes.txt").BadgeText);
+    }
+
+    [Fact]
     public async Task Classify_BadgesRemainingR9Detectors()
     {
         await using ClassifyContext context = await ClassifyContext.CreateAsync();
