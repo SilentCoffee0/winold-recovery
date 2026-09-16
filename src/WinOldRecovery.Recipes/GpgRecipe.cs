@@ -20,10 +20,7 @@ public sealed class GpgRecipe : IRecipe
                 continue;
             }
 
-            bool hasKeys = context.SafeFs.DirectoryExists(Path.Combine(home, "private-keys-v1.d")) ||
-                context.SafeFs.FileExists(Path.Combine(home, "pubring.kbx")) ||
-                context.SafeFs.FileExists(Path.Combine(home, "secring.gpg"));
-            if (!hasKeys)
+            if (!IsHome(context.SafeFs, home))
             {
                 continue;
             }
@@ -166,8 +163,42 @@ public sealed class GpgRecipe : IRecipe
 
     private static IEnumerable<string> CandidateHomes(ProfileContext context)
     {
-        yield return Path.Combine(context.OldProfileRoot, "AppData", "Roaming", "gnupg");
-        yield return Path.Combine(context.OldProfileRoot, ".gnupg");
+        HashSet<string> homes = new(StringComparer.OrdinalIgnoreCase);
+        Add(homes, Path.Combine(context.OldProfileRoot, "AppData", "Roaming", "gnupg"));
+        Add(homes, Path.Combine(context.OldProfileRoot, ".gnupg"));
+        if (context.Index is { } index)
+        {
+            foreach (string child in new[] { "pubring.kbx", "secring.gpg", "private-keys-v1.d" })
+            {
+                foreach (string parent in index.ParentsOfChildNamed(child))
+                {
+                    if (IsHome(context.SafeFs, parent))
+                    {
+                        Add(homes, parent);
+                    }
+                }
+            }
+        }
+
+        return homes;
+    }
+
+    private static bool IsHome(SafeFs safeFs, string home)
+    {
+        return safeFs.DirectoryExists(home) &&
+            (safeFs.DirectoryExists(Path.Combine(home, "private-keys-v1.d")) ||
+                safeFs.FileExists(Path.Combine(home, "pubring.kbx")) ||
+                safeFs.FileExists(Path.Combine(home, "secring.gpg")));
+    }
+
+    private static void Add(HashSet<string> homes, string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        homes.Add(Path.GetFullPath(path));
     }
 
     private static bool Skip(string relative)
