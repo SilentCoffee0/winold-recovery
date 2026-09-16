@@ -1042,6 +1042,78 @@ public sealed class SessionDb : IAsyncDisposable
             cancellationToken);
     }
 
+    public Task InsertRecipeCardsAsync(
+        string sessionId,
+        IReadOnlyList<PersistedRecipeCard> cards,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentNullException.ThrowIfNull(cards);
+        if (cards.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        return WriteAsync(
+            async (connection, token) =>
+            {
+                using SqliteTransaction transaction = connection.BeginTransaction();
+                await using SqliteCommand command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText =
+                    """
+                    INSERT INTO cards(session_id, recipe_id, profile_id, title, json)
+                    VALUES ($sessionId, $recipeId, $profileId, $title, $json);
+                    """;
+                SqliteParameter sessionParam = command.Parameters.Add("$sessionId", SqliteType.Text);
+                SqliteParameter recipeId = command.Parameters.Add("$recipeId", SqliteType.Text);
+                SqliteParameter profileId = command.Parameters.Add("$profileId", SqliteType.Integer);
+                SqliteParameter title = command.Parameters.Add("$title", SqliteType.Text);
+                SqliteParameter json = command.Parameters.Add("$json", SqliteType.Text);
+                foreach (PersistedRecipeCard card in cards)
+                {
+                    sessionParam.Value = card.SessionId;
+                    recipeId.Value = card.RecipeId;
+                    profileId.Value = (object?)card.ProfileId ?? DBNull.Value;
+                    title.Value = card.Title;
+                    json.Value = card.Json;
+                    await command.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+
+                    if (card.Components is { Count: > 0 })
+                    {
+                        await using SqliteCommand idCommand = connection.CreateCommand();
+                        idCommand.Transaction = transaction;
+                        idCommand.CommandText = "SELECT last_insert_rowid();";
+                        long cardId = (long)(await idCommand.ExecuteScalarAsync(token).ConfigureAwait(false) ?? 0L);
+                        await using SqliteCommand componentCommand = connection.CreateCommand();
+                        componentCommand.Transaction = transaction;
+                        componentCommand.CommandText =
+                            """
+                            INSERT INTO components(card_id, key, decision, fixed, fixed_reason)
+                            VALUES ($cardId, $key, $decision, $fixed, $reason);
+                            """;
+                        SqliteParameter cardIdParam = componentCommand.Parameters.Add("$cardId", SqliteType.Integer);
+                        SqliteParameter keyParam = componentCommand.Parameters.Add("$key", SqliteType.Text);
+                        SqliteParameter decisionParam = componentCommand.Parameters.Add("$decision", SqliteType.Text);
+                        SqliteParameter fixedParam = componentCommand.Parameters.Add("$fixed", SqliteType.Integer);
+                        SqliteParameter reasonParam = componentCommand.Parameters.Add("$reason", SqliteType.Text);
+                        foreach (RecipeComponent component in card.Components)
+                        {
+                            cardIdParam.Value = cardId;
+                            keyParam.Value = component.Key;
+                            decisionParam.Value = component.SuggestedDefault.ToString();
+                            fixedParam.Value = component.Fixed ? 1 : 0;
+                            reasonParam.Value = (object?)component.FixedReason ?? DBNull.Value;
+                            await componentCommand.ExecuteNonQueryAsync(token).ConfigureAwait(false);
+                        }
+                    }
+                }
+
+                transaction.Commit();
+            },
+            cancellationToken);
+    }
+
     public IReadOnlyList<PersistedRecipeCard> ListRecipeCards(string sessionId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);

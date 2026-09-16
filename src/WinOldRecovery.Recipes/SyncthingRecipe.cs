@@ -13,11 +13,22 @@ public sealed class SyncthingRecipe : IRecipe
 
     public DetectResult Detect(ProfileContext context)
     {
+        return DetectHomes(context, CandidateHomes(context));
+    }
+
+    public DetectResult DetectHome(ProfileContext context, string home)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(home);
+        return DetectHomes(context, [Path.GetFullPath(home)]);
+    }
+
+    private DetectResult DetectHomes(ProfileContext context, IReadOnlyList<string> homes)
+    {
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
         List<(RecipeCard Card, DateTimeOffset Activity)> pending = [];
         string exeVersion = SyncTrayzorExeVersion(context);
-        foreach (string home in CandidateHomes(context))
+        foreach (string home in homes)
         {
             if (!IsHome(context.SafeFs, home))
             {

@@ -118,6 +118,93 @@ public sealed class RecipeHost
         return cards;
     }
 
+    public async Task<IReadOnlyList<RecipeCard>> AppendCardsAsync(
+        string sessionId,
+        DetectedProfile profile,
+        IReadOnlyList<RecipeCard> extra,
+        IReadOnlyList<(string RelativePath, string Kind, string Detail)> extraBadges,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(extra);
+        ArgumentNullException.ThrowIfNull(extraBadges);
+        if (extra.Count == 0)
+        {
+            return [];
+        }
+
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        foreach (PersistedRecipeCard row in sessionDb.ListRecipeCards(sessionId))
+        {
+            try
+            {
+                RecipeCard? stored = JsonSerializer.Deserialize<RecipeCard>(row.Json);
+                if (stored is not null)
+                {
+                    seen.Add(row.RecipeId + "\0" + stored.InstanceKey);
+                }
+            }
+            catch (JsonException)
+            {
+            }
+        }
+
+        long? profileId = sessionDb.ListProfiles(sessionId)
+            .FirstOrDefault(item => item.Name.Equals(profile.Name, StringComparison.OrdinalIgnoreCase))
+            ?.Id;
+        List<RecipeCard> added = [];
+        List<PersistedRecipeCard> rows = [];
+        foreach (RecipeCard card in extra)
+        {
+            string identity = card.RecipeId + "\0" + card.InstanceKey;
+            if (!seen.Add(identity))
+            {
+                continue;
+            }
+
+            added.Add(card);
+            rows.Add(
+                new PersistedRecipeCard(
+                    sessionId,
+                    card.RecipeId,
+                    profileId,
+                    card.Title,
+                    JsonSerializer.Serialize(card),
+                    Components: card.Components));
+        }
+
+        if (added.Count == 0)
+        {
+            return [];
+        }
+
+        List<(string RelPath, string Kind, string Detail)> pendingBadges = [];
+        foreach ((string relativePath, string kind, string detail) in extraBadges)
+        {
+            string nodeRel = string.IsNullOrWhiteSpace(relativePath)
+                ? profile.RelativePath
+                : Path.Combine(profile.RelativePath, relativePath.Replace('/', '\\'));
+            pendingBadges.Add((nodeRel, kind, detail));
+        }
+
+        IReadOnlyDictionary<string, long> nodeIds = sessionDb.FindNodeIds(
+            sessionId,
+            pendingBadges.ConvertAll(static row => row.RelPath));
+        List<NodeBadgeRow> badges = [];
+        foreach ((string nodeRel, string kind, string detail) in pendingBadges)
+        {
+            if (nodeIds.TryGetValue(nodeRel, out long id))
+            {
+                badges.Add(new NodeBadgeRow(id, kind, detail));
+            }
+        }
+
+        await sessionDb.InsertRecipeCardsAsync(sessionId, rows, cancellationToken).ConfigureAwait(false);
+        await sessionDb.InsertBadgesAsync(badges, cancellationToken).ConfigureAwait(false);
+        return added;
+    }
+
     public PlanResult PlanCard(
         IRecipe recipe,
         RecipeCard card,

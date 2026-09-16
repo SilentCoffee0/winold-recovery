@@ -339,6 +339,9 @@
                                     </Style>
                                 </Button.Style>
                             </Button>
+                            <Button Content="Add a Syncthing folder…" Command="{Binding AddSyncthingFolderCommand}" Margin="0,0,8,8"
+                                    AutomationProperties.Name="Add a Syncthing folder"
+                                    AutomationProperties.AutomationId="AddSyncthingFolderButton" />
                             <Button Content="Inspect" Command="{Binding ShowInspectCommand}" Margin="0,0,8,8"
                                     AutomationProperties.Name="Inspect pane">
                                 <Button.Style>

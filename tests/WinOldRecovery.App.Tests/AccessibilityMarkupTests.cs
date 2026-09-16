@@ -62,6 +62,8 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("AutomationProperties.AutomationId=\"RecheckPreviewButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"EditSyncthingMappingButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Edit Syncthing folder mapping", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"AddSyncthingFolderButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Add a Syncthing folder", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"DeleteWindowsOldButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"CancelPurgeButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"ScanStatusText\"", xaml, StringComparison.Ordinal);

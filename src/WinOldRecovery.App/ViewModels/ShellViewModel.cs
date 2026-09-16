@@ -256,6 +256,7 @@ public sealed class ShellViewModel : ObservableObject
         BrowseSyncthingMappingCommand = new RelayCommand<SyncthingMappingRow>(
             BrowseSyncthingMapping,
             static row => row is not null);
+        AddSyncthingFolderCommand = new AsyncRelayCommand(AddSyncthingFolderAsync, CanAddSyncthingFolder);
         ApproveOverwritesCommand = new AsyncRelayCommand(ApproveOverwritesAsync, CanApproveOverwrites);
         ExecutePurgeCommand = new AsyncRelayCommand(
             ExecutePurgeAsync,
@@ -337,6 +338,7 @@ public sealed class ShellViewModel : ObservableObject
     public IAsyncRelayCommand PreparePreviewCommand { get; }
     public IRelayCommand EditSyncthingMappingCommand { get; }
     public IRelayCommand<SyncthingMappingRow> BrowseSyncthingMappingCommand { get; }
+    public IAsyncRelayCommand AddSyncthingFolderCommand { get; }
     public IAsyncRelayCommand ApproveOverwritesCommand { get; }
     public IAsyncRelayCommand ExecutePurgeCommand { get; }
     public IRelayCommand CancelPurgeCommand { get; }
@@ -1739,6 +1741,7 @@ public sealed class ShellViewModel : ObservableObject
         ScanCommand.NotifyCanExecuteChanged();
         ShowCardsCommand.NotifyCanExecuteChanged();
         ShowFilesCommand.NotifyCanExecuteChanged();
+        AddSyncthingFolderCommand.NotifyCanExecuteChanged();
         ScanStatus = "Opening last scan… Nothing has been changed.";
         try
         {
@@ -1783,6 +1786,7 @@ public sealed class ShellViewModel : ObservableObject
                 ScanCommand.NotifyCanExecuteChanged();
                 ShowCardsCommand.NotifyCanExecuteChanged();
                 ShowFilesCommand.NotifyCanExecuteChanged();
+                AddSyncthingFolderCommand.NotifyCanExecuteChanged();
                 ContinueLastScanCommand.NotifyCanExecuteChanged();
             }).ConfigureAwait(true);
         }
@@ -1861,6 +1865,7 @@ public sealed class ShellViewModel : ObservableObject
         ReviewUndecidedCommand.NotifyCanExecuteChanged();
         ShowCardsCommand.NotifyCanExecuteChanged();
         ShowFilesCommand.NotifyCanExecuteChanged();
+        AddSyncthingFolderCommand.NotifyCanExecuteChanged();
         UndoDecisionCommand.NotifyCanExecuteChanged();
         AnalyzeGitCommand.NotifyCanExecuteChanged();
     }
@@ -2029,8 +2034,15 @@ public sealed class ShellViewModel : ObservableObject
         CancelScanCommand.NotifyCanExecuteChanged();
         PauseScanCommand.NotifyCanExecuteChanged();
         scanCancellation = new CancellationTokenSource();
+        int acceptWalkProgress = 1;
+        int acceptDetectProgress = 1;
         Progress<WalkProgress> progress = new(report =>
         {
+            if (Volatile.Read(ref acceptWalkProgress) == 0)
+            {
+                return;
+            }
+
             if (IsPostWalkPhase(report.CurrentRelativePath))
             {
                 CurrentPathFull = report.CurrentRelativePath;
@@ -2051,6 +2063,11 @@ public sealed class ShellViewModel : ObservableObject
         });
         Progress<string> detectProgress = new(id =>
         {
+            if (Volatile.Read(ref acceptDetectProgress) == 0)
+            {
+                return;
+            }
+
             ScanStatus = "Looking for " + AppDetectLabel(id) + "… Nothing has been changed.";
         });
 
@@ -2081,6 +2098,8 @@ public sealed class ShellViewModel : ObservableObject
                     resume: resume,
                     computeFolderSizes: computeFolderSizes,
                     cancellationToken: scanCancellation.Token)
+                .ConfigureAwait(false);
+            await UiThread.InvokeAsync(() => Volatile.Write(ref acceptWalkProgress, 0))
                 .ConfigureAwait(false);
             await sessionDb.SetKvAsync(
                     workspace.SessionId,
@@ -2153,6 +2172,8 @@ public sealed class ShellViewModel : ObservableObject
                 CompletedScan.PointerPathFromWorkspace(workspace.RootPath));
             await UiThread.InvokeAsync(() =>
             {
+                Volatile.Write(ref acceptWalkProgress, 0);
+                Volatile.Write(ref acceptDetectProgress, 0);
                 SourceRoot = result.SourceRoot;
                 scanCompleted = true;
                 lastProfiles = result.Profiles;
@@ -2182,6 +2203,7 @@ public sealed class ShellViewModel : ObservableObject
                 AnalyzeGitCommand.NotifyCanExecuteChanged();
                 ShowCardsCommand.NotifyCanExecuteChanged();
                 ShowFilesCommand.NotifyCanExecuteChanged();
+                AddSyncthingFolderCommand.NotifyCanExecuteChanged();
             }).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
@@ -2229,6 +2251,7 @@ public sealed class ShellViewModel : ObservableObject
                 PauseScanCommand.NotifyCanExecuteChanged();
                 ShowCardsCommand.NotifyCanExecuteChanged();
                 ShowFilesCommand.NotifyCanExecuteChanged();
+                AddSyncthingFolderCommand.NotifyCanExecuteChanged();
             }).ConfigureAwait(true);
         }
     }
@@ -2251,6 +2274,117 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         return recipeId;
+    }
+
+    private bool CanAddSyncthingFolder()
+    {
+        return CanWriteSession &&
+            scanCompleted &&
+            SourceRoot is not null &&
+            !IsScanning &&
+            recipeHost?.Find("syncthing") is not null;
+    }
+
+    private async Task AddSyncthingFolderAsync()
+    {
+        if (!CanAddSyncthingFolder())
+        {
+            return;
+        }
+
+        string? picked = folderPicker.PickFolder();
+        if (string.IsNullOrWhiteSpace(picked))
+        {
+            return;
+        }
+
+        string full;
+        try
+        {
+            full = Path.GetFullPath(picked);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            ScanStatus = "That folder path is not valid.";
+            return;
+        }
+
+        if (!IsInsideSourceRoot(full))
+        {
+            ScanStatus = "That folder is not inside the scanned Windows.old.";
+            return;
+        }
+
+        DetectedProfile? profile = lastProfiles.FirstOrDefault(static item => item.Kind == ProfileKind.Human)
+            ?? lastProfiles.FirstOrDefault();
+        if (profile is null)
+        {
+            ScanStatus = "Scan a Windows.old with a user profile first.";
+            return;
+        }
+
+        if (recipeHost?.Find("syncthing") is not SyncthingRecipe syncthing)
+        {
+            return;
+        }
+
+        if (lastRecipeCards.Any(card =>
+                card.RecipeId.Equals("syncthing", StringComparison.Ordinal) &&
+                (card.InstanceKey.Equals(full, StringComparison.OrdinalIgnoreCase) ||
+                 (card.Facts.TryGetValue("source", out string? source) &&
+                  source.Equals(full, StringComparison.OrdinalIgnoreCase)))))
+        {
+            ScanStatus = "That Syncthing home is already listed.";
+            return;
+        }
+
+        DetectResult extra = syncthing.DetectHome(
+            new ProfileContext(
+                profile.Name,
+                profile.SourcePath,
+                LiveProfileRoot,
+                workspace.TemporaryPath,
+                workspace.ExportsPath,
+                safeFs,
+                processRunner),
+            full);
+        if (extra.Cards.Count == 0)
+        {
+            ScanStatus = "That folder is not a Syncthing home. It needs config.xml, cert.pem, and key.pem.";
+            return;
+        }
+
+        IReadOnlyList<RecipeCard> added = await recipeHost
+            .AppendCardsAsync(workspace.SessionId, profile, extra.Cards, extra.Badges)
+            .ConfigureAwait(false);
+        await UiThread.InvokeAsync(() =>
+        {
+            if (added.Count == 0)
+            {
+                ScanStatus = "That Syncthing home is already listed.";
+                return;
+            }
+
+            lastRecipeCards = [.. lastRecipeCards, .. added];
+            RebuildCards(lastProfiles);
+            CurrentPath = string.Empty;
+            CurrentPathFull = string.Empty;
+            ScanStatus = "Added " + added[0].Title + ". Nothing has been changed.";
+        }).ConfigureAwait(true);
+    }
+
+    private bool IsInsideSourceRoot(string path)
+    {
+        if (SourceRoot is null)
+        {
+            return false;
+        }
+
+        string root = PathCanonicalizer.WithoutExtendedPrefix(Path.GetFullPath(SourceRoot));
+        string full = PathCanonicalizer.WithoutExtendedPrefix(Path.GetFullPath(path));
+        return full.StartsWith(
+            root + Path.DirectorySeparatorChar,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task BrowseSourceAsync()

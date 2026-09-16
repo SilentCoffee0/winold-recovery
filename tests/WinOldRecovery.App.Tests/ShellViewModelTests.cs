@@ -534,6 +534,57 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task AddSyncthingFolder_ListsACustomHomeThatWasNotWalked()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync([new SyncthingRecipe()]);
+        string source = Path.Combine(context.Root, "Windows.old");
+        string alice = Path.Combine(source, "Users", "Alice");
+        Directory.CreateDirectory(Path.Combine(alice, "Desktop"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "NTUSER.DAT"), "hive");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+        Assert.DoesNotContain(context.ViewModel.Cards, card => card.Kind == "syncthing");
+
+        string custom = Path.Combine(alice, "Projects", "st-home");
+        Directory.CreateDirectory(custom);
+        await File.WriteAllTextAsync(Path.Combine(custom, "cert.pem"), CreateSyncthingCertificatePem());
+        await File.WriteAllTextAsync(Path.Combine(custom, "key.pem"), "key");
+        await File.WriteAllTextAsync(
+            Path.Combine(custom, "config.xml"),
+            """<configuration version="37"></configuration>""");
+        context.Picker.Folder = custom;
+        await context.ViewModel.AddSyncthingFolderCommand.ExecuteAsync(null);
+
+        Assert.Contains(context.ViewModel.Cards, card => card.Kind == "syncthing");
+        Assert.Contains("Added Syncthing", context.ViewModel.ScanStatus, StringComparison.Ordinal);
+        Assert.Single(context.Database.ListRecipeCards(context.SessionId));
+        await context.ViewModel.AddSyncthingFolderCommand.ExecuteAsync(null);
+        Assert.Equal("That Syncthing home is already listed.", context.ViewModel.ScanStatus);
+        Assert.Single(context.Database.ListRecipeCards(context.SessionId));
+    }
+
+    [Fact]
+    public async Task AddSyncthingFolder_RejectsFoldersOutsideTheSourceAndNonHomes()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync([new SyncthingRecipe()]);
+        string source = Path.Combine(context.Root, "Windows.old");
+        string alice = Path.Combine(source, "Users", "Alice");
+        Directory.CreateDirectory(Path.Combine(alice, "Desktop"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "NTUSER.DAT"), "hive");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        context.Picker.Folder = context.Root;
+        await context.ViewModel.AddSyncthingFolderCommand.ExecuteAsync(null);
+        Assert.Equal("That folder is not inside the scanned Windows.old.", context.ViewModel.ScanStatus);
+
+        context.Picker.Folder = Path.Combine(alice, "Desktop");
+        await context.ViewModel.AddSyncthingFolderCommand.ExecuteAsync(null);
+        Assert.Contains("not a Syncthing home", context.ViewModel.ScanStatus, StringComparison.Ordinal);
+        Assert.Empty(context.Database.ListRecipeCards(context.SessionId));
+    }
+
+    [Fact]
     public async Task SecondScan_ReplacesTheTreeAndRelocksPurge()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();

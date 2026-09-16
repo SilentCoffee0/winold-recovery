@@ -2151,6 +2151,35 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Syncthing_DetectHome_BuildsACardForAFolderTheIndexDidNotSee()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string custom = Path.Combine(alice, "Projects", "st-home");
+        Directory.CreateDirectory(custom);
+        await File.WriteAllTextAsync(Path.Combine(custom, "cert.pem"), CreateCertificatePem());
+        await File.WriteAllTextAsync(Path.Combine(custom, "key.pem"), "key");
+        await File.WriteAllTextAsync(
+            Path.Combine(custom, "config.xml"),
+            """<configuration version="37"></configuration>""");
+
+        ProfileContext profile = new(
+            "Alice",
+            alice,
+            context.Destination,
+            context.Temp,
+            context.Exports,
+            context.SafeFs,
+            context.Runner);
+        Assert.DoesNotContain(
+            new SyncthingRecipe().Detect(profile).Cards,
+            card => card.Facts["source"].Equals(custom, StringComparison.OrdinalIgnoreCase));
+        RecipeCard card = Assert.Single(new SyncthingRecipe().DetectHome(profile, custom).Cards);
+        Assert.Equal(custom, card.Facts["source"], StringComparer.OrdinalIgnoreCase);
+        Assert.Empty(new SyncthingRecipe().DetectHome(profile, alice).Cards);
+    }
+
+    [Fact]
     public async Task Anki_Detect_FindsShortcutDashBBaseAndRecordsBackupFacts()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
