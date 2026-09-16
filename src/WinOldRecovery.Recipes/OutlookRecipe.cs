@@ -120,7 +120,11 @@ public sealed class OutlookRecipe : IRecipe
             return new RecipeVerifyResult(false, "Outlook OST must not be restored");
         }
 
-        return DetectorWalk.FilesPresent(plan, "Outlook files present", "Outlook destination missing");
+        return DetectorWalk.FilesPresentMatchingSourceLength(
+            plan,
+            "Outlook files present",
+            "Outlook destination missing",
+            "Outlook destination size does not match the source");
     }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>

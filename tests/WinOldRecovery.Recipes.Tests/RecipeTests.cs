@@ -3463,6 +3463,11 @@ public sealed class RecipeTests
         await host.ExecuteAsync("session-1", new GameSavesRecipe(), gamesPlan);
         Assert.True(new GameSavesRecipe().Verify(gamesPlan).Ok);
         Assert.True(File.Exists(Path.Combine(context.Destination, "Saved Games", "SomeTitle", "slot.sav")));
+        string restoredSave = Path.Combine(context.Destination, "Saved Games", "SomeTitle", "slot.sav");
+        await File.WriteAllTextAsync(restoredSave, "truncated");
+        RecipeVerifyResult truncated = new GameSavesRecipe().Verify(gamesPlan);
+        Assert.False(truncated.Ok);
+        Assert.Contains("size", truncated.Detail, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
             cards,
             card => card.RecipeId == "game-saves" && card.Title.Contains("Steam-compatible", StringComparison.Ordinal));

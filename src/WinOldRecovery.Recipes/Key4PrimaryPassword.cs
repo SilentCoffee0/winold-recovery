@@ -26,6 +26,16 @@ public static class Key4PrimaryPassword
 
         try
         {
+            try
+            {
+                using SqliteConnection direct = ReadOnlySqlite.OpenReadOnly(sourcePath);
+                return DetectFromConnection(direct);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or SqliteException)
+            {
+            }
+
             string copy = ReadOnlySqlite.CopyToTemp(safeFs, sourcePath, tempDirectory, "key4.db");
             return DetectFromCopy(copy);
         }
@@ -42,6 +52,19 @@ public static class Key4PrimaryPassword
         try
         {
             using SqliteConnection connection = ReadOnlySqlite.OpenReadOnly(key4Copy);
+            return DetectFromConnection(connection);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or SqliteException or CryptographicException)
+        {
+            return Unknown;
+        }
+    }
+
+    private static string DetectFromConnection(SqliteConnection connection)
+    {
+        try
+        {
             if (!TryReadPasswordCheck(connection, out byte[] globalSalt, out byte[] item2))
             {
                 return Unknown;
@@ -54,8 +77,7 @@ public static class Key4PrimaryPassword
 
             return CheckEmptyPassword(globalSalt, item2);
         }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or SqliteException or CryptographicException)
+        catch (Exception exception) when (exception is SqliteException or CryptographicException)
         {
             return Unknown;
         }

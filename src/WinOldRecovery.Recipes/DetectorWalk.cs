@@ -305,7 +305,38 @@ internal static class DetectorWalk
 
     public static RecipeVerifyResult FilesPresent(PlanResult plan, string okDetail, string missingDetail)
     {
-        bool ok = plan.Writes.All(static write => File.Exists(write.DestinationPath));
-        return new RecipeVerifyResult(ok, ok ? okDetail : missingDetail);
+        return FilesPresentMatchingSourceLength(plan, okDetail, missingDetail, sizeMismatchDetail: null);
+    }
+
+    public static RecipeVerifyResult FilesPresentMatchingSourceLength(
+        PlanResult plan,
+        string okDetail,
+        string missingDetail,
+        string? sizeMismatchDetail)
+    {
+        foreach (RecipeWrite write in plan.Writes)
+        {
+            if (!File.Exists(write.DestinationPath))
+            {
+                return new RecipeVerifyResult(false, missingDetail);
+            }
+
+            if (sizeMismatchDetail is null ||
+                write.Kind != RecipeWriteKind.CopyFile ||
+                string.IsNullOrEmpty(write.SourcePath) ||
+                !File.Exists(write.SourcePath))
+            {
+                continue;
+            }
+
+            long destinationLength = new FileInfo(write.DestinationPath).Length;
+            long sourceLength = new FileInfo(write.SourcePath).Length;
+            if (destinationLength != sourceLength)
+            {
+                return new RecipeVerifyResult(false, sizeMismatchDetail);
+            }
+        }
+
+        return new RecipeVerifyResult(true, okDetail);
     }
 }

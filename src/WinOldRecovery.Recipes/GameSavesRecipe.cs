@@ -179,7 +179,11 @@ public sealed class GameSavesRecipe : IRecipe
     }
 
     public RecipeVerifyResult Verify(PlanResult plan) =>
-        DetectorWalk.FilesPresent(plan, "Game saves present", "Game save destination missing");
+        DetectorWalk.FilesPresentMatchingSourceLength(
+            plan,
+            "Game saves present",
+            "Game save destination missing",
+            "Game save destination size does not match the source");
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) => [];
 
