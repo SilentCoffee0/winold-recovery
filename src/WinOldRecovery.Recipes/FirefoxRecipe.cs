@@ -91,9 +91,6 @@ public sealed class FirefoxRecipe : IRecipe
             }
 
             bool hasPlaces = present.Contains("places.sqlite");
-            string bookmarksHtml = string.Empty;
-            string historyCsv = "url,title\n";
-            int bookmarkCount = 0;
             string folder = Path.GetFileName(profile);
             string firefoxTemp = Path.Combine(context.SessionTemporaryDirectory, "firefox", folder);
 
@@ -103,10 +100,8 @@ public sealed class FirefoxRecipe : IRecipe
                     Path.Combine(profile, "key4.db"),
                     firefoxTemp)
                 : Key4PrimaryPassword.Missing;
-            (int tabCount, string tabsHtml) = FirefoxExports.Tabs(context.SafeFs, profile);
-            (int extensionCount, string extensionsHtml) = FirefoxExports.Extensions(
-                context.SafeFs,
-                Path.Combine(profile, "extensions.json"));
+            bool hasTabs = FirefoxExports.HasSession(context.SafeFs, profile);
+            bool hasExtensions = present.Contains("extensions.json");
             string titleName = discovered.IsDefault ? discovered.Name + " (default)" : discovered.Name;
 
             cards.Add(
@@ -151,16 +146,16 @@ public sealed class FirefoxRecipe : IRecipe
                         new RecipeComponent(
                             "tabs-export",
                             "Open tabs list",
-                            tabCount + " tabs",
-                            tabCount > 0 ? Decision.Restore : Decision.LeaveBehind,
+                            hasTabs ? "Session file found" : "No session file",
+                            hasTabs ? Decision.Restore : Decision.LeaveBehind,
                             false,
                             null,
                             false),
                         new RecipeComponent(
                             "extensions-export",
                             "Extensions list",
-                            extensionCount + " extensions",
-                            extensionCount > 0 ? Decision.Restore : Decision.LeaveBehind,
+                            hasExtensions ? "extensions.json found" : "No extensions.json",
+                            hasExtensions ? Decision.Restore : Decision.LeaveBehind,
                             false,
                             null,
                             false),
@@ -174,12 +169,7 @@ public sealed class FirefoxRecipe : IRecipe
                         ["folder"] = folder,
                         ["name"] = discovered.Name,
                         ["isDefault"] = discovered.IsDefault ? "1" : "0",
-                        ["bookmarkCount"] = bookmarkCount.ToString(),
-                        ["bookmarksHtml"] = bookmarksHtml,
-                        ["historyCsv"] = historyCsv,
                         ["primaryPassword"] = primaryPassword,
-                        ["tabsHtml"] = tabsHtml,
-                        ["extensionsHtml"] = extensionsHtml,
                         ["profileGroups"] = profileGroups ? "1" : "0",
                     }));
             DetectorWalk.AddTreeBadge(
@@ -261,8 +251,8 @@ public sealed class FirefoxRecipe : IRecipe
             destination.SessionExportsDirectory,
             Id,
             decisions.Card.InstanceKey.Replace(':', '_'));
-        string bookmarksHtmlReady = decisions.Card.Facts.GetValueOrDefault("bookmarksHtml") ?? string.Empty;
-        string historyCsvReady = decisions.Card.Facts.GetValueOrDefault("historyCsv") ?? "url,title\n";
+        string bookmarksHtmlReady = string.Empty;
+        string historyCsvReady = "url,title\n";
         if (RecipeDecisions.ShouldRestore(decisions, "bookmarks-export") ||
             RecipeDecisions.ShouldRestore(decisions, "history-export"))
         {
@@ -297,8 +287,7 @@ public sealed class FirefoxRecipe : IRecipe
 
         if (RecipeDecisions.ShouldRestore(decisions, "tabs-export"))
         {
-            string html = decisions.Card.Facts.GetValueOrDefault("tabsHtml") ??
-                "<!DOCTYPE html><title>Open tabs</title>";
+            (_, string html) = FirefoxExports.Tabs(destination.SafeFs, decisions.Card.Facts["source"]);
             writes.Add(
                 new RecipeWrite(
                     RecipeWriteKind.WriteContent,
@@ -311,8 +300,9 @@ public sealed class FirefoxRecipe : IRecipe
 
         if (RecipeDecisions.ShouldRestore(decisions, "extensions-export"))
         {
-            string html = decisions.Card.Facts.GetValueOrDefault("extensionsHtml") ??
-                "<!DOCTYPE html><title>Extensions</title>";
+            (_, string html) = FirefoxExports.Extensions(
+                destination.SafeFs,
+                Path.Combine(decisions.Card.Facts["source"], "extensions.json"));
             writes.Add(
                 new RecipeWrite(
                     RecipeWriteKind.WriteContent,

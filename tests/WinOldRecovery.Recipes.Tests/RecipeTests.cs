@@ -423,6 +423,9 @@ public sealed class RecipeTests
         Assert.Equal("131.0.6778.86", chromeCard.Facts["browserVersion"]);
         Assert.Equal("Work", chromeCard.Facts["displayName"]);
         Assert.True(DateTimeOffset.TryParse(chromeCard.Facts["lastUsed"], out _));
+        Assert.False(chromeCard.Facts.ContainsKey("bookmarksJson"));
+        Assert.False(chromeCard.Facts.ContainsKey("extensionsHtml"));
+        Assert.False(chromeCard.Facts.ContainsKey("tabsHtml"));
         Assert.DoesNotContain("encrypted_key", string.Join(';', chromeCard.Facts.Values), StringComparison.Ordinal);
         Assert.Contains(cards, card => card.RecipeId == "firefox");
         Assert.Equal(
@@ -1404,6 +1407,9 @@ public sealed class RecipeTests
                 context.Runner));
         RecipeCard card = Assert.Single(detected.Cards);
         Assert.Equal(Key4PrimaryPassword.NotSet, card.Facts["primaryPassword"]);
+        Assert.False(card.Facts.ContainsKey("tabsHtml"));
+        Assert.False(card.Facts.ContainsKey("extensionsHtml"));
+        Assert.False(card.Facts.ContainsKey("bookmarksHtml"));
         Assert.Contains("No Primary Password", card.WhatIsRestored, StringComparison.Ordinal);
         Assert.DoesNotContain(Canary, string.Join(';', card.Facts.Values), StringComparison.Ordinal);
     }

@@ -7,6 +7,13 @@ namespace WinOldRecovery.Recipes;
 
 public static class FirefoxExports
 {
+    public static bool HasSession(SafeFs safeFs, string profileRoot)
+    {
+        ArgumentNullException.ThrowIfNull(safeFs);
+        ArgumentException.ThrowIfNullOrWhiteSpace(profileRoot);
+        return NewestSession(safeFs, profileRoot) is not null;
+    }
+
     public static (int Count, string Html) Tabs(SafeFs safeFs, string profileRoot)
     {
         ArgumentNullException.ThrowIfNull(safeFs);
