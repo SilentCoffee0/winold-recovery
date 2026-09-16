@@ -1,5 +1,6 @@
 using WinOldRecovery.Core.Browse;
 using WinOldRecovery.Core.Decisions;
+using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Scan;
 
 namespace WinOldRecovery.Core.Tests.Browse;
@@ -32,6 +33,48 @@ public sealed class TreeNodeRowTests
         Assert.Contains("not on disk", row.ProblemExplanation, StringComparison.Ordinal);
         Assert.Equal(row.ProblemExplanation, row.RowTooltip);
         Assert.Equal(row.ProblemExplanation, row.ProblemLabel);
+    }
+
+    [Fact]
+    public void LongFileName_IsMiddleEllipsized_AndTooltipKeepsFullRelPath()
+    {
+        string name = new string('a', 30) + "-middle-" + new string('z', 30) + ".jpg";
+        TreeNodeRow row = Row(NodeKind.File, name, []);
+        Assert.Equal(48, row.DisplayName.Length);
+        Assert.Contains("...", row.DisplayName, StringComparison.Ordinal);
+        Assert.StartsWith("aaaaaaaa", row.DisplayName, StringComparison.Ordinal);
+        Assert.EndsWith(".jpg", row.DisplayName, StringComparison.Ordinal);
+        Assert.DoesNotContain("middle", row.DisplayName, StringComparison.Ordinal);
+        Assert.Equal(name, row.RowTooltip);
+    }
+
+    [Fact]
+    public void LongGroupHeader_IsMiddleEllipsized()
+    {
+        string path = @"Users\Alice\" + new string('n', 80) + @"\Desktop";
+        TreeNodeRow header = new(
+            10,
+            1,
+            "Desktop",
+            path,
+            NodeKind.Directory,
+            0,
+            0,
+            0,
+            null,
+            NodeProblem.None,
+            Decision.Restore,
+            false,
+            true,
+            2,
+            [],
+            IsGroupHeader: true);
+
+        Assert.Equal(PathDisplay.DefaultLimit, header.DisplayName.Length);
+        Assert.Contains("...", header.DisplayName, StringComparison.Ordinal);
+        Assert.StartsWith(@"Users\Alice", header.DisplayName, StringComparison.Ordinal);
+        Assert.EndsWith(@"Desktop", header.DisplayName, StringComparison.Ordinal);
+        Assert.Equal(path, header.RowTooltip);
     }
 
     [Fact]

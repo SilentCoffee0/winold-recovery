@@ -170,6 +170,32 @@ public sealed class NodeBrowserTests
             .FindByRelPath(@"Users\Alice\Desktop");
         Assert.NotNull(found);
         Assert.Equal("Desktop", found.Name);
+        Assert.False(found.MixedSubtree);
+    }
+
+    [Fact]
+    public async Task GetChildren_MarksMixedFromImmediateChildrenOnly()
+    {
+        await using BrowserContext context = await BrowserContext.CreateAsync();
+        await context.InsertAsync(
+        [
+            Node(1, null, "", "root"),
+            Node(2, 1, "A", "A"),
+            Node(3, 2, @"A\B", "B"),
+            Node(4, 3, @"A\B\leave.txt", "leave.txt"),
+        ]);
+        DecisionEngine engine = new(context.Database, "session-1");
+        await engine.SetUserDecisionAsync(2, Decision.Restore);
+        await engine.SetUserDecisionAsync(4, Decision.LeaveBehind);
+
+        NodeBrowser browser = new(context.Database, "session-1");
+        TreeNodeRow outer = Assert.Single(browser.GetChildren(1).Rows);
+        Assert.False(outer.MixedSubtree);
+        Assert.Equal("● Restore", outer.DecisionLabel);
+
+        TreeNodeRow inner = Assert.Single(browser.GetChildren(2).Rows);
+        Assert.True(inner.MixedSubtree);
+        Assert.StartsWith("○ mixed", inner.DecisionLabel, StringComparison.Ordinal);
     }
 
     [Fact]

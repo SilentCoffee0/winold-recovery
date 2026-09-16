@@ -41,10 +41,20 @@ public sealed record TreeNodeRow(
 
     public bool CanRestore => !IsReparse && !IsGroupHeader;
 
-    public string DisplayName =>
-        IsGroupHeader
-            ? (string.IsNullOrEmpty(RelPath) ? Name : RelPath)
-            : IsReparse ? "⊘ " + Name : Name;
+    public string DisplayName
+    {
+        get
+        {
+            if (IsGroupHeader)
+            {
+                string path = string.IsNullOrEmpty(RelPath) ? Name : RelPath;
+                return PathDisplay.MiddleEllipsis(path);
+            }
+
+            string name = PathDisplay.MiddleEllipsis(Name, 48);
+            return IsReparse ? "⊘ " + name : name;
+        }
+    }
 
     public string SizeLabel => IsReparse || IsGroupHeader ? "—" : QuantityFormat.Bytes(AggSize);
 

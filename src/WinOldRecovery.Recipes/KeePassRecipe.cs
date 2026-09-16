@@ -114,7 +114,11 @@ public sealed class KeePassRecipe : IRecipe
             }
         }
 
-        return DetectorWalk.FilesPresent(plan, "KeePass files present", "KeePass destination missing");
+        return DetectorWalk.FilesPresentMatchingSourceLength(
+            plan,
+            "KeePass files present",
+            "KeePass destination missing",
+            "KeePass destination size does not match the source");
     }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) => [];

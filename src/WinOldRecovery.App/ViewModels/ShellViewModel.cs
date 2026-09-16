@@ -1753,7 +1753,8 @@ public sealed class ShellViewModel : ObservableObject
             {
             }
 
-            await UiThread.InvokeAsync(HydrateFromSavedScan).ConfigureAwait(true);
+            SavedScanSnapshot? snapshot = LoadSavedScanSnapshot();
+            await UiThread.InvokeAsync(() => ApplySavedScanSnapshot(snapshot)).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -1773,24 +1774,17 @@ public sealed class ShellViewModel : ObservableObject
         }
     }
 
-    private void HydrateFromSavedScan()
+    private SavedScanSnapshot? LoadSavedScanSnapshot()
     {
         string? source = sessionDb.GetKv(workspace.SessionId, CompletedScan.SourceRootKey)
             ?? lastScanPointer?.SourceRoot;
         if (string.IsNullOrWhiteSpace(source) || !Directory.Exists(source))
         {
-            ScanStatus = "The last scan source folder is gone. Choose Scan to start again.";
-            return;
+            return null;
         }
 
-        SourceRoot = source;
-        sourceGuard.RegisterSourceRoot(source);
-        SelectedSourcePath = source;
-        lastProfiles = new ProfileDetector().Detect(source);
-        lastRecipeCards = LoadStoredRecipeCards();
         int highValue = ParseStoredInt(CompletedScan.HighValueCountKey);
         int regeneratable = ParseStoredInt(CompletedScan.RegeneratableCountKey);
-        lastClassification = new ClassificationSummary(highValue, 0, regeneratable, 0, []);
         int nodes = ParseStoredInt(CompletedScan.NodesVisitedKey);
         if (nodes == 0)
         {
@@ -1800,15 +1794,39 @@ public sealed class ShellViewModel : ObservableObject
         long bytes = 0;
         string? storedBytes = sessionDb.GetKv(workspace.SessionId, CompletedScan.BytesSeenKey);
         _ = long.TryParse(storedBytes, NumberStyles.Integer, CultureInfo.InvariantCulture, out bytes);
+        return new SavedScanSnapshot(
+            source,
+            new ProfileDetector().Detect(source),
+            LoadStoredRecipeCards(),
+            new ClassificationSummary(highValue, 0, regeneratable, 0, []),
+            nodes,
+            bytes,
+            DestinationMap.Parse(sessionDb.GetKv(workspace.SessionId, DestinationMap.KvKey)));
+    }
+
+    private void ApplySavedScanSnapshot(SavedScanSnapshot? snapshot)
+    {
+        if (snapshot is null)
+        {
+            ScanStatus = "The last scan source folder is gone. Choose Scan to start again.";
+            return;
+        }
+
+        SourceRoot = snapshot.SourceRoot;
+        sourceGuard.RegisterSourceRoot(snapshot.SourceRoot);
+        SelectedSourcePath = snapshot.SourceRoot;
+        lastProfiles = snapshot.Profiles;
+        lastRecipeCards = snapshot.Cards;
+        lastClassification = snapshot.Classification;
         scanCompleted = true;
-        destinationByRelPath = DestinationMap.Parse(sessionDb.GetKv(workspace.SessionId, DestinationMap.KvKey));
+        destinationByRelPath = snapshot.DestinationByRelPath;
         RebuildCards(lastProfiles);
         CurrentStep = WorkflowStep.Decide;
         DecidePane = DecidePane.Cards;
         ReloadView();
         ScanStatus = StatusStrip.FormatScanSummary(
-            nodes,
-            bytes,
+            snapshot.NodesVisited,
+            snapshot.BytesSeen,
             lastProfiles.Count,
             lastRecipeCards.Count,
             lastClassification.HighValueCount,
@@ -1824,6 +1842,15 @@ public sealed class ShellViewModel : ObservableObject
         UndoDecisionCommand.NotifyCanExecuteChanged();
         AnalyzeGitCommand.NotifyCanExecuteChanged();
     }
+
+    private sealed record SavedScanSnapshot(
+        string SourceRoot,
+        IReadOnlyList<DetectedProfile> Profiles,
+        IReadOnlyList<RecipeCard> Cards,
+        ClassificationSummary Classification,
+        int NodesVisited,
+        long BytesSeen,
+        Dictionary<string, string> DestinationByRelPath);
 
     private IReadOnlyList<RecipeCard> LoadStoredRecipeCards()
     {

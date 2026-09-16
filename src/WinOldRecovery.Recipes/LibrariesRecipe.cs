@@ -80,10 +80,11 @@ public sealed class LibrariesRecipe : IRecipe
 
     public RecipeVerifyResult Verify(PlanResult plan)
     {
-        RecipeVerifyResult present = DetectorWalk.FilesPresent(
+        RecipeVerifyResult present = DetectorWalk.FilesPresentMatchingSourceLength(
             plan,
             "Library present",
-            "Library destination missing");
+            "Library destination missing",
+            "Library destination size does not match the source");
         if (!present.Ok || plan.Writes.Count == 0)
         {
             return present;

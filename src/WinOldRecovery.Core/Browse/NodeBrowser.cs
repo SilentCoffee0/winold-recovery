@@ -229,7 +229,8 @@ public sealed class NodeBrowser
             offset: 0,
             limit: 1,
             parentId: null,
-            search: relPath);
+            search: relPath,
+            mixedSummaries: false);
         return page.Rows.Count == 0 ? null : page.Rows[0];
     }
 
@@ -490,23 +491,10 @@ public sealed class NodeBrowser
                 """
                 SELECT EXISTS (
                     SELECT 1
-                    FROM nodes AS descendant
-                    WHERE descendant.eff_decision <> $decision
-                      AND descendant.session_id = $sessionId
-                      AND descendant.id IN (
-                        WITH RECURSIVE subtree(id) AS (
-                            SELECT child.id
-                            FROM nodes AS child
-                            WHERE child.parent_id = $id
-                              AND child.session_id = $sessionId
-                            UNION ALL
-                            SELECT next.id
-                            FROM nodes AS next
-                            INNER JOIN subtree ON next.parent_id = subtree.id
-                            WHERE next.session_id = $sessionId
-                        )
-                        SELECT id FROM subtree
-                      )
+                    FROM nodes
+                    WHERE session_id = $sessionId
+                      AND parent_id = $id
+                      AND eff_decision <> $decision
                 );
                 """;
             command.Parameters.AddWithValue("$id", row.Id);
@@ -588,27 +576,22 @@ public sealed class NodeBrowser
         bool HasOwnUserDecision,
         bool HasSuggestedDefault);
 
-    private static (long Restore, long Leave, long Undecided) LoadMixedBytes(
+    private (long Restore, long Leave, long Undecided) LoadMixedBytes(
         SqliteConnection connection,
         long nodeId)
     {
         using SqliteCommand command = connection.CreateCommand();
         command.CommandText =
             """
-            WITH RECURSIVE subtree(id) AS (
-                SELECT $id
-                UNION ALL
-                SELECT child.id
-                FROM nodes AS child
-                INNER JOIN subtree ON child.parent_id = subtree.id
-            )
             SELECT
-                COALESCE(SUM(CASE WHEN eff_decision = 'Restore' AND kind NOT IN ('Directory', 'Junction', 'Symlink', 'MountPoint') THEN size ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN eff_decision = 'LeaveBehind' AND kind NOT IN ('Directory', 'Junction', 'Symlink', 'MountPoint') THEN size ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN eff_decision = 'Undecided' AND kind NOT IN ('Directory', 'Junction', 'Symlink', 'MountPoint') THEN size ELSE 0 END), 0)
+                COALESCE(SUM(CASE WHEN eff_decision = 'Restore' THEN CASE WHEN kind IN ('Directory', 'Junction', 'Symlink', 'MountPoint') THEN agg_size ELSE size END ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN eff_decision = 'LeaveBehind' THEN CASE WHEN kind IN ('Directory', 'Junction', 'Symlink', 'MountPoint') THEN agg_size ELSE size END ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN eff_decision = 'Undecided' THEN CASE WHEN kind IN ('Directory', 'Junction', 'Symlink', 'MountPoint') THEN agg_size ELSE size END ELSE 0 END), 0)
             FROM nodes
-            WHERE id IN (SELECT id FROM subtree);
+            WHERE session_id = $sessionId
+              AND parent_id = $id;
             """;
+        command.Parameters.AddWithValue("$sessionId", sessionId);
         command.Parameters.AddWithValue("$id", nodeId);
         using SqliteDataReader reader = command.ExecuteReader();
         if (!reader.Read())

@@ -3363,6 +3363,11 @@ public sealed class RecipeTests
         Assert.Contains("key", missingKey.Detail, StringComparison.OrdinalIgnoreCase);
         await File.WriteAllTextAsync(destKeyx, "key");
         Assert.True(new KeePassRecipe().Verify(keepassPlan).Ok);
+        string destVault = Path.Combine(context.Destination, "Documents", "Passwords", "fixture.kdbx");
+        await File.WriteAllTextAsync(destVault, "truncated");
+        RecipeVerifyResult truncatedVault = new KeePassRecipe().Verify(keepassPlan);
+        Assert.False(truncatedVault.Ok);
+        Assert.Contains("size", truncatedVault.Detail, StringComparison.OrdinalIgnoreCase);
 
         RecipeCard vscode = Assert.Single(cards, card => card.RecipeId == "vscode");
         PlanResult vscodePlan = host.PlanCard(new VsCodeRecipe(), vscode, Dest(context));
@@ -3714,6 +3719,13 @@ public sealed class RecipeTests
             Dest(context));
         RecipeHost host = new(context.Database, context.SafeFs, context.Runner, [new LibrariesRecipe()]);
         await host.ExecuteAsync("session-1", new LibrariesRecipe(), plan);
+        Assert.True(new LibrariesRecipe().Verify(plan).Ok);
+        string destCatalog = Path.Combine(context.Destination, "Calibre Library", "metadata.db");
+        await File.WriteAllTextAsync(destCatalog, "x");
+        RecipeVerifyResult truncated = new LibrariesRecipe().Verify(plan);
+        Assert.False(truncated.Ok);
+        Assert.Contains("size", truncated.Detail, StringComparison.OrdinalIgnoreCase);
+        await File.WriteAllTextAsync(destCatalog, "calibre");
         Assert.True(new LibrariesRecipe().Verify(plan).Ok);
         PlanResult missingCatalog = plan with
         {
