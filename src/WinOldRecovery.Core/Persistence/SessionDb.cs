@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Data.Sqlite;
@@ -13,6 +14,7 @@ namespace WinOldRecovery.Core.Persistence;
 public sealed class SessionDb : IAsyncDisposable
 {
     private const int WriterQueueCapacity = 1024;
+    private const int NodeInsertChunkSize = 48;
 
     private readonly SqliteConnection writerConnection;
     private readonly Channel<IWriteRequest> writerQueue;
@@ -174,81 +176,102 @@ public sealed class SessionDb : IAsyncDisposable
         }
 
         return WriteAsync(
-            async (connection, token) =>
+            (connection, token) =>
             {
                 using SqliteTransaction transaction = connection.BeginTransaction();
-                await using SqliteCommand command = connection.CreateCommand();
-                command.Transaction = transaction;
-                command.CommandText =
-                    """
-                    INSERT INTO nodes(
-                        id,
-                        session_id,
-                        profile_id,
-                        parent_id,
-                        name,
-                        rel_path,
-                        kind,
-                        size,
-                        agg_size,
-                        agg_files,
-                        mtime_utc,
-                        attributes,
-                        problem)
-                    VALUES (
-                        $id,
-                        $sessionId,
-                        $profileId,
-                        $parentId,
-                        $name,
-                        $relPath,
-                        $kind,
-                        $size,
-                        $aggSize,
-                        $aggFiles,
-                        $mtime,
-                        $attributes,
-                        $problem);
-                    """;
-                SqliteParameter id = command.Parameters.Add("$id", SqliteType.Integer);
-                SqliteParameter sessionId = command.Parameters.Add("$sessionId", SqliteType.Text);
-                SqliteParameter profileId = command.Parameters.Add("$profileId", SqliteType.Integer);
-                SqliteParameter parentId = command.Parameters.Add("$parentId", SqliteType.Integer);
-                SqliteParameter name = command.Parameters.Add("$name", SqliteType.Text);
-                SqliteParameter relPath = command.Parameters.Add("$relPath", SqliteType.Text);
-                SqliteParameter kind = command.Parameters.Add("$kind", SqliteType.Text);
-                SqliteParameter size = command.Parameters.Add("$size", SqliteType.Integer);
-                SqliteParameter aggSize = command.Parameters.Add("$aggSize", SqliteType.Integer);
-                SqliteParameter aggFiles = command.Parameters.Add("$aggFiles", SqliteType.Integer);
-                SqliteParameter mtime = command.Parameters.Add("$mtime", SqliteType.Text);
-                SqliteParameter attributes = command.Parameters.Add("$attributes", SqliteType.Integer);
-                SqliteParameter problem = command.Parameters.Add("$problem", SqliteType.Text);
-
-                foreach (PersistedNode node in nodes)
+                int offset = 0;
+                while (offset < nodes.Count)
                 {
                     token.ThrowIfCancellationRequested();
-                    id.Value = node.Id;
-                    sessionId.Value = node.SessionId;
-                    profileId.Value = (object?)node.ProfileId ?? DBNull.Value;
-                    parentId.Value = (object?)node.ParentId ?? DBNull.Value;
-                    name.Value = node.Name;
-                    relPath.Value = node.RelPath;
-                    kind.Value = node.Kind.ToString();
-                    size.Value = node.Size;
-                    aggSize.Value = node.AggSize;
-                    aggFiles.Value = node.AggFiles;
-                    mtime.Value = node.LastWriteTimeUtc is { } lastWrite
-                        ? DateTime.SpecifyKind(lastWrite, DateTimeKind.Utc)
-                            .ToString("O", CultureInfo.InvariantCulture)
-                        : DBNull.Value;
-                    attributes.Value = node.Attributes;
-                    problem.Value = node.Problem.ToString();
+                    int count = Math.Min(NodeInsertChunkSize, nodes.Count - offset);
+                    using SqliteCommand command = connection.CreateCommand();
+                    command.Transaction = transaction;
+                    command.CommandText = BuildNodeInsertSql(count);
+                    for (int index = 0; index < count; index++)
+                    {
+                        BindNodeInsert(command, index, nodes[offset + index]);
+                    }
+
                     command.ExecuteNonQuery();
+                    offset += count;
                 }
 
                 transaction.Commit();
+                return Task.CompletedTask;
             },
             cancellationToken);
+    }
+
+    private static string BuildNodeInsertSql(int count)
+    {
+        StringBuilder sql = new(96 + (count * 168));
+        sql.Append(
+            """
+            INSERT INTO nodes(
+                id,
+                session_id,
+                profile_id,
+                parent_id,
+                name,
+                rel_path,
+                kind,
+                size,
+                agg_size,
+                agg_files,
+                mtime_utc,
+                attributes,
+                problem)
+            VALUES
+            """);
+        for (int index = 0; index < count; index++)
+        {
+            if (index > 0)
+            {
+                sql.Append(',');
+            }
+
+            string n = index.ToString(CultureInfo.InvariantCulture);
+            sql.Append(" ($id").Append(n)
+                .Append(", $sessionId").Append(n)
+                .Append(", $profileId").Append(n)
+                .Append(", $parentId").Append(n)
+                .Append(", $name").Append(n)
+                .Append(", $relPath").Append(n)
+                .Append(", $kind").Append(n)
+                .Append(", $size").Append(n)
+                .Append(", $aggSize").Append(n)
+                .Append(", $aggFiles").Append(n)
+                .Append(", $mtime").Append(n)
+                .Append(", $attributes").Append(n)
+                .Append(", $problem").Append(n)
+                .Append(')');
+        }
+
+        sql.Append(';');
+        return sql.ToString();
+    }
+
+    private static void BindNodeInsert(SqliteCommand command, int index, PersistedNode node)
+    {
+        string n = index.ToString(CultureInfo.InvariantCulture);
+        command.Parameters.AddWithValue("$id" + n, node.Id);
+        command.Parameters.AddWithValue("$sessionId" + n, node.SessionId);
+        command.Parameters.AddWithValue("$profileId" + n, (object?)node.ProfileId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$parentId" + n, (object?)node.ParentId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$name" + n, node.Name);
+        command.Parameters.AddWithValue("$relPath" + n, node.RelPath);
+        command.Parameters.AddWithValue("$kind" + n, node.Kind.ToString());
+        command.Parameters.AddWithValue("$size" + n, node.Size);
+        command.Parameters.AddWithValue("$aggSize" + n, node.AggSize);
+        command.Parameters.AddWithValue("$aggFiles" + n, node.AggFiles);
+        command.Parameters.AddWithValue(
+            "$mtime" + n,
+            node.LastWriteTimeUtc is { } lastWrite
+                ? DateTime.SpecifyKind(lastWrite, DateTimeKind.Utc)
+                    .ToString("O", CultureInfo.InvariantCulture)
+                : DBNull.Value);
+        command.Parameters.AddWithValue("$attributes" + n, node.Attributes);
+        command.Parameters.AddWithValue("$problem" + n, node.Problem.ToString());
     }
 
     public Task UpdateNodeAggregatesAsync(

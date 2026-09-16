@@ -155,28 +155,48 @@ public partial class App : Application
     {
         try
         {
-            InterruptedRestoreReport? interrupted = await Task.Run(
-                    () => InterruptedRestore.FindLatest(safeFs))
-                .ConfigureAwait(true);
+            Task<InterruptedRestoreReport?> findTask = Task.Run(
+                () => InterruptedRestore.FindLatest(safeFs));
+            Task<(SessionWorkspace Workspace, SessionDb Database)> freshTask = Task.Run(
+                async () =>
+                {
+                    SessionWorkspace created = SessionWorkspace.Create(safeFs, now: startedAt);
+                    SessionDb opened = await SessionDb.OpenAsync(created.DatabasePath, safeFs)
+                        .ConfigureAwait(false);
+                    await opened.CreateSessionAsync(
+                            new SessionRecord(
+                                created.SessionId,
+                                startedAt,
+                                "Created",
+                                typeof(App).Assembly.GetName().Version?.ToString() ?? "0.1.0"))
+                        .ConfigureAwait(false);
+                    return (created, opened);
+                });
+            InterruptedRestoreReport? interrupted = await findTask.ConfigureAwait(true);
 
             SessionWorkspace workspace;
             SessionDb database;
             if (interrupted is null)
             {
-                workspace = SessionWorkspace.Create(safeFs, now: startedAt);
-                database = await SessionDb.OpenAsync(workspace.DatabasePath, safeFs).ConfigureAwait(true);
-                await database.CreateSessionAsync(
-                        new SessionRecord(
-                            workspace.SessionId,
-                            startedAt,
-                            "Created",
-                            typeof(App).Assembly.GetName().Version?.ToString() ?? "0.1.0"))
-                    .ConfigureAwait(true);
+                (workspace, database) = await freshTask.ConfigureAwait(true);
             }
             else
             {
                 workspace = SessionWorkspace.Open(interrupted.WorkspaceRoot, interrupted.SessionId);
                 database = await SessionDb.OpenAsync(workspace.DatabasePath, safeFs).ConfigureAwait(true);
+                try
+                {
+                    (SessionWorkspace unused, SessionDb unusedDb) = await freshTask.ConfigureAwait(true);
+                    await unusedDb.DisposeAsync().ConfigureAwait(true);
+                    if (Directory.Exists(unused.RootPath))
+                    {
+                        safeFs.DeleteDirectory(unused.RootPath, recursive: true);
+                    }
+                }
+                catch (Exception exception) when (
+                    exception is not OutOfMemoryException and not StackOverflowException)
+                {
+                }
             }
 
             sessionDatabase = database;

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Persistence;
@@ -96,6 +97,40 @@ public sealed class SessionDbTests
         Assert.Equal(1, context.Database.GetMaxNodeId("session-1"));
         await context.Database.ClearScanDataAsync("session-1");
         Assert.Equal(0, context.Database.GetMaxNodeId("session-1"));
+    }
+
+    [Fact]
+    public async Task InsertNodes_WritesAcrossAMultiRowSqliteChunk()
+    {
+        await using SessionDbTestContext context = await SessionDbTestContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Scanning", "0.1.0"));
+        List<PersistedNode> nodes = new(70);
+        for (int id = 1; id <= 70; id++)
+        {
+            nodes.Add(
+                new PersistedNode(
+                    id,
+                    "session-1",
+                    null,
+                    id == 1 ? null : 1L,
+                    "n" + id.ToString(CultureInfo.InvariantCulture),
+                    "p" + id.ToString(CultureInfo.InvariantCulture),
+                    NodeKind.File,
+                    id,
+                    0,
+                    0,
+                    DateTime.UtcNow,
+                    0,
+                    NodeProblem.None));
+        }
+
+        await context.Database.InsertNodesAsync(nodes);
+        Assert.Equal(70, context.Database.GetMaxNodeId("session-1"));
+        using SqliteConnection reader = context.Database.OpenReadConnection();
+        using SqliteCommand count = reader.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM nodes WHERE session_id = 'session-1';";
+        Assert.Equal(70L, (long)(count.ExecuteScalar() ?? 0L));
     }
 
     [Fact]
