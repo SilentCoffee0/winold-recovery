@@ -6,6 +6,9 @@ All notable changes to WinOld Recovery will be documented here.
 
 ### Fixed
 
+- Owner SID tests assert the file ACL owner, not the testhost identity. GitHub Actions TEMP files are owned by `BUILTIN\Administrators`, which is not `WindowsIdentity.GetCurrent()`.
+- I15 kill-and-resume no longer redirects RestoreHarness stdout/stderr (a full pipe can stall the copy). The case has a 15-minute budget and CI runs test projects one at a time (`-m:1`).
+- The 1M on-disk walker is skipped on GitHub Actions unless `WOR_SCALE_1M=1`. Creating and deleting a million empty files exceeds `windows-latest`; CI still pages 1M synthetic children, and the published `--scan` probe covers 8.2.
 - Startup no longer opens every past session database as a writer while looking for an interrupted restore. A read-only probe checks for `Started`/`Paused`/`Failed` journal rows first, so leftover scan-only sessions are skipped without running migrations against them.
 - Manual purge deletes on a background thread so the UI can show progress and Cancel can run. The FlaUI scan→purge pass was blocking on `Deleting…` because `DeleteTree` ran on the dispatcher.
 - The FlaUI smoke waits for a UIA-ready window instead of a fixed 90 seconds. A freshly published single-file EXE needs bundle extraction and an antimalware scan on its first launch (14.1 s measured, 1.0 s warm), which used to fail the smoke; the budget is overridable with `FLAUI_WINDOW_TIMEOUT_SECONDS`. The smoke also skips instead of failing when a Medium IL testhost is blocked from attaching by UIPI. Overlay/Help/step navigation passed 15 Sep 2026 from an elevated testhost. The same test now drives scan→purge on a browsed TEMP fixture and will not click Scan unless `Smoke fixture ready (OldInstall)` is on the status line.

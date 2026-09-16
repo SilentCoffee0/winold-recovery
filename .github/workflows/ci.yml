@@ -25,7 +25,7 @@ jobs:
         run: dotnet build WinOldRecovery.slnx --configuration Release --no-restore -warnaserror
 
       - name: Test
-        run: dotnet test WinOldRecovery.slnx --configuration Release --no-build --no-restore
+        run: dotnet test WinOldRecovery.slnx --configuration Release --no-build --no-restore -m:1 --settings tests/ci.runsettings
 
       - name: Restore publish runtime packs
         run: >

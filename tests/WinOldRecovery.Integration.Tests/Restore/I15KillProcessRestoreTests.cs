@@ -17,7 +17,7 @@ public sealed class I15KillProcessRestoreTests
     private const int FilesPerDirectory = 500;
     private const int FileCount = DirectoryCount * FilesPerDirectory;
 
-    [Fact(Timeout = 300_000)]
+    [Fact(Timeout = 900_000)]
     public async Task I15_KillProcessDuringCopyTree_ResumesWithoutPartialsOrSourceWrites()
     {
         string root = Path.Combine(Path.GetTempPath(), $"WinOldRecovery-KillCopy-{Guid.NewGuid():N}");
@@ -136,8 +136,6 @@ public sealed class I15KillProcessRestoreTests
         {
             UseShellExecute = false,
             CreateNoWindow = true,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
         };
         start.ArgumentList.Add(dll);
         start.ArgumentList.Add(databasePath);
@@ -156,11 +154,9 @@ public sealed class I15KillProcessRestoreTests
         {
             if (harness.HasExited)
             {
-                string error = harness.StandardError.ReadToEnd();
-                string output = harness.StandardOutput.ReadToEnd();
                 throw new InvalidOperationException(
                     "RestoreHarness exited with " + harness.ExitCode.ToString(CultureInfo.InvariantCulture)
-                    + " before producing files. stdout: " + output + " stderr: " + error);
+                    + " before producing files.");
             }
 
             if (CountRestoredFiles(destination) >= minimumFiles)

@@ -1,5 +1,5 @@
-using System.Security.Principal;
 using WinOldRecovery.Core.IO;
+using WinOldRecovery.Native;
 
 namespace WinOldRecovery.Core.Tests.IO;
 
@@ -31,9 +31,8 @@ public sealed class OwnerSidDisplayTests
         {
             string line = OwnerSidDisplay.Line(path);
             Assert.StartsWith("Owner: ", line, StringComparison.Ordinal);
-            Assert.Contains("S-1-", line, StringComparison.Ordinal);
-            string current = WindowsIdentity.GetCurrent().User!.Value;
-            Assert.Contains(current, line, StringComparison.Ordinal);
+            string ownerSid = FileSecurityInfo.GetOwnerSid(path);
+            Assert.Contains(ownerSid, line, StringComparison.Ordinal);
         }
         finally
         {
