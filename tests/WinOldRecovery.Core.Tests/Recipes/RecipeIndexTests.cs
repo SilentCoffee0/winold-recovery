@@ -92,6 +92,33 @@ public sealed class RecipeIndexTests
     }
 
     [Fact]
+    public async Task Index_DoesNotMatchASiblingProfilePrefix()
+    {
+        await using RecipeIndexContext context = await RecipeIndexContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Created", "0.1.0"));
+        await context.Database.InsertNodesAsync(
+        [
+            Node(1, null, "Windows.old", ""),
+            Node(2, 1, "Alice", @"Users\Alice"),
+            Node(3, 2, "vault.kdbx", @"Users\Alice\Documents\vault.kdbx", NodeKind.File),
+            Node(4, 1, "Alice2", @"Users\Alice2"),
+            Node(5, 4, "other.kdbx", @"Users\Alice2\Documents\other.kdbx", NodeKind.File),
+            Node(6, 4, ".git", @"Users\Alice2\notes\.git"),
+        ]);
+
+        RecipeIndex index = new(
+            context.Database,
+            "session-1",
+            @"Users\Alice",
+            Path.Combine(context.Root, "Users", "Alice"));
+        Assert.Equal(
+            Path.Combine(context.Root, "Users", "Alice", "Documents", "vault.kdbx"),
+            Assert.Single(index.FilesWithExtensions(".kdbx")));
+        Assert.Empty(index.GitWorkingTrees());
+    }
+
+    [Fact]
     public async Task Index_FindsStartMenuShortcutsUnderRelativePrefix()
     {
         await using RecipeIndexContext context = await RecipeIndexContext.CreateAsync();

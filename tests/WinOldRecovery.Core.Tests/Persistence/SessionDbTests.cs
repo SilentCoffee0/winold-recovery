@@ -61,13 +61,25 @@ public sealed class SessionDbTests
         Assert.Equal(ExpectedTables, tables);
         Assert.Equal("wal", journalMode, ignoreCase: true);
         Assert.Equal(SessionDb.CurrentSchemaVersion, version);
-        Assert.Equal(3, SessionDb.CurrentSchemaVersion);
+        Assert.Equal(4, SessionDb.CurrentSchemaVersion);
 
         await using SqliteCommand indexCommand = reader.CreateCommand();
         indexCommand.CommandText =
             "SELECT sql FROM sqlite_schema WHERE type = 'index' AND name = 'ix_nodes_parent';";
         string? parentIndex = Convert.ToString(await indexCommand.ExecuteScalarAsync());
         Assert.Contains("NOCASE", parentIndex, StringComparison.OrdinalIgnoreCase);
+        indexCommand.CommandText =
+            "SELECT name FROM sqlite_schema WHERE type = 'index' AND name IN ('ix_nodes_session_name', 'ix_nodes_session_rel') ORDER BY name;";
+        List<string> recipeIndexes = [];
+        await using (SqliteDataReader indexRows = await indexCommand.ExecuteReaderAsync())
+        {
+            while (await indexRows.ReadAsync())
+            {
+                recipeIndexes.Add(indexRows.GetString(0));
+            }
+        }
+
+        Assert.Equal(["ix_nodes_session_name", "ix_nodes_session_rel"], recipeIndexes);
     }
 
     [Fact]

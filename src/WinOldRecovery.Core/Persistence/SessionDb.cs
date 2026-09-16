@@ -1278,6 +1278,7 @@ public sealed class SessionDb : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
         ArgumentException.ThrowIfNullOrWhiteSpace(childName);
         profileRelPrefix ??= string.Empty;
+        string prefix = profileRelPrefix.Replace('/', '\\').Trim('\\');
 
         using SqliteConnection connection = OpenReadConnection();
         using SqliteCommand command = connection.CreateCommand();
@@ -1288,16 +1289,13 @@ public sealed class SessionDb : IAsyncDisposable
             INNER JOIN nodes AS parent ON parent.id = child.parent_id
             WHERE child.session_id = $sessionId
               AND child.name = $name COLLATE NOCASE
-              AND (
-                    $prefix = ''
-                 OR parent.rel_path = $prefix
-                 OR instr(parent.rel_path, $prefix || '\') = 1
-              )
+            """ + RelPathPrefixSql("parent.rel_path", prefix) +
+            """
               AND instr(parent.rel_path, $prefix || '\AppData\') = 0;
             """;
         command.Parameters.AddWithValue("$sessionId", sessionId);
         command.Parameters.AddWithValue("$name", childName);
-        command.Parameters.AddWithValue("$prefix", profileRelPrefix.Replace('/', '\\').Trim('\\'));
+        BindRelPathPrefix(command, prefix);
         List<string> paths = [];
         using SqliteDataReader reader = command.ExecuteReader();
         while (reader.Read())
@@ -1322,6 +1320,7 @@ public sealed class SessionDb : IAsyncDisposable
             return [];
         }
 
+        string prefix = profileRelPrefix.Replace('/', '\\').Trim('\\');
         using SqliteConnection connection = OpenReadConnection();
         using SqliteCommand command = connection.CreateCommand();
         List<string> likes = new(extensions.Count);
@@ -1348,15 +1347,12 @@ public sealed class SessionDb : IAsyncDisposable
             """ + string.Join(" OR ", likes) +
             """
               )
-              AND (
-                    $prefix = ''
-                 OR rel_path = $prefix
-                 OR instr(rel_path, $prefix || '\') = 1
-              )
+            """ + RelPathPrefixSql("rel_path", prefix) +
+            """
               AND ($skipAppData = 0 OR instr(rel_path, $prefix || '\AppData\') = 0);
             """;
         command.Parameters.AddWithValue("$sessionId", sessionId);
-        command.Parameters.AddWithValue("$prefix", profileRelPrefix.Replace('/', '\\').Trim('\\'));
+        BindRelPathPrefix(command, prefix);
         command.Parameters.AddWithValue("$skipAppData", skipAppData ? 1 : 0);
         List<string> paths = [];
         using SqliteDataReader reader = command.ExecuteReader();
@@ -1376,6 +1372,33 @@ public sealed class SessionDb : IAsyncDisposable
         }
 
         return paths;
+    }
+
+    private static string RelPathPrefixSql(string column, string prefix)
+    {
+        if (string.IsNullOrEmpty(prefix))
+        {
+            return string.Empty;
+        }
+
+        return " AND (" + column + " = $prefix OR " + column + " GLOB $prefixGlob)";
+    }
+
+    private static void BindRelPathPrefix(SqliteCommand command, string prefix)
+    {
+        command.Parameters.AddWithValue("$prefix", prefix);
+        if (!string.IsNullOrEmpty(prefix))
+        {
+            command.Parameters.AddWithValue("$prefixGlob", EscapeGlobLiteral(prefix) + @"\*");
+        }
+    }
+
+    private static string EscapeGlobLiteral(string value)
+    {
+        return value
+            .Replace("[", "[[]", StringComparison.Ordinal)
+            .Replace("*", "[*]", StringComparison.Ordinal)
+            .Replace("?", "[?]", StringComparison.Ordinal);
     }
 
     public ChildAggregate GetChildAggregates(string sessionId, long parentId)
