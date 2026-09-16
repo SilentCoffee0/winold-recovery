@@ -85,6 +85,10 @@ public sealed class AccessibilityMarkupTests
         string appXaml = File.ReadAllText(FindAppXaml());
         Assert.Contains("SystemFonts.MessageFontFamilyKey", appXaml, StringComparison.Ordinal);
         Assert.Contains("SystemFonts.MessageFontSizeKey", appXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Key=\"CardListBox\"", appXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Key=\"CommandBar\"", appXaml, StringComparison.Ordinal);
+        Assert.Contains("x:Key=\"DecisionChip\"", appXaml, StringComparison.Ordinal);
+        Assert.Contains("CornerRadius=\"6\"", appXaml, StringComparison.Ordinal);
         string manifest = File.ReadAllText(FindAppManifest());
         Assert.Contains("PerMonitorV2", manifest, StringComparison.Ordinal);
         Assert.Contains("dpiAware", manifest, StringComparison.Ordinal);

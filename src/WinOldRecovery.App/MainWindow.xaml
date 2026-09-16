@@ -27,7 +27,7 @@
             <StackPanel>
                 <DockPanel LastChildFill="True">
                     <TextBlock DockPanel.Dock="Left"
-                               FontSize="20"
+                               FontSize="22"
                                FontWeight="SemiBold"
                                VerticalAlignment="Center"
                                Text="WinOld Recovery" />
@@ -235,11 +235,19 @@
                                 AutomationProperties.Name="Browse for Windows.old"
                                 AutomationProperties.AutomationId="BrowseSourceButton" />
                         <ListBox MaxHeight="148"
+                                 Style="{StaticResource CardListBox}"
                                  ItemsSource="{Binding Sources}"
-                                 DisplayMemberPath="DisplayLabel"
                                  SelectedValuePath="Path"
                                  SelectedValue="{Binding SelectedSourcePath}"
-                                 AutomationProperties.Name="Windows.old sources" />
+                                 AutomationProperties.Name="Windows.old sources">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource CardBorder}" Padding="12,8" Margin="0,0,0,4">
+                                        <TextBlock Text="{Binding DisplayLabel}" TextWrapping="Wrap" />
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
                     </DockPanel>
 
                     <DockPanel Grid.Row="1" Margin="0,8,0,8">
@@ -328,7 +336,7 @@
                         <ListBox ItemsSource="{Binding Cards}"
                                  SelectedItem="{Binding SelectedCard}">
                             <ListBox.Style>
-                                <Style TargetType="ListBox">
+                                <Style TargetType="ListBox" BasedOn="{StaticResource CardListBox}">
                                     <Setter Property="Visibility" Value="Collapsed" />
                                     <Style.Triggers>
                                         <MultiDataTrigger>
@@ -368,18 +376,19 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBlock Margin="0,6,0,0" Text="{Binding DecisionLabel}"
-                                                   ToolTip="{Binding DecisionTooltip}">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
+                                        <Border>
+                                            <Border.Style>
+                                                <Style TargetType="Border" BasedOn="{StaticResource DecisionChip}">
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding Kind}" Value="Absent">
                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding DecisionLabel}"
+                                                       ToolTip="{Binding DecisionTooltip}" />
+                                        </Border>
                                         <WrapPanel Margin="0,10,0,0">
                                             <WrapPanel.Style>
                                                 <Style TargetType="WrapPanel">
@@ -524,6 +533,7 @@
                     </DockPanel>
 
                     <StackPanel Grid.Row="2" Margin="0,4,0,0">
+                        <Border Style="{StaticResource CommandBar}">
                         <WrapPanel>
                         <Button Style="{StaticResource AccentButton}" Content="{Binding ScanButtonLabel}" Command="{Binding ScanCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Start scan" AutomationProperties.AutomationId="ScanButton" />
@@ -545,10 +555,6 @@
                         <Button Content="Preview plan" Command="{Binding PreparePreviewCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Preview plan"
                                 AutomationProperties.AutomationId="PreviewPlanButton" />
-                        <ComboBox Width="160" Margin="0,0,8,8"
-                                  ItemsSource="{Binding ConflictPolicies}"
-                                  SelectedItem="{Binding SelectedConflictPolicy}"
-                                  AutomationProperties.Name="Conflict policy" />
                         <Button Content="Run restore" Command="{Binding ExecuteRestoreCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Run restore"
                                 AutomationProperties.AutomationId="RunRestoreButton" />
@@ -570,7 +576,8 @@
                                 AutomationProperties.Name="Reveal in tree" />
                         <TextBlock Margin="4,8,8,8" VerticalAlignment="Center" Text="{Binding PagingStatus}" />
                         </WrapPanel>
-                        <WrapPanel Margin="0,4,0,0">
+                        </Border>
+                        <WrapPanel Margin="0,8,0,0">
                             <TextBlock VerticalAlignment="Center" Margin="0,0,12,8" FontWeight="SemiBold" Text="Scan options" />
                             <CheckBox Content="Compute folder sizes and counts (recommended)"
                                       IsChecked="{Binding ComputeFolderSizes}"
@@ -595,7 +602,9 @@
                                 </Style.Triggers>
                             </Style>
                         </DockPanel.Style>
-                        <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold" Margin="0,0,0,4" Text="Conflict policy" />
+                        <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold" Margin="0,0,0,4"
+                                   Text="Conflict policy"
+                                   AutomationProperties.Name="Conflict policy" />
                         <RadioButton DockPanel.Dock="Top" GroupName="ConflictPolicy"
                                      Content="Keep both (restored copy gets a suffix)"
                                      IsChecked="{Binding IsKeepBothPolicy}"
