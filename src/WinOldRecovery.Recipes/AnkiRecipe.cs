@@ -34,7 +34,7 @@ public sealed class AnkiRecipe : IRecipe
                 }
 
                 (int notes, int cardCount, string integrity, string schema) = ReadCollectionFacts(context, collection, Path.GetFileName(profile));
-                int media = CountMedia(context.SafeFs, Path.Combine(profile, "collection.media"));
+                int media = CountMedia(context, Path.Combine(profile, "collection.media"));
                 bool hasWal = context.SafeFs.FileExists(Path.Combine(profile, "collection.anki2-wal"));
                 (int backups, string newestBackup) = CountBackups(context.SafeFs, Path.Combine(profile, "backups"));
                 int addons = CountAddons(context.SafeFs, Path.Combine(baseFolder, "addons21"));
@@ -367,6 +367,22 @@ public sealed class AnkiRecipe : IRecipe
         using SqliteCommand command = connection.CreateCommand();
         command.CommandText = sql;
         return command.ExecuteScalar()?.ToString();
+    }
+
+    private static int CountMedia(ProfileContext context, string media)
+    {
+        if (context.Index is { } index)
+        {
+            string relative = DetectorWalk.RelativeUnder(context.OldProfileRoot, media);
+            if (!string.IsNullOrWhiteSpace(relative) &&
+                !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) &&
+                !Path.IsPathRooted(relative))
+            {
+                return index.CountFilesUnder(relative, "media.trash");
+            }
+        }
+
+        return CountMedia(context.SafeFs, media);
     }
 
     private static int CountMedia(SafeFs safeFs, string media)

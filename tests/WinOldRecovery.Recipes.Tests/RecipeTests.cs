@@ -2137,6 +2137,84 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Anki_Detect_CountsMediaFromRecipeIndexExcludingTrash()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string anki = Path.Combine(alice, "AppData", "Roaming", "Anki2", "User 1");
+        Directory.CreateDirectory(Path.Combine(anki, "collection.media", "media.trash"));
+        WriteSqlite(
+            Path.Combine(anki, "collection.anki2"),
+            """
+            CREATE TABLE notes(id INTEGER PRIMARY KEY, guid TEXT);
+            CREATE TABLE cards(id INTEGER PRIMARY KEY, nid INTEGER);
+            INSERT INTO notes(guid) VALUES ('note-1');
+            INSERT INTO cards(nid) VALUES (1);
+            """);
+        await File.WriteAllTextAsync(Path.Combine(anki, "collection.media", "image.png"), "media");
+        await File.WriteAllTextAsync(Path.Combine(anki, "collection.media", "extra-on-disk.png"), "disk");
+        await File.WriteAllTextAsync(Path.Combine(anki, "collection.media", "media.trash", "gone.png"), "trash");
+        await context.Database.InsertNodesAsync(
+        [
+            new PersistedNode(
+                1,
+                "session-1",
+                null,
+                null,
+                "image.png",
+                @"Users\Alice\AppData\Roaming\Anki2\User 1\collection.media\image.png",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                2,
+                "session-1",
+                null,
+                null,
+                "gone.png",
+                @"Users\Alice\AppData\Roaming\Anki2\User 1\collection.media\media.trash\gone.png",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+        ]);
+
+        DetectResult fromIndex = new AnkiRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner,
+                new RecipeIndex(
+                    context.Database,
+                    "session-1",
+                    @"Users\Alice",
+                    alice)));
+        Assert.Equal("1", Assert.Single(fromIndex.Cards).Facts["media"]);
+
+        DetectResult fromDisk = new AnkiRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        Assert.Equal("2", Assert.Single(fromDisk.Cards).Facts["media"]);
+    }
+
+    [Fact]
     public async Task Wsl_Detect_FindsExt4VhdxFromRecipeIndexWithoutWalkingLocal()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
@@ -3405,12 +3483,35 @@ public sealed class RecipeTests
         Assert.Contains("overwrote", clobberedSettings.Detail, StringComparison.OrdinalIgnoreCase);
         await File.WriteAllTextAsync(destSettings, """{"existing":true}""");
         Assert.True(new TerminalRecipe().Verify(terminalPlan).Ok);
+        string destFromOld = Path.Combine(
+            context.Destination,
+            "AppData",
+            "Local",
+            "Packages",
+            "Microsoft.WindowsTerminal_8wekyb3d8bbwe",
+            "LocalState",
+            "settings.from-windows-old.json");
+        byte[] originalFromOld = await File.ReadAllBytesAsync(destFromOld);
+        await File.WriteAllTextAsync(destFromOld, "truncated");
+        RecipeVerifyResult truncatedSettings = new TerminalRecipe().Verify(terminalPlan);
+        Assert.False(truncatedSettings.Ok);
+        Assert.Contains("size", truncatedSettings.Detail, StringComparison.OrdinalIgnoreCase);
+        await File.WriteAllBytesAsync(destFromOld, originalFromOld);
+        Assert.True(new TerminalRecipe().Verify(terminalPlan).Ok);
 
         RecipeCard obsidian = Assert.Single(cards, card => card.RecipeId == "obsidian");
         PlanResult obsidianPlan = host.PlanCard(new ObsidianRecipe(), obsidian, Dest(context));
         await host.ExecuteAsync("session-1", new ObsidianRecipe(), obsidianPlan);
         Assert.True(new ObsidianRecipe().Verify(obsidianPlan).Ok);
-        Assert.True(File.Exists(Path.Combine(context.Destination, "Documents", "Notes", "welcome.md")));
+        string welcome = Path.Combine(context.Destination, "Documents", "Notes", "welcome.md");
+        Assert.True(File.Exists(welcome));
+        byte[] originalWelcome = await File.ReadAllBytesAsync(welcome);
+        await File.WriteAllTextAsync(welcome, "truncated");
+        RecipeVerifyResult truncatedNotes = new ObsidianRecipe().Verify(obsidianPlan);
+        Assert.False(truncatedNotes.Ok);
+        Assert.Contains("size", truncatedNotes.Detail, StringComparison.OrdinalIgnoreCase);
+        await File.WriteAllBytesAsync(welcome, originalWelcome);
+        Assert.True(new ObsidianRecipe().Verify(obsidianPlan).Ok);
         Directory.Delete(Path.Combine(context.Destination, "Documents", "Notes", ".obsidian"), true);
         PlanResult notesWithoutConfig = obsidianPlan with
         {

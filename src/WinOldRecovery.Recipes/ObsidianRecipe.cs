@@ -81,10 +81,11 @@ public sealed class ObsidianRecipe : IRecipe
 
     public RecipeVerifyResult Verify(PlanResult plan)
     {
-        RecipeVerifyResult present = DetectorWalk.FilesPresent(
+        RecipeVerifyResult present = DetectorWalk.FilesPresentMatchingSourceLength(
             plan,
             "Obsidian vault present",
-            "Obsidian vault missing");
+            "Obsidian vault missing",
+            "Obsidian destination size does not match the source");
         if (!present.Ok || plan.Writes.Count == 0)
         {
             return present;

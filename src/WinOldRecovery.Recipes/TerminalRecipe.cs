@@ -85,10 +85,11 @@ public sealed class TerminalRecipe : IRecipe
 
     public RecipeVerifyResult Verify(PlanResult plan)
     {
-        RecipeVerifyResult present = DetectorWalk.FilesPresent(
+        RecipeVerifyResult present = DetectorWalk.FilesPresentMatchingSourceLength(
             plan,
             "Terminal settings present",
-            "Terminal settings missing");
+            "Terminal settings missing",
+            "Terminal destination size does not match the source");
         if (!present.Ok)
         {
             return present;

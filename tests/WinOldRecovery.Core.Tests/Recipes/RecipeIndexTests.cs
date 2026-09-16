@@ -292,6 +292,53 @@ public sealed class RecipeIndexTests
             path => path.Contains("Documents", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task Index_CountsAnkiMediaFilesExcludingTrash()
+    {
+        await using RecipeIndexContext context = await RecipeIndexContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Created", "0.1.0"));
+        await context.Database.InsertNodesAsync(
+        [
+            Node(1, null, "Windows.old", ""),
+            Node(2, 1, "Alice", @"Users\Alice"),
+            Node(
+                3,
+                2,
+                "image.png",
+                @"Users\Alice\AppData\Roaming\Anki2\User 1\collection.media\image.png",
+                NodeKind.File),
+            Node(
+                4,
+                2,
+                "nested.png",
+                @"Users\Alice\AppData\Roaming\Anki2\User 1\collection.media\sub\nested.png",
+                NodeKind.File),
+            Node(
+                5,
+                2,
+                "gone.png",
+                @"Users\Alice\AppData\Roaming\Anki2\User 1\collection.media\media.trash\gone.png",
+                NodeKind.File),
+            Node(6, 2, "other.png", @"Users\Alice\Documents\other.png", NodeKind.File),
+        ]);
+
+        RecipeIndex index = new(
+            context.Database,
+            "session-1",
+            @"Users\Alice",
+            Path.Combine(context.Root, "Users", "Alice"));
+        Assert.Equal(
+            2,
+            index.CountFilesUnder(
+                Path.Combine("AppData", "Roaming", "Anki2", "User 1", "collection.media"),
+                "media.trash"));
+        Assert.Equal(
+            3,
+            index.CountFilesUnder(
+                Path.Combine("AppData", "Roaming", "Anki2", "User 1", "collection.media")));
+    }
+
     private static PersistedNode Node(
         long id,
         long? parentId,

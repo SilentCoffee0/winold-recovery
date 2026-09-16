@@ -1524,6 +1524,43 @@ public sealed class SessionDb : IAsyncDisposable
         return paths;
     }
 
+    public int CountFilesUnderRelPrefix(
+        string sessionId,
+        string relPrefix,
+        string? excludeFolderName = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        string prefix = (relPrefix ?? string.Empty).Replace('/', '\\').Trim('\\');
+        if (string.IsNullOrEmpty(prefix))
+        {
+            return 0;
+        }
+
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        string excludeSql = string.Empty;
+        if (!string.IsNullOrWhiteSpace(excludeFolderName))
+        {
+            excludeSql =
+                """
+                  AND instr(lower(replace(rel_path, '/', '\')), '\' || lower($exclude) || '\') = 0
+                  AND lower(name) <> lower($exclude)
+                """;
+            command.Parameters.AddWithValue("$exclude", excludeFolderName);
+        }
+
+        command.CommandText =
+            """
+            SELECT COUNT(*)
+            FROM nodes
+            WHERE session_id = $sessionId
+              AND kind = 'File'
+            """ + RelPathPrefixSql("rel_path", prefix) + excludeSql + ";";
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        BindRelPathPrefix(command, prefix);
+        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
     private static string RelPathPrefixSql(string column, string prefix)
     {
         if (string.IsNullOrEmpty(prefix))

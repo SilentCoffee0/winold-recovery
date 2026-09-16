@@ -57,6 +57,15 @@ public sealed class RecipeIndex
         return paths;
     }
 
+    public int CountFilesUnder(string relativeUnderProfile, string? excludeFolderName = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeUnderProfile);
+        return sessionDb.CountFilesUnderRelPrefix(
+            sessionId,
+            CombinePrefix(profileRelPrefix, relativeUnderProfile),
+            excludeFolderName);
+    }
+
     public IReadOnlyList<string> FilesNamed(params string[] names)
     {
         ArgumentNullException.ThrowIfNull(names);
