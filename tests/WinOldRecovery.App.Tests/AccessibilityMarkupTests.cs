@@ -72,7 +72,10 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("CompactLayout", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"DismissFirstRunButton\"", xaml, StringComparison.Ordinal);
         Assert.Contains("FirstRunBody", xaml, StringComparison.Ordinal);
-        Assert.Contains("ThemeMode=\"System\"", File.ReadAllText(FindAppXaml()), StringComparison.Ordinal);
+        Assert.Contains("Merge into existing folders", xaml, StringComparison.Ordinal);
+        Assert.Contains("Restore into Recovered folder", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"MergeIntoProfileRadio\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"RestoreIntoRecoveredRadio\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SystemFonts.MessageFontFamilyKey", xaml, StringComparison.Ordinal);
         Assert.Contains("SystemFonts.MessageFontSizeKey", xaml, StringComparison.Ordinal);
         Assert.Contains("UseLayoutRounding", xaml, StringComparison.Ordinal);

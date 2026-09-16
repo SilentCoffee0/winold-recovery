@@ -36,9 +36,9 @@ WinOld Recovery is a free, open-source **Windows.old recovery tool**. After you 
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to add a rule or recipe |
 | [docs/signing.md](docs/signing.md) | SignPath / Azure Trusted Signing plan |
 
-## Planned stack
+## Stack
 
-C# on .NET 10 LTS, WPF, portable single-file EXE (no runtime install needed on a fresh Windows), SQLite for scan and decision state, an in-process journaled copy engine, offline registry parsing. Windows 10 (1809+) and Windows 11, x64 and ARM64.
+C# on .NET 10 LTS, WPF (Fluent, `ThemeMode=System`), portable single-file EXE (no runtime install needed on a fresh Windows), SQLite for scan and decision state, an in-process journaled copy engine, offline registry parsing. Windows 10 (1809+) and Windows 11, x64 and ARM64.
 
 ## Related searches this project answers
 

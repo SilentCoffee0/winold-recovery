@@ -749,6 +749,18 @@ public sealed class ShellViewModel : ObservableObject
         set => SubfolderPolicy = value ? SubfolderPolicy.MergeIntoProfile : SubfolderPolicy.RecoveredFolder;
     }
 
+    public bool RestoreIntoRecovered
+    {
+        get => subfolderPolicy == SubfolderPolicy.RecoveredFolder;
+        set
+        {
+            if (value)
+            {
+                SubfolderPolicy = SubfolderPolicy.RecoveredFolder;
+            }
+        }
+    }
+
     public HelpTopic? SelectedHelpTopic
     {
         get => selectedHelpTopic;
@@ -1635,6 +1647,7 @@ public sealed class ShellViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(MergeIntoProfile));
+        OnPropertyChanged(nameof(RestoreIntoRecovered));
         _ = PersistDestinationMapAsync();
     }
 

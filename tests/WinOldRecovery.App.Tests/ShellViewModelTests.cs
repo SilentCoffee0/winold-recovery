@@ -75,6 +75,26 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task SubfolderPolicy_RecoveredIsDefaultAndMergeSwitchesDestination()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        Assert.True(context.ViewModel.RestoreIntoRecovered);
+        Assert.False(context.ViewModel.MergeIntoProfile);
+        Assert.EndsWith("Recovered", context.ViewModel.DestinationRoot, StringComparison.OrdinalIgnoreCase);
+
+        context.ViewModel.MergeIntoProfile = true;
+        Assert.False(context.ViewModel.RestoreIntoRecovered);
+        Assert.Equal(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            context.ViewModel.DestinationRoot);
+
+        context.ViewModel.RestoreIntoRecovered = true;
+        Assert.True(context.ViewModel.RestoreIntoRecovered);
+        Assert.False(context.ViewModel.MergeIntoProfile);
+        Assert.EndsWith("Recovered", context.ViewModel.DestinationRoot, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task RunPublishedMemoryProbeAsync_ScansASmallTreeAndPagesChildren()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();
