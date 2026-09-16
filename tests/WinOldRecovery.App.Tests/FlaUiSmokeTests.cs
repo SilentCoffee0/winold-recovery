@@ -159,6 +159,129 @@ public sealed class FlaUiSmokeTests
         await Task.CompletedTask;
     }
 
+    [SkippableFact(Timeout = 600_000)]
+    public async Task ResumeOverlay_AfterKilledPublishedRestore_WhenInteractiveSessionProvided()
+    {
+        Skip.If(
+            !string.Equals(Environment.GetEnvironmentVariable("RUN_FLAUI"), "1", StringComparison.Ordinal),
+            "No interactive session. Set RUN_FLAUI=1 and WINOLD_RECOVERY_EXE on a desktop to run the FlaUI smoke.");
+
+        string? exe = Environment.GetEnvironmentVariable("WINOLD_RECOVERY_EXE");
+        Assert.False(string.IsNullOrWhiteSpace(exe), "Set WINOLD_RECOVERY_EXE to the published WinOldRecovery.exe.");
+        Assert.True(File.Exists(exe!), exe);
+
+        Environment.SetEnvironmentVariable("WINOLD_RECOVERY_SMOKE_SOURCE", null);
+        Environment.SetEnvironmentVariable("WINOLD_RECOVERY_SMOKE_DEST", null);
+
+        string work = Path.Combine(Path.GetTempPath(), "wor-flaui-interrupt-" + Guid.NewGuid().ToString("N"));
+        string source = Path.Combine(work, "OldInstall", "Desktop");
+        string dest = Path.Combine(work, "Recovered", "Desktop");
+        string report = Path.Combine(work, "restore-report.txt");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(dest);
+        byte[] payload = new byte[512 * 1024];
+        for (int directory = 0; directory < 8; directory++)
+        {
+            string folder = Path.Combine(source, "d" + directory.ToString("D2"));
+            Directory.CreateDirectory(folder);
+            for (int file = 0; file < 25; file++)
+            {
+                File.WriteAllBytes(Path.Combine(folder, "f" + file.ToString("D3") + ".bin"), payload);
+            }
+        }
+
+        int sourceFiles = Directory.GetFiles(source, "*", SearchOption.AllDirectories).Length;
+        using Process restore = StartPublishedRestore(exe, source, dest, report);
+        int copied = 0;
+        DateTime copyDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(60);
+        while (DateTime.UtcNow < copyDeadline)
+        {
+            if (restore.HasExited)
+            {
+                break;
+            }
+
+            copied = Directory.GetFiles(dest, "*", SearchOption.AllDirectories).Length;
+            if (copied > 0)
+            {
+                break;
+            }
+
+            Thread.Sleep(200);
+        }
+
+        Assert.True(
+            copied > 0 && copied < sourceFiles && !restore.HasExited,
+            "Need a live mid-copy process to show the WPF resume overlay. copied=" +
+            copied + " source=" + sourceFiles + " exited=" + restore.HasExited);
+
+        restore.Kill(entireProcessTree: true);
+        restore.WaitForExit(15_000);
+
+        using Process started = StartElevated(exe);
+        Process process = WaitForAppProcess(started);
+        FlaUI.Core.Application? application = null;
+        try
+        {
+            try
+            {
+                application = FlaUI.Core.Application.Attach(process.Id);
+            }
+            catch (Win32Exception exception) when (exception.NativeErrorCode == 5)
+            {
+                Skip.If(
+                    true,
+                    "UIPI blocked attach: run the testhost elevated so FlaUI can automate the requireAdministrator EXE.");
+            }
+
+            using UIA3Automation automation = new();
+            FlaUI.Core.AutomationElements.Window found = WaitUntilReady(
+                process,
+                application!,
+                automation,
+                "ResumeInterruptedButton");
+            TryInvoke(found, "DismissFirstRunButton");
+            AutomationElement resume = found.FindFirstDescendant(cf => cf.ByAutomationId("ResumeInterruptedButton"))
+                ?? throw new InvalidOperationException("Resume interrupted overlay was not shown.");
+            Assert.True(resume.IsEnabled);
+            Assert.Contains(
+                "unfinished",
+                found.FindFirstDescendant(cf => cf.ByAutomationId("InterruptedRestoreText"))?.Name ?? string.Empty,
+                StringComparison.OrdinalIgnoreCase);
+            TryInvoke(found, "DismissInterruptedButton");
+        }
+        finally
+        {
+            try
+            {
+                application?.Close();
+            }
+            catch (Exception)
+            {
+            }
+
+            application?.Dispose();
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+
+            try
+            {
+                if (Directory.Exists(work) &&
+                    !ShellViewModel.TouchesVolumeRootPreviousInstallation(work))
+                {
+                    Directory.Delete(work, recursive: true);
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        await Task.CompletedTask;
+    }
+
     private static Process WaitForAppProcess(Process started)
     {
         DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
@@ -198,6 +321,15 @@ public sealed class FlaUiSmokeTests
         FlaUI.Core.Application application,
         UIA3Automation automation)
     {
+        return WaitUntilReady(process, application, automation, "HelpButton");
+    }
+
+    private static FlaUI.Core.AutomationElements.Window WaitUntilReady(
+        Process process,
+        FlaUI.Core.Application application,
+        UIA3Automation automation,
+        string automationId)
+    {
         DateTime deadline = DateTime.UtcNow + ReadWindowTimeout();
         FlaUI.Core.AutomationElements.Window? window = null;
         while (DateTime.UtcNow < deadline)
@@ -211,7 +343,7 @@ public sealed class FlaUiSmokeTests
             process.Refresh();
             window = application.GetMainWindow(automation, TimeSpan.FromSeconds(2));
             if (window is not null &&
-                window.FindFirstDescendant(cf => cf.ByAutomationId("HelpButton")) is not null)
+                window.FindFirstDescendant(cf => cf.ByAutomationId(automationId)) is not null)
             {
                 return window;
             }
@@ -220,7 +352,7 @@ public sealed class FlaUiSmokeTests
         }
 
         throw new InvalidOperationException(
-            $"No ready main window. pid={process.Id} name={process.ProcessName} exited={process.HasExited} handle=0x{process.MainWindowHandle.ToInt64():X} title='{process.MainWindowTitle}'.");
+            $"No ready main window for {automationId}. pid={process.Id} name={process.ProcessName} exited={process.HasExited} handle=0x{process.MainWindowHandle.ToInt64():X} title='{process.MainWindowTitle}'.");
     }
 
     private static TimeSpan ReadWindowTimeout()
@@ -384,6 +516,25 @@ public sealed class FlaUiSmokeTests
 
         FlaUI.Core.AutomationElements.CheckBox box = element.AsCheckBox();
         box.IsChecked = on;
+    }
+
+    private static Process StartPublishedRestore(string exe, string source, string dest, string report)
+    {
+        bool alreadyAdmin = IsAdministrator();
+        ProcessStartInfo start = new(exe)
+        {
+            UseShellExecute = !alreadyAdmin,
+            Verb = alreadyAdmin ? string.Empty : "runas",
+            WorkingDirectory = Path.GetDirectoryName(exe) ?? Environment.CurrentDirectory,
+        };
+        start.ArgumentList.Add("--restore");
+        start.ArgumentList.Add(source);
+        start.ArgumentList.Add(dest);
+        start.ArgumentList.Add("--report");
+        start.ArgumentList.Add(report);
+        Process? process = Process.Start(start);
+        Skip.If(process is null, "UAC elevation was declined or no interactive desktop is attached.");
+        return process;
     }
 
     private static Process StartElevated(string exe)

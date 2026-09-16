@@ -146,8 +146,11 @@ destination junction is deleted). That mutation was applied, observed red, then 
 - FlaUI overlay smoke passed 15 Sep 2026 against the published EXE from an elevated
   testhost (`%TEMP%\WinOldRecovery-flaui-elevated.txt`). Scan→purge on a browsed
   TEMP fixture passed 16 Sep 2026 (`%TEMP%\WinOldRecovery-flaui-e2e-0a07126628c84f209a178dfbd6f18c3c.log`,
-  23.6 s, PreferManualDelete). It stays skipped without `RUN_FLAUI=1`, and skips
-  instead of failing when a Medium IL testhost is blocked by UIPI.
+  23.6 s, PreferManualDelete). The WPF resume overlay after a mid-copy kill of
+  published `--restore` also passed the same day
+  (`%TEMP%\WinOldRecovery-flaui-e2e-43bebc6bb91a48d5af0051ab245084e2.log`, 2 tests,
+  27.2 s). It stays skipped without `RUN_FLAUI=1`, and skips instead of failing
+  when a Medium IL testhost is blocked by UIPI.
 - Elevated deny-ACL FixtureGen, the 200 MB VHDX *preflight* disk-full probe, and
   the 1400 MB runtime disk-full pause/resume passed 15 Sep 2026. Published 1M-node
   `--scan` memory passed the same day (`Passed: true`, 103.7 MiB peak, report
@@ -158,8 +161,6 @@ destination junction is deleted). That mutation was applied, observed red, then 
 
 Everything listed in `PENDING_MANUAL.md`, plus: arm `StateFlags0777`, run
 `cleanmgr /sagerun:777` against a **setup-created** Windows.old, confirm unrelated
-cleanup categories stay off, then disarm. Confirm the WPF interrupt overlay on
-an elevated relaunch after a mid-copy kill (headless `--restore` resume already
-passed).
+cleanup categories stay off, then disarm.
 
 Do not treat a green unit suite as a safety sign-off.

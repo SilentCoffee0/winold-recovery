@@ -28,7 +28,7 @@ All notable changes to WinOld Recovery will be documented here.
 
 ### Added
 
-- FlaUI scan→decide→preview→restore→verify→purge on a browsed TEMP fixture passed 16 Sep 2026 (`tools/run-flaui-e2e.ps1`, 23.6 s). The app refuses a volume-root `Windows.old*` smoke path, forces PreferManualDelete, and will not start the scan until the status line shows `Smoke fixture ready`. Still skipped in CI unless `RUN_FLAUI=1`.
+- FlaUI scan→decide→preview→restore→verify→purge on a browsed TEMP fixture passed 16 Sep 2026 (`tools/run-flaui-e2e.ps1`, 23.6 s). A second FlaUI case kills published `--restore` mid-copy and asserts the Resume overlay (27.2 s, two tests). The app refuses a volume-root `Windows.old*` smoke path, forces PreferManualDelete, and will not start the scan until the status line shows `Smoke fixture ready`. Still skipped in CI unless `RUN_FLAUI=1`.
 - Release workflow submits both published EXEs to SignPath when repository variable `SIGNPATH_ENABLED` is `true`, then checksums the signed copies. Without that variable the SignPath steps are skipped and assets stay unsigned.
 - Milestone 0 .NET 10 solution and project dependency structure.
 - Empty WPF shell using the system Fluent theme.

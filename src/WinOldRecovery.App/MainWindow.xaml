@@ -826,7 +826,7 @@
             <StackPanel Margin="48" MaxWidth="640" VerticalAlignment="Center">
                 <TextBlock FontWeight="SemiBold" Text="Resume interrupted restore?" />
                 <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" Text="{Binding InterruptedRestoreText}"
-                           AutomationProperties.Name="Interrupted restore explanation" />
+                           AutomationProperties.AutomationId="InterruptedRestoreText" />
                 <StackPanel Margin="0,24,0,0" Orientation="Horizontal">
                     <Button Content="Resume"
                             Command="{Binding ResumeInterruptedCommand}"

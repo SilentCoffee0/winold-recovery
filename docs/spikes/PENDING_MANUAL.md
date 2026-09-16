@@ -128,6 +128,8 @@ The WPF Resume overlay was exercised by the FlaUI smoke below. Do not tag.
 
 ## FlaUI smoke on the published EXE
 
+## FlaUI smoke on the published EXE
+
 Overlay/Help/step navigation passed 15 Sep 2026. **Scan→decide→preview→restore→verify→purge
 passed 16 Sep 2026** on this development machine (elevated testhost,
 `tools/run-flaui-e2e.ps1`). **The FlaUI e2e row is complete.** It uses a browsed
@@ -141,6 +143,16 @@ Evidence (scan→purge e2e):
 - EXE: `%TEMP%\wor-publish-flaui\WinOldRecovery.exe` (single-file, self-contained, not ReadyToRun)
 - Result: `Passed=true`, `failed: 0, succeeded: 1`, duration 23.6 s
 - Manual purge of the six-item fixture ran on a background thread so the dispatcher could show `Purge finished`
+
+WPF resume overlay after a mid-copy kill passed 16 Sep 2026 in the same elevated
+`tools/run-flaui-e2e.ps1` run (`ResumeOverlay_AfterKilledPublishedRestore`).
+Headless `--restore` was killed mid-copy, then the GUI showed
+`ResumeInterruptedButton` with unfinished-item copy.
+
+Evidence (overlay after kill):
+
+- Transcript: `%TEMP%\WinOldRecovery-flaui-e2e-43bebc6bb91a48d5af0051ab245084e2.log`
+- Result: `Passed=true`, `failed: 0, succeeded: 2`, duration 27.2 s
 
 Evidence (overlay, 15 Sep 2026):
 
