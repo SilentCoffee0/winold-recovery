@@ -14,6 +14,7 @@ All notable changes to WinOld Recovery will be documented here.
 
 ### Fixed
 
+- Scan source discovery resumes on the dispatcher after `DiscoverAsync`, so filling the bound `Sources` list no longer throws `NotSupportedException` from a CollectionView on a worker thread.
 - CI and tag-release workflows use `actions/checkout@v5`, `actions/setup-dotnet@v5`, and `actions/upload-artifact@v6` so GitHub-hosted runners stop warning about Node.js 20. Workflow file tests pin those versions instead of `@v4`.
 - SSH private-key ACL hardening goes through `SafeFs.SetAccessControl`, so SourceGuard can refuse a path under a registered Windows.old. Headless `--scan`/`--restore` reports, smoke destination folders, Firefox places copies, and support-bundle zips also go through `SafeFs`. I1 greps mutating file APIs outside `SafeFs`/`Purge`.
 - Scan source cards bind `DisplayLabel` for Narrator while keeping the two-line path/detail visual.

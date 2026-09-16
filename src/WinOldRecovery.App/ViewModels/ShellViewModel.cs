@@ -1198,8 +1198,9 @@ public sealed class ShellViewModel : ObservableObject
             }
         }
 
-        foreach (SourceCandidate candidate in await sourceDiscovery.DiscoverAsync(cancellationToken)
-                     .ConfigureAwait(false))
+        IReadOnlyList<SourceCandidate> discovered = await sourceDiscovery.DiscoverAsync(cancellationToken)
+            .ConfigureAwait(true);
+        foreach (SourceCandidate candidate in discovered)
         {
             if (seen.Add(candidate.Path))
             {
