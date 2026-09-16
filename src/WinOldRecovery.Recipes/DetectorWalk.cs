@@ -341,4 +341,90 @@ internal static class DetectorWalk
 
         return new RecipeVerifyResult(true, okDetail);
     }
+
+    public static RecipeVerifyResult CopyTreeContentsMatchSourceLength(
+        PlanResult plan,
+        string okDetail,
+        string missingDetail,
+        string sizeMismatchDetail)
+    {
+        foreach (RecipeWrite write in plan.Writes)
+        {
+            if (write.Kind != RecipeWriteKind.CopyTree || string.IsNullOrEmpty(write.SourcePath))
+            {
+                continue;
+            }
+
+            if (!Directory.Exists(write.DestinationPath))
+            {
+                return new RecipeVerifyResult(false, missingDetail);
+            }
+
+            foreach (string sourceFile in EnumerateCopyableFiles(write.SourcePath))
+            {
+                string relative = Path.GetRelativePath(write.SourcePath, sourceFile);
+                string destFile = Path.Combine(write.DestinationPath, relative);
+                if (!File.Exists(destFile))
+                {
+                    return new RecipeVerifyResult(false, missingDetail);
+                }
+
+                if (new FileInfo(destFile).Length != new FileInfo(sourceFile).Length)
+                {
+                    return new RecipeVerifyResult(false, sizeMismatchDetail);
+                }
+            }
+        }
+
+        return new RecipeVerifyResult(true, okDetail);
+    }
+
+    private static IEnumerable<string> EnumerateCopyableFiles(string root)
+    {
+        Stack<string> directories = new();
+        directories.Push(root);
+        while (directories.Count > 0)
+        {
+            string directory = directories.Pop();
+            IEnumerable<string> entries;
+            try
+            {
+                entries = Directory.EnumerateFileSystemEntries(directory);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (string entry in entries)
+            {
+                FileAttributes attributes;
+                try
+                {
+                    attributes = File.GetAttributes(entry);
+                }
+                catch (IOException)
+                {
+                    continue;
+                }
+
+                if ((attributes & (FileAttributes.ReparsePoint | FileAttributes.Offline | FileAttributes.Encrypted)) != 0)
+                {
+                    continue;
+                }
+
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    if (!IsVendoredDirectoryName(Path.GetFileName(entry)))
+                    {
+                        directories.Push(entry);
+                    }
+
+                    continue;
+                }
+
+                yield return entry;
+            }
+        }
+    }
 }

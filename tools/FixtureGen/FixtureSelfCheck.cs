@@ -288,6 +288,13 @@ public sealed class FixtureSelfCheck
                 "Bookmarks"),
             Path.Combine(alice, ".ssh", "id_ed25519"),
             Path.Combine(alice, "Projects", "local-repository", ".git", "HEAD"),
+            Path.Combine(alice, "Projects", "git-clean-pushed", ".git", "HEAD"),
+            Path.Combine(alice, "Projects", "git-uncommitted", ".git", "index"),
+            Path.Combine(alice, "Projects", "git-untracked", "scratch.txt"),
+            Path.Combine(alice, "Projects", "git-unpushed", ".git", "refs", "remotes", "origin", "main"),
+            Path.Combine(alice, "Projects", "git-local-only-branch", ".git", "refs", "heads", "topic"),
+            Path.Combine(alice, "Projects", "git-stash", ".git", "refs", "stash"),
+            Path.Combine(alice, "Projects", "git-worktree", ".git"),
             Path.Combine(
                 alice,
                 "AppData",
@@ -303,6 +310,13 @@ public sealed class FixtureSelfCheck
             {
                 errors.Add($"Recipe shell is missing '{Path.GetRelativePath(root, path)}'.");
             }
+        }
+
+        string worktreeGit = Path.Combine(alice, "Projects", "git-worktree", ".git");
+        if (File.Exists(worktreeGit) &&
+            !File.ReadAllText(worktreeGit).StartsWith("gitdir:", StringComparison.OrdinalIgnoreCase))
+        {
+            errors.Add("Git worktree fixture .git is not a gitdir pointer.");
         }
     }
 

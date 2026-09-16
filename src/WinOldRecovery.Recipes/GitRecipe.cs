@@ -252,7 +252,11 @@ public sealed class GitRecipe : IRecipe
             return new RecipeVerifyResult(false, "HEAD does not match the source");
         }
 
-        return new RecipeVerifyResult(true, "Git files present");
+        return DetectorWalk.CopyTreeContentsMatchSourceLength(
+            plan,
+            "Git files present",
+            "Git restore missing",
+            "Git destination size does not match the source");
     }
 
     public async Task<RecipeVerifyResult> VerifyAsync(
@@ -444,13 +448,44 @@ public sealed class GitRecipe : IRecipe
                 continue;
             }
 
-            string sourceHead = Path.Combine(write.SourcePath, ".git", "HEAD");
+            string sourceGit = Path.Combine(write.SourcePath, ".git");
+            string destGit = Path.Combine(write.DestinationPath, ".git");
+            if (File.Exists(sourceGit))
+            {
+                if (!File.Exists(destGit) ||
+                    !string.Equals(
+                        File.ReadAllText(sourceGit).Trim(),
+                        File.ReadAllText(destGit).Trim(),
+                        StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                string? sourceDir = ResolveGitDirOnDisk(write.SourcePath);
+                string? destDir = ResolveGitDirOnDisk(write.DestinationPath);
+                if (sourceDir is null ||
+                    destDir is null ||
+                    !Directory.Exists(sourceDir) ||
+                    !Directory.Exists(destDir))
+                {
+                    continue;
+                }
+
+                sourceGit = sourceDir;
+                destGit = destDir;
+            }
+            else if (!Directory.Exists(sourceGit))
+            {
+                continue;
+            }
+
+            string sourceHead = Path.Combine(sourceGit, "HEAD");
             if (!File.Exists(sourceHead))
             {
                 continue;
             }
 
-            string destHead = Path.Combine(write.DestinationPath, ".git", "HEAD");
+            string destHead = Path.Combine(destGit, "HEAD");
             if (!File.Exists(destHead))
             {
                 return false;
@@ -466,5 +501,35 @@ public sealed class GitRecipe : IRecipe
         }
 
         return true;
+    }
+
+    private static string? ResolveGitDirOnDisk(string workTree)
+    {
+        string git = Path.Combine(workTree, ".git");
+        if (Directory.Exists(git))
+        {
+            return git;
+        }
+
+        if (!File.Exists(git))
+        {
+            return null;
+        }
+
+        foreach (string line in File.ReadAllText(git).Split('\n'))
+        {
+            string trimmed = line.Trim();
+            if (!trimmed.StartsWith("gitdir:", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string target = trimmed["gitdir:".Length..].Trim();
+            return Path.IsPathRooted(target)
+                ? target
+                : Path.GetFullPath(Path.Combine(workTree, target));
+        }
+
+        return null;
     }
 }

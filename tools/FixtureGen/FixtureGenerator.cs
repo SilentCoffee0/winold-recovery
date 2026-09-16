@@ -386,9 +386,7 @@ public sealed class FixtureGenerator
         WriteText(Path.Combine(ssh, "id_ed25519"), Canary);
         WriteText(Path.Combine(ssh, "id_ed25519.pub"), "ssh-ed25519 FIXTURE");
 
-        string git = Path.Combine(alice, "Projects", "local-repository", ".git");
-        WriteText(Path.Combine(git, "HEAD"), "ref: refs/heads/main\n");
-        WriteText(Path.Combine(git, "refs", "heads", "main"), new string('0', 40) + "\n");
+        WriteGitStateFixtures(Path.Combine(alice, "Projects"));
 
         string wsl = Path.Combine(
             alice,
@@ -551,6 +549,128 @@ public sealed class FixtureGenerator
         }
 
         return FileSecurityInfo.GetOwnerSid(path);
+    }
+
+    private void WriteGitStateFixtures(string projects)
+    {
+        const string oidMain = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string oidOrigin = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        const string oidZero = "0000000000000000000000000000000000000000";
+        const string withOrigin =
+            """
+            [core]
+            	repositoryformatversion = 0
+            [remote "origin"]
+            	url = https://example.invalid/alice/repo.git
+            [branch "main"]
+            	remote = origin
+            	merge = refs/heads/main
+            """;
+        const string noRemote =
+            """
+            [core]
+            	repositoryformatversion = 0
+            """;
+
+        WriteGitWorkTree(
+            Path.Combine(projects, "git-clean-pushed"),
+            withOrigin,
+            oidMain,
+            originMain: oidMain);
+        WriteGitWorkTree(
+            Path.Combine(projects, "git-uncommitted"),
+            withOrigin,
+            oidMain,
+            originMain: oidMain,
+            index: true,
+            workFiles: [("dirty.txt", "dirty working tree")]);
+        WriteGitWorkTree(
+            Path.Combine(projects, "git-untracked"),
+            withOrigin,
+            oidMain,
+            originMain: oidMain,
+            workFiles: [("scratch.txt", "never added")]);
+        WriteGitWorkTree(
+            Path.Combine(projects, "git-unpushed"),
+            withOrigin,
+            oidMain,
+            originMain: oidOrigin);
+        WriteGitWorkTree(
+            Path.Combine(projects, "git-local-only-branch"),
+            withOrigin,
+            oidMain,
+            originMain: oidMain,
+            extraHeads: [("topic", oidMain)]);
+        WriteGitWorkTree(
+            Path.Combine(projects, "git-stash"),
+            withOrigin,
+            oidMain,
+            originMain: oidMain,
+            stash: oidMain);
+        WriteGitWorkTree(
+            Path.Combine(projects, "local-repository"),
+            noRemote,
+            oidZero);
+
+        string worktree = Path.Combine(projects, "git-worktree");
+        WriteText(Path.Combine(worktree, "README.md"), "linked worktree\n");
+        WriteText(
+            Path.Combine(worktree, ".git"),
+            "gitdir: ../git-clean-pushed/.git/worktrees/linked\n");
+        WriteText(
+            Path.Combine(projects, "git-clean-pushed", ".git", "worktrees", "linked", "HEAD"),
+            "ref: refs/heads/main\n");
+        WriteText(
+            Path.Combine(projects, "git-clean-pushed", ".git", "worktrees", "linked", "commondir"),
+            "../..\n");
+    }
+
+    private void WriteGitWorkTree(
+        string workTree,
+        string config,
+        string headOid,
+        string? originMain = null,
+        IReadOnlyList<(string Name, string Oid)>? extraHeads = null,
+        string? stash = null,
+        bool index = false,
+        IReadOnlyList<(string Name, string Contents)>? workFiles = null)
+    {
+        WriteText(Path.Combine(workTree, ".git", "HEAD"), "ref: refs/heads/main\n");
+        WriteText(Path.Combine(workTree, ".git", "config"), config);
+        WriteText(Path.Combine(workTree, ".git", "refs", "heads", "main"), headOid + "\n");
+        if (originMain is not null)
+        {
+            WriteText(Path.Combine(workTree, ".git", "refs", "remotes", "origin", "main"), originMain + "\n");
+        }
+
+        if (extraHeads is not null)
+        {
+            foreach ((string name, string oid) in extraHeads)
+            {
+                WriteText(Path.Combine(workTree, ".git", "refs", "heads", name), oid + "\n");
+            }
+        }
+
+        if (stash is not null)
+        {
+            WriteText(Path.Combine(workTree, ".git", "refs", "stash"), stash + "\n");
+        }
+
+        if (index)
+        {
+            WriteText(Path.Combine(workTree, ".git", "index"), "DIRC");
+        }
+
+        WriteText(Path.Combine(workTree, "README.md"), "fixture repository\n");
+        if (workFiles is null)
+        {
+            return;
+        }
+
+        foreach ((string name, string contents) in workFiles)
+        {
+            WriteText(Path.Combine(workTree, name), contents);
+        }
     }
 
     private void WriteText(string path, string contents)

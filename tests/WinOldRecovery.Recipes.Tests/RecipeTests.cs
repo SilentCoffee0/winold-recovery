@@ -1058,6 +1058,62 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Git_Verify_TruncatedWorkingTreeFileFailsWithoutGit()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        (GitRecipe recipe, PlanResult plan) = await RestoreGitRepoAsync(context);
+        string source = plan.Writes[0].SourcePath!;
+        string dest = plan.Writes[0].DestinationPath;
+        await File.WriteAllTextAsync(Path.Combine(source, "README.md"), "hello git");
+        await File.WriteAllTextAsync(Path.Combine(dest, "README.md"), "hello git");
+        Assert.True(recipe.Verify(plan).Ok);
+        await File.WriteAllTextAsync(Path.Combine(dest, "README.md"), "x");
+        RecipeVerifyResult truncated = recipe.Verify(plan);
+        Assert.False(truncated.Ok);
+        Assert.Contains("size", truncated.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Git_Detect_FindsWorktreeGitdirFile()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string main = Path.Combine(alice, "Projects", "git-clean-pushed");
+        Directory.CreateDirectory(Path.Combine(main, ".git", "refs", "heads"));
+        Directory.CreateDirectory(Path.Combine(main, ".git", "worktrees", "linked"));
+        await File.WriteAllTextAsync(Path.Combine(main, ".git", "HEAD"), "ref: refs/heads/main\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(main, ".git", "refs", "heads", "main"),
+            new string('a', 40) + "\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(main, ".git", "worktrees", "linked", "HEAD"),
+            "ref: refs/heads/main\n");
+        string linked = Path.Combine(alice, "Projects", "git-worktree");
+        Directory.CreateDirectory(linked);
+        await File.WriteAllTextAsync(
+            Path.Combine(linked, ".git"),
+            "gitdir: ../git-clean-pushed/.git/worktrees/linked\n");
+
+        DetectResult detected = new GitRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        Assert.Contains(
+            detected.Cards,
+            card => Path.GetFileName(card.Facts["source"])
+                .Equals("git-clean-pushed", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            detected.Cards,
+            card => Path.GetFileName(card.Facts["source"])
+                .Equals("git-worktree", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task Git_VerifyAsync_MissingGitStillOkWhenFilesPresent()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
