@@ -30,7 +30,8 @@ public sealed class ChromiumRecipe : IRecipe
     public DetectResult Detect(ProfileContext context)
     {
         string userData = Path.Combine(context.OldProfileRoot, relativeUserData);
-        if (!context.SafeFs.DirectoryExists(userData))
+        List<string> profiles = [.. ChromiumProfileDirectories(context, userData, relativeUserData)];
+        if (profiles.Count == 0)
         {
             return new DetectResult([], []);
         }
@@ -38,11 +39,27 @@ public sealed class ChromiumRecipe : IRecipe
         List<RecipeCard> cards = [];
         List<(string RelativePath, string Kind, string Detail)> badges = [];
         ChromiumUserDataMeta localState = ChromiumLocalState.Read(context.SafeFs, userData);
-        foreach (string entry in ChromiumProfileDirectories(context, userData, relativeUserData))
+        foreach (string entry in profiles)
         {
             string name = Path.GetFileName(entry);
-            string bookmarks = Path.Combine(entry, "Bookmarks");
-            if (!context.SafeFs.FileExists(bookmarks))
+            string profileRelative = Path.Combine(relativeUserData, name);
+            bool hasBookmarks;
+            bool hasHistory;
+            bool hasAutofill;
+            if (context.Index is { } index)
+            {
+                hasBookmarks = DetectorWalk.IndexedImmediatePath(index, entry, profileRelative, "Bookmarks") is not null;
+                hasHistory = DetectorWalk.IndexedImmediatePath(index, entry, profileRelative, "History") is not null;
+                hasAutofill = DetectorWalk.IndexedImmediatePath(index, entry, profileRelative, "Web Data") is not null;
+            }
+            else
+            {
+                hasBookmarks = context.SafeFs.FileExists(Path.Combine(entry, "Bookmarks"));
+                hasHistory = context.SafeFs.FileExists(Path.Combine(entry, "History"));
+                hasAutofill = context.SafeFs.FileExists(Path.Combine(entry, "Web Data"));
+            }
+
+            if (!hasBookmarks)
             {
                 continue;
             }
@@ -51,12 +68,10 @@ public sealed class ChromiumRecipe : IRecipe
                 context,
                 Path.Combine(entry, "Extensions"),
                 Path.Combine(relativeUserData, name, "Extensions"));
-            bool hasHistory = context.SafeFs.FileExists(Path.Combine(entry, "History"));
             bool hasSessions = HasSessionFiles(
                 context,
                 Path.Combine(entry, "Sessions"),
                 Path.Combine(relativeUserData, name, "Sessions"));
-            bool hasAutofill = context.SafeFs.FileExists(Path.Combine(entry, "Web Data"));
             List<RecipeComponent> components =
             [
                 new RecipeComponent(

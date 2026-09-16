@@ -3927,6 +3927,10 @@ public sealed class RecipeTests
             """{"roots":{"bookmark_bar":{"children":[]}}}""");
         await File.WriteAllTextAsync(Path.Combine(defaultProfile, "Sessions", "Session_abc"), "s");
         await File.WriteAllTextAsync(Path.Combine(extra, "Sessions", "Tabs_walked"), "t");
+        await File.WriteAllTextAsync(Path.Combine(defaultProfile, "History"), "h");
+        await File.WriteAllTextAsync(Path.Combine(defaultProfile, "Web Data"), "w");
+        await File.WriteAllTextAsync(Path.Combine(extra, "History"), "h");
+        await File.WriteAllTextAsync(Path.Combine(extra, "Web Data"), "w");
         const string defaultRel = @"Users\Alice\AppData\Local\Google\Chrome\User Data\Default";
         await context.Database.InsertNodesAsync(
         [
@@ -3942,9 +3946,14 @@ public sealed class RecipeTests
         RecipeCard fromIndex = Assert.Single(recipe.Detect(WithIndex(context, alice)).Cards);
         Assert.Equal("Default", fromIndex.Facts["folder"]);
         Assert.Equal("1", fromIndex.Facts["sessionsPresent"]);
+        Assert.Equal("0", fromIndex.Facts["historyPresent"]);
+        Assert.Equal("0", fromIndex.Facts["autofillPresent"]);
         IReadOnlyList<RecipeCard> fromDisk = recipe.Detect(WithoutIndex(context, alice)).Cards;
         Assert.Equal(2, fromDisk.Count);
         Assert.Contains(fromDisk, card => card.Facts["folder"] == "Profile 1");
+        RecipeCard fromDiskDefault = Assert.Single(fromDisk, card => card.Facts["folder"] == "Default");
+        Assert.Equal("1", fromDiskDefault.Facts["historyPresent"]);
+        Assert.Equal("1", fromDiskDefault.Facts["autofillPresent"]);
     }
 
     [Fact]
