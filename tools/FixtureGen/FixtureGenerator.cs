@@ -1,11 +1,16 @@
+using System.Buffers.Binary;
 using System.Security.AccessControl;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Processes;
 using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Native;
+using WinOldRecovery.Recipes;
 
 namespace WinOldRecovery.FixtureGen;
 
@@ -352,6 +357,18 @@ public sealed class FixtureGenerator
             Path.Combine(firefox, "logins.json"),
             $$"""{"logins":[{"encryptedUsername":"{{Canary}}"}]}""");
         WriteText(Path.Combine(firefox, "key4.db"), string.Empty);
+        WriteSqlite(
+            Path.Combine(firefox, "places.sqlite"),
+            """
+            CREATE TABLE moz_places(id INTEGER PRIMARY KEY, url TEXT, title TEXT);
+            CREATE TABLE moz_bookmarks(id INTEGER PRIMARY KEY, type INTEGER, fk INTEGER, parent INTEGER, title TEXT);
+            INSERT INTO moz_places(url, title) VALUES ('https://example.invalid/', 'Fixture');
+            INSERT INTO moz_bookmarks(type, fk, parent, title) VALUES (1, 1, 0, 'Fixture');
+            """);
+        WriteBytes(
+            Path.Combine(firefox, "sessionstore.jsonlz4"),
+            MozLz4.Encode(
+                """{"windows":[{"tabs":[{"entries":[{"url":"https://example.invalid/","title":"Fixture"}]}]}]}"""u8));
         WriteText(
             Path.Combine(alice, "AppData", "Roaming", "Mozilla", "Firefox", "profiles.ini"),
             """
@@ -366,24 +383,45 @@ public sealed class FixtureGenerator
             Default=1
             """);
 
-        string chrome = Path.Combine(
+        string chromeUserData = Path.Combine(
             alice,
             "AppData",
             "Local",
             "Google",
             "Chrome",
-            "User Data",
-            "Default");
-        WriteText(Path.Combine(chrome, "Bookmarks"), """{"roots":{}}""");
+            "User Data");
+        string chrome = Path.Combine(chromeUserData, "Default");
+        WriteText(
+            Path.Combine(chrome, "Bookmarks"),
+            """{"checksum":"","roots":{"bookmark_bar":{"children":[{"name":"Fixture","type":"url","url":"https://example.invalid/"}],"name":"Bookmarks bar","type":"folder"},"other":{"children":[],"name":"Other bookmarks","type":"folder"}},"version":1}""");
         WriteText(Path.Combine(chrome, "Login Data"), Canary);
+        WriteText(
+            Path.Combine(chromeUserData, "Local State"),
+            "{\"profile\":{\"info_cache\":{\"Default\":{\"name\":\"Alice\"}}},\"os_crypt\":{\"encrypted_key\":\"" + Canary + "\"}}");
+        WriteText(Path.Combine(chromeUserData, "Last Version"), "131.0.0.0");
+        WriteSqlite(
+            Path.Combine(chrome, "History"),
+            """
+            CREATE TABLE urls(id INTEGER PRIMARY KEY, url TEXT, title TEXT);
+            INSERT INTO urls(url, title) VALUES ('https://example.invalid/', 'Fixture');
+            """);
+        WriteBytes(
+            Path.Combine(chrome, "Sessions", "Session_1"),
+            SnssReader.CreateSessionFile(3, [(SnssReader.UpdateTabNavigation, "https://example.invalid/"u8.ToArray())]));
 
         string syncthing = Path.Combine(alice, "AppData", "Local", "Syncthing");
+        (string certPem, string keyPem, string deviceId) = CreateSyncthingIdentity();
         WriteText(Path.Combine(syncthing, "config.xml"), "<configuration version=\"1\" />");
-        WriteText(Path.Combine(syncthing, "cert.pem"), "fixture certificate");
-        WriteText(Path.Combine(syncthing, "key.pem"), Canary);
+        WriteText(Path.Combine(syncthing, "cert.pem"), certPem);
+        WriteText(Path.Combine(syncthing, "key.pem"), keyPem);
+        hazards["syncthing"] = new FixtureHazard(
+            "Created",
+            Relative(targetRoot, syncthing),
+            deviceId);
 
         string ssh = Path.Combine(alice, ".ssh");
-        WriteText(Path.Combine(ssh, "id_ed25519"), Canary);
+        WriteBytes(Path.Combine(ssh, "id_ed25519"), OpenSshPem("none"));
+        WriteBytes(Path.Combine(ssh, "id_ed25519_encrypted"), OpenSshPem("aes256-ctr"));
         WriteText(Path.Combine(ssh, "id_ed25519.pub"), "ssh-ed25519 FIXTURE");
 
         WriteGitStateFixtures(Path.Combine(alice, "Projects"));
@@ -405,7 +443,13 @@ public sealed class FixtureGenerator
             "Roaming",
             "Anki2",
             "User 1");
-        WriteText(Path.Combine(anki, "collection.anki2"), string.Empty);
+        WriteSqlite(
+            Path.Combine(anki, "collection.anki2"),
+            """
+            CREATE TABLE notes(id INTEGER PRIMARY KEY, guid TEXT);
+            CREATE TABLE cards(id INTEGER PRIMARY KEY, nid INTEGER);
+            CREATE TABLE col(id INTEGER PRIMARY KEY, ver INTEGER, scm INTEGER);
+            """);
         WriteText(Path.Combine(anki, "collection.media", "image.png"), "fixture media");
 
         WriteText(Path.Combine(alice, "Documents", "Passwords", "fixture.kdbx"), Canary);
@@ -670,6 +714,67 @@ public sealed class FixtureGenerator
         foreach ((string name, string contents) in workFiles)
         {
             WriteText(Path.Combine(workTree, name), contents);
+        }
+    }
+
+    private static (string CertPem, string KeyPem, string DeviceId) CreateSyncthingIdentity()
+    {
+        using RSA rsa = RSA.Create(2048);
+        CertificateRequest request = new(
+            "CN=syncthing-fixture",
+            rsa,
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+        using X509Certificate2 cert = request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddDays(-1),
+            DateTimeOffset.UtcNow.AddYears(1));
+        string certPem = cert.ExportCertificatePem();
+        return (certPem, rsa.ExportPkcs8PrivateKeyPem(), SyncthingDeviceId.FromCertificatePem(certPem));
+    }
+
+    private static byte[] OpenSshPem(string cipher)
+    {
+        using MemoryStream payload = new();
+        payload.Write("openssh-key-v1\0"u8);
+        WriteSshString(payload, cipher);
+        WriteSshString(payload, cipher == "none" ? "none" : "bcrypt");
+        WriteSshString(payload, string.Empty);
+        string b64 = Convert.ToBase64String(payload.ToArray());
+        return Encoding.ASCII.GetBytes(
+            "-----BEGIN OPENSSH PRIVATE KEY-----\n" + b64 + "\n-----END OPENSSH PRIVATE KEY-----\n");
+    }
+
+    private static void WriteSshString(Stream stream, string value)
+    {
+        byte[] bytes = Encoding.ASCII.GetBytes(value);
+        Span<byte> length = stackalloc byte[4];
+        BinaryPrimitives.WriteUInt32BigEndian(length, (uint)bytes.Length);
+        stream.Write(length);
+        stream.Write(bytes);
+    }
+
+    private void WriteSqlite(string path, string sql)
+    {
+        string temp = Path.Combine(Path.GetTempPath(), "WinOldRecovery-fixture-" + Guid.NewGuid().ToString("N") + ".db");
+        try
+        {
+            using (SqliteConnection connection = new(new SqliteConnectionStringBuilder { DataSource = temp }.ConnectionString))
+            {
+                connection.Open();
+                using SqliteCommand command = connection.CreateCommand();
+                command.CommandText = sql;
+                command.ExecuteNonQuery();
+            }
+
+            SqliteConnection.ClearAllPools();
+            WriteBytes(path, File.ReadAllBytes(temp));
+        }
+        finally
+        {
+            if (File.Exists(temp))
+            {
+                File.Delete(temp);
+            }
         }
     }
 

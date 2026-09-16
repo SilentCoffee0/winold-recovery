@@ -6,6 +6,7 @@ using System.Text.Json;
 using WinOldRecovery.Core.IO;
 using WinOldRecovery.Core.Safety;
 using WinOldRecovery.Native;
+using WinOldRecovery.Recipes;
 
 namespace WinOldRecovery.FixtureGen;
 
@@ -58,7 +59,7 @@ public sealed class FixtureSelfCheck
         CheckOfflinePlaceholder(root, manifest, errors);
         CheckInvalidName(root, manifest, errors);
         CheckNodeModules(root, manifest, errors);
-        CheckRecipeShells(root, errors);
+        CheckRecipeShells(root, manifest, errors);
 
         if (manifest.FullHazardsRequested)
         {
@@ -263,7 +264,7 @@ public sealed class FixtureSelfCheck
         }
     }
 
-    private static void CheckRecipeShells(string root, ICollection<string> errors)
+    private static void CheckRecipeShells(string root, FixtureManifest manifest, ICollection<string> errors)
     {
         string alice = Path.Combine(root, "Users", "Alice");
         string[] requiredFiles =
@@ -286,7 +287,44 @@ public sealed class FixtureSelfCheck
                 "User Data",
                 "Default",
                 "Bookmarks"),
+            Path.Combine(
+                alice,
+                "AppData",
+                "Local",
+                "Google",
+                "Chrome",
+                "User Data",
+                "Local State"),
+            Path.Combine(
+                alice,
+                "AppData",
+                "Local",
+                "Google",
+                "Chrome",
+                "User Data",
+                "Default",
+                "Sessions",
+                "Session_1"),
+            Path.Combine(
+                alice,
+                "AppData",
+                "Roaming",
+                "Mozilla",
+                "Firefox",
+                "Profiles",
+                "fixture.default",
+                "places.sqlite"),
+            Path.Combine(
+                alice,
+                "AppData",
+                "Roaming",
+                "Mozilla",
+                "Firefox",
+                "Profiles",
+                "fixture.default",
+                "sessionstore.jsonlz4"),
             Path.Combine(alice, ".ssh", "id_ed25519"),
+            Path.Combine(alice, ".ssh", "id_ed25519_encrypted"),
             Path.Combine(alice, "Projects", "local-repository", ".git", "HEAD"),
             Path.Combine(alice, "Projects", "git-clean-pushed", ".git", "HEAD"),
             Path.Combine(alice, "Projects", "git-uncommitted", ".git", "index"),
@@ -317,6 +355,126 @@ public sealed class FixtureSelfCheck
             !File.ReadAllText(worktreeGit).StartsWith("gitdir:", StringComparison.OrdinalIgnoreCase))
         {
             errors.Add("Git worktree fixture .git is not a gitdir pointer.");
+        }
+
+        string snss = Path.Combine(
+            alice,
+            "AppData",
+            "Local",
+            "Google",
+            "Chrome",
+            "User Data",
+            "Default",
+            "Sessions",
+            "Session_1");
+        if (File.Exists(snss) &&
+            !File.ReadAllBytes(snss).AsSpan().StartsWith("SNSS"u8))
+        {
+            errors.Add("Chrome session fixture is not an SNSS file.");
+        }
+
+        string mozLz4 = Path.Combine(
+            alice,
+            "AppData",
+            "Roaming",
+            "Mozilla",
+            "Firefox",
+            "Profiles",
+            "fixture.default",
+            "sessionstore.jsonlz4");
+        if (File.Exists(mozLz4) &&
+            !File.ReadAllBytes(mozLz4).AsSpan().StartsWith("mozLz40\0"u8))
+        {
+            errors.Add("Firefox sessionstore fixture is not mozLz4.");
+        }
+
+        string places = Path.Combine(
+            alice,
+            "AppData",
+            "Roaming",
+            "Mozilla",
+            "Firefox",
+            "Profiles",
+            "fixture.default",
+            "places.sqlite");
+        if (File.Exists(places) &&
+            !File.ReadAllBytes(places).AsSpan().StartsWith("SQLite format 3"u8))
+        {
+            errors.Add("Firefox places.sqlite fixture is not a SQLite database.");
+        }
+
+        string anki = Path.Combine(
+            alice,
+            "AppData",
+            "Roaming",
+            "Anki2",
+            "User 1",
+            "collection.anki2");
+        if (File.Exists(anki) &&
+            !File.ReadAllBytes(anki).AsSpan().StartsWith("SQLite format 3"u8))
+        {
+            errors.Add("Anki collection.anki2 fixture is not a SQLite database.");
+        }
+
+        string certPemPath = Path.Combine(alice, "AppData", "Local", "Syncthing", "cert.pem");
+        if (File.Exists(certPemPath))
+        {
+            string certPem = File.ReadAllText(certPemPath);
+            if (!certPem.Contains("BEGIN CERTIFICATE", StringComparison.Ordinal))
+            {
+                errors.Add("Syncthing cert.pem is not a PEM certificate.");
+            }
+            else
+            {
+                string derived = SyncthingDeviceId.FromCertificatePem(certPem);
+                if (manifest.Hazards.TryGetValue("syncthing", out FixtureHazard? syncthing) &&
+                    !string.Equals(syncthing.Detail, derived, StringComparison.Ordinal))
+                {
+                    errors.Add("Syncthing device ID does not match the fixture certificate.");
+                }
+            }
+        }
+
+        string unencrypted = Path.Combine(alice, ".ssh", "id_ed25519");
+        if (File.Exists(unencrypted) &&
+            !OpenSshPayloadContains(File.ReadAllText(unencrypted), "openssh-key-v1\0"u8))
+        {
+            errors.Add("Unencrypted SSH fixture is not an OpenSSH private key.");
+        }
+
+        string encrypted = Path.Combine(alice, ".ssh", "id_ed25519_encrypted");
+        if (File.Exists(encrypted) &&
+            !OpenSshPayloadContains(File.ReadAllText(encrypted), "aes256-ctr"u8))
+        {
+            errors.Add("Encrypted SSH fixture does not advertise aes256-ctr.");
+        }
+    }
+
+    private static bool OpenSshPayloadContains(string pem, ReadOnlySpan<byte> needle)
+    {
+        int begin = pem.IndexOf("-----BEGIN", StringComparison.Ordinal);
+        int end = pem.IndexOf("-----END", StringComparison.Ordinal);
+        if (begin < 0 || end <= begin)
+        {
+            return false;
+        }
+
+        int headerEnd = pem.IndexOf('\n', begin);
+        if (headerEnd < 0 || headerEnd >= end)
+        {
+            return false;
+        }
+
+        string b64 = pem[(headerEnd + 1)..end]
+            .Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", string.Empty, StringComparison.Ordinal);
+        try
+        {
+            return Convert.FromBase64String(b64).AsSpan().IndexOf(needle) >= 0;
+        }
+        catch (FormatException)
+        {
+            return false;
         }
     }
 
