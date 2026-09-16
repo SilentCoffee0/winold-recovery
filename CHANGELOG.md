@@ -6,9 +6,9 @@ All notable changes to WinOld Recovery will be documented here.
 
 ### Changed
 
-- GUI startup paints MainWindow before `schtasks /Query` source discovery. The cleanup-task query times out after 2 seconds (was 15) and overlaps volume walking. Embedded classification rules load once. Interrupted-restore peek no longer takes an exclusive lock on leftover session databases first.
+- GUI startup paints MainWindow before `schtasks /Query` source discovery. The cleanup-task query times out after 2 seconds (was 15) and overlaps volume walking. Embedded classification rules load once. Interrupted-restore peek no longer takes an exclusive lock on leftover session databases first, skips `session.db` files larger than 32 MiB, and is cancelled after 2 seconds.
 - Scan indexing writes nodes with synchronous SQLite inserts, a 64 MB page cache, and memory temp tables. Classify applies suggested defaults in one writer transaction (no per-node undo/subtree CTE). Optional hash-during-scan stores SHA-256 in batches of 64. Node inserts use 48-row `VALUES` statements, badges use 96-row `INSERT OR IGNORE`, folder-size rollups use 32-row `CASE` updates, and hash kv uses 64-row upserts. Schema v4 adds `(session_id, name)` and `(session_id, rel_path)` indexes so post-scan recipe detect can use prefix GLOB instead of scanning every node.
-- GUI startup peeks leftover session databases and creates the new session folder at the same time. An unused new session is deleted when an interrupted restore is reopened.
+- GUI startup peeks leftover session databases and creates the new session folder at the same time. An unused new session is deleted when an interrupted restore is reopened. FindLatest skips leftover `session.db` files larger than 32 MiB (1M-scan leftovers) and is cancelled after 2 seconds so those databases cannot block MainWindow. A second GUI instance exits instead of stacking hung processes.
 - After a scan, Git/KeePass/Obsidian/Outlook and Anki Start-menu `.lnk` detect use the node index instead of walking the profile again. Anki still reads `-b` bytes from those shortcuts. Detect without a walker checkpoint still walks the disk (unit tests).
 - Anki L3 verify opens the restored `collection.anki2` for `PRAGMA integrity_check` and note-count compare, and fails if the newest `.colpkg` was planned but missing.
 

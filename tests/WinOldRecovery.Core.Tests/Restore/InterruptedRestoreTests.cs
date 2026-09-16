@@ -219,6 +219,85 @@ public sealed class InterruptedRestoreTests
         }
     }
 
+    [Fact]
+    public async Task FindLatest_SkipsOversizedNewerDatabasesWithoutOpeningThem()
+    {
+        string localData = Path.Combine(Path.GetTempPath(), $"WinOldRecovery-FindHuge-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(localData);
+        SourceGuard guard = new();
+        SafeFs safeFs = new(guard);
+        try
+        {
+            SessionWorkspace older = SessionWorkspace.Create(
+                safeFs,
+                localData,
+                new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero));
+            SessionWorkspace newer = SessionWorkspace.Create(
+                safeFs,
+                localData,
+                new DateTimeOffset(2024, 2, 1, 0, 0, 0, TimeSpan.Zero));
+            await using (SessionDb olderDb = await SessionDb.OpenAsync(older.DatabasePath, safeFs))
+            {
+                await olderDb.CreateSessionAsync(
+                    new SessionRecord(older.SessionId, DateTimeOffset.UtcNow, "Created", "0.1.0"));
+                PlanItem item = await StoreFileAsync(olderDb, older.SessionId, Path.Combine(localData, "old.txt"));
+                await olderDb.AppendJournalAsync(item.Id!.Value, "Started");
+            }
+
+            await using (FileStream stream = new(newer.DatabasePath, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                stream.SetLength(InterruptedRestore.MaxPeekDatabaseBytes + 1);
+            }
+
+            InterruptedRestoreReport? report = InterruptedRestore.FindLatest(safeFs, localData);
+            Assert.NotNull(report);
+            Assert.Equal(older.SessionId, report.SessionId);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            if (Directory.Exists(localData))
+            {
+                Directory.Delete(localData, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task FindLatest_ReturnsNullWhenCancelledBeforePeeking()
+    {
+        string localData = Path.Combine(Path.GetTempPath(), $"WinOldRecovery-FindCancel-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(localData);
+        SourceGuard guard = new();
+        SafeFs safeFs = new(guard);
+        try
+        {
+            SessionWorkspace workspace = SessionWorkspace.Create(
+                safeFs,
+                localData,
+                new DateTimeOffset(2024, 3, 1, 0, 0, 0, TimeSpan.Zero));
+            await using (SessionDb database = await SessionDb.OpenAsync(workspace.DatabasePath, safeFs))
+            {
+                await database.CreateSessionAsync(
+                    new SessionRecord(workspace.SessionId, DateTimeOffset.UtcNow, "Created", "0.1.0"));
+                PlanItem item = await StoreFileAsync(database, workspace.SessionId, Path.Combine(localData, "paused.txt"));
+                await database.AppendJournalAsync(item.Id!.Value, "Paused");
+            }
+
+            using CancellationTokenSource cts = new();
+            cts.Cancel();
+            Assert.Null(InterruptedRestore.FindLatest(safeFs, localData, cts.Token));
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            if (Directory.Exists(localData))
+            {
+                Directory.Delete(localData, recursive: true);
+            }
+        }
+    }
+
     private static async Task<PlanItem> StoreFileAsync(SessionDb database, string sessionId, string source)
     {
         PlanItem item = new(

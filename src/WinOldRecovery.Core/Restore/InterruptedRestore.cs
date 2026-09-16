@@ -95,9 +95,26 @@ public static class InterruptedRestore
             plan);
     }
 
-    public static InterruptedRestoreReport? FindLatest(SafeFs safeFs, string? localApplicationData = null)
+    /// <summary>
+    /// Scan leftovers from a 1M-node walk are hundreds of megabytes. Opening those
+    /// as SQLite (even read-only) under Defender stalls GUI startup. Interrupted
+    /// restore journals live in small session databases.
+    /// </summary>
+    public const long MaxPeekDatabaseBytes = 32L * 1024 * 1024;
+
+    internal const int MaxPeekDirectories = 32;
+
+    public static InterruptedRestoreReport? FindLatest(
+        SafeFs safeFs,
+        string? localApplicationData = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(safeFs);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+
         string basePath = localApplicationData ??
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         string sessions = Path.Combine(basePath, "WinOldRecovery", "sessions");
@@ -106,10 +123,29 @@ public static class InterruptedRestore
             return null;
         }
 
-        foreach (string directory in Directory.GetDirectories(sessions).OrderByDescending(static path => path, StringComparer.OrdinalIgnoreCase))
+        foreach (string directory in Directory.GetDirectories(sessions)
+            .OrderByDescending(static path => path, StringComparer.OrdinalIgnoreCase)
+            .Take(MaxPeekDirectories))
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+
             string databasePath = Path.Combine(directory, "session.db");
             if (!File.Exists(databasePath))
+            {
+                continue;
+            }
+
+            try
+            {
+                if (new FileInfo(databasePath).Length > MaxPeekDatabaseBytes)
+                {
+                    continue;
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
                 continue;
             }
@@ -127,13 +163,19 @@ public static class InterruptedRestore
             SessionDb? database = null;
             try
             {
-                database = SessionDb.OpenAsync(databasePath, safeFs).GetAwaiter().GetResult();
+                database = SessionDb.OpenAsync(databasePath, safeFs, cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
                 string sessionId = Path.GetFileName(directory);
                 InterruptedRestoreReport? report = Describe(database, sessionId, directory);
                 if (report is not null)
                 {
                     return report;
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SqliteException)
             {

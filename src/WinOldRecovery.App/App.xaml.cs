@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -20,11 +21,15 @@ namespace WinOldRecovery.App;
 
 public partial class App : Application
 {
+    private const int FindLatestBudgetMilliseconds = 2000;
+    private static readonly string SingleInstanceName = @"Local\WinOldRecovery.App";
+
     private SessionDb? sessionDatabase;
     private ILoggerFactory? loggerFactory;
     private ILogger? logger;
     private SensitiveDataRedactor? redactor;
     private string? sessionLogPath;
+    private Mutex? instanceMutex;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -57,6 +62,20 @@ public partial class App : Application
                     restoreDest,
                     restoreReport);
                 base.OnStartup(e);
+                return;
+            }
+
+            instanceMutex = new Mutex(initiallyOwned: true, SingleInstanceName, out bool createdNew);
+            if (!createdNew)
+            {
+                instanceMutex.Dispose();
+                instanceMutex = null;
+                MessageBox.Show(
+                    "WinOld Recovery is already running.",
+                    "WinOld Recovery",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                Shutdown(0);
                 return;
             }
 
@@ -155,8 +174,11 @@ public partial class App : Application
     {
         try
         {
+            using CancellationTokenSource findCts = new(TimeSpan.FromMilliseconds(FindLatestBudgetMilliseconds));
+            Stopwatch findBudget = Stopwatch.StartNew();
             Task<InterruptedRestoreReport?> findTask = Task.Run(
-                () => InterruptedRestore.FindLatest(safeFs));
+                () => InterruptedRestore.FindLatest(safeFs, cancellationToken: findCts.Token),
+                findCts.Token);
             Task<(SessionWorkspace Workspace, SessionDb Database)> freshTask = Task.Run(
                 async () =>
                 {
@@ -172,13 +194,17 @@ public partial class App : Application
                         .ConfigureAwait(false);
                     return (created, opened);
                 });
-            InterruptedRestoreReport? interrupted = await findTask.ConfigureAwait(true);
+            (SessionWorkspace createdWorkspace, SessionDb createdDatabase) =
+                await freshTask.ConfigureAwait(true);
+            InterruptedRestoreReport? interrupted = await TryTakeFindLatestAsync(findTask, findCts, findBudget)
+                .ConfigureAwait(true);
 
             SessionWorkspace workspace;
             SessionDb database;
             if (interrupted is null)
             {
-                (workspace, database) = await freshTask.ConfigureAwait(true);
+                workspace = createdWorkspace;
+                database = createdDatabase;
             }
             else
             {
@@ -186,11 +212,10 @@ public partial class App : Application
                 database = await SessionDb.OpenAsync(workspace.DatabasePath, safeFs).ConfigureAwait(true);
                 try
                 {
-                    (SessionWorkspace unused, SessionDb unusedDb) = await freshTask.ConfigureAwait(true);
-                    await unusedDb.DisposeAsync().ConfigureAwait(true);
-                    if (Directory.Exists(unused.RootPath))
+                    await createdDatabase.DisposeAsync().ConfigureAwait(true);
+                    if (Directory.Exists(createdWorkspace.RootPath))
                     {
-                        safeFs.DeleteDirectory(unused.RootPath, recursive: true);
+                        safeFs.DeleteDirectory(createdWorkspace.RootPath, recursive: true);
                     }
                 }
                 catch (Exception exception) when (
@@ -241,6 +266,35 @@ public partial class App : Application
             startupWindow.Close();
             ShowCrash(exception);
             Shutdown(exitCode: 1);
+        }
+    }
+
+    private static async Task<InterruptedRestoreReport?> TryTakeFindLatestAsync(
+        Task<InterruptedRestoreReport?> findTask,
+        CancellationTokenSource findCts,
+        Stopwatch findBudget)
+    {
+        TimeSpan remaining = TimeSpan.FromMilliseconds(FindLatestBudgetMilliseconds) - findBudget.Elapsed;
+        try
+        {
+            if (remaining <= TimeSpan.Zero)
+            {
+                if (findTask.IsCompletedSuccessfully)
+                {
+                    return findTask.GetAwaiter().GetResult();
+                }
+
+                findCts.Cancel();
+                return null;
+            }
+
+            return await findTask.WaitAsync(remaining).ConfigureAwait(true);
+        }
+        catch (Exception exception) when (
+            exception is not OutOfMemoryException and not StackOverflowException)
+        {
+            findCts.Cancel();
+            return null;
         }
     }
 
@@ -328,6 +382,13 @@ public partial class App : Application
         logger?.LogInformation("Session closed normally.");
         sessionDatabase?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         loggerFactory?.Dispose();
+        if (instanceMutex is not null)
+        {
+            instanceMutex.ReleaseMutex();
+            instanceMutex.Dispose();
+            instanceMutex = null;
+        }
+
         base.OnExit(e);
     }
 }
