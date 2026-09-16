@@ -339,6 +339,68 @@ public sealed class RecipeIndexTests
                 Path.Combine("AppData", "Roaming", "Anki2", "User 1", "collection.media")));
     }
 
+    [Fact]
+    public async Task Index_FindsAnkiBackupsAndAddonManifestsUnderAppData()
+    {
+        await using RecipeIndexContext context = await RecipeIndexContext.CreateAsync();
+        await context.Database.CreateSessionAsync(
+            new SessionRecord("session-1", DateTimeOffset.UtcNow, "Created", "0.1.0"));
+        await context.Database.InsertNodesAsync(
+        [
+            Node(1, null, "Windows.old", ""),
+            Node(2, 1, "Alice", @"Users\Alice"),
+            Node(
+                3,
+                2,
+                "backup-1.colpkg",
+                @"Users\Alice\AppData\Roaming\Anki2\User 1\backups\backup-1.colpkg",
+                NodeKind.File),
+            Node(4, 2, "2040501954", @"Users\Alice\AppData\Roaming\Anki2\addons21\2040501954"),
+            Node(
+                5,
+                4,
+                "manifest.json",
+                @"Users\Alice\AppData\Roaming\Anki2\addons21\2040501954\manifest.json",
+                NodeKind.File),
+        ]);
+
+        RecipeIndex index = new(
+            context.Database,
+            "session-1",
+            @"Users\Alice",
+            Path.Combine(context.Root, "Users", "Alice"));
+        Assert.Equal(
+            Path.Combine(
+                context.Root,
+                "Users",
+                "Alice",
+                "AppData",
+                "Roaming",
+                "Anki2",
+                "User 1",
+                "backups",
+                "backup-1.colpkg"),
+            Assert.Single(
+                index.FilesWithExtensions(
+                    [".colpkg"],
+                    skipAppData: false,
+                    Path.Combine("AppData", "Roaming", "Anki2", "User 1", "backups"))));
+        Assert.Equal(
+            Path.Combine(
+                context.Root,
+                "Users",
+                "Alice",
+                "AppData",
+                "Roaming",
+                "Anki2",
+                "addons21",
+                "2040501954"),
+            Assert.Single(
+                index.ParentsOfChildNamedUnderProfile(
+                    Path.Combine("AppData", "Roaming", "Anki2", "addons21"),
+                    "manifest.json")));
+    }
+
     private static PersistedNode Node(
         long id,
         long? parentId,

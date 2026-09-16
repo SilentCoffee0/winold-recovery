@@ -2137,12 +2137,15 @@ public sealed class RecipeTests
     }
 
     [Fact]
-    public async Task Anki_Detect_CountsMediaFromRecipeIndexExcludingTrash()
+    public async Task Anki_Detect_CountsMediaBackupsAndAddonsFromRecipeIndex()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
         string alice = Path.Combine(context.Source, "Users", "Alice");
         string anki = Path.Combine(alice, "AppData", "Roaming", "Anki2", "User 1");
         Directory.CreateDirectory(Path.Combine(anki, "collection.media", "media.trash"));
+        Directory.CreateDirectory(Path.Combine(anki, "backups"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Roaming", "Anki2", "addons21", "2040501954"));
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Roaming", "Anki2", "addons21", "walked"));
         WriteSqlite(
             Path.Combine(anki, "collection.anki2"),
             """
@@ -2154,6 +2157,14 @@ public sealed class RecipeTests
         await File.WriteAllTextAsync(Path.Combine(anki, "collection.media", "image.png"), "media");
         await File.WriteAllTextAsync(Path.Combine(anki, "collection.media", "extra-on-disk.png"), "disk");
         await File.WriteAllTextAsync(Path.Combine(anki, "collection.media", "media.trash", "gone.png"), "trash");
+        await File.WriteAllTextAsync(Path.Combine(anki, "backups", "backup-1.colpkg"), "pkg");
+        await File.WriteAllTextAsync(Path.Combine(anki, "backups", "extra-on-disk.colpkg"), "disk");
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, "AppData", "Roaming", "Anki2", "addons21", "2040501954", "manifest.json"),
+            """{"name":"Review Heatmap"}""");
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, "AppData", "Roaming", "Anki2", "addons21", "walked", "manifest.json"),
+            """{"name":"Walked"}""");
         await context.Database.InsertNodesAsync(
         [
             new PersistedNode(
@@ -2184,6 +2195,48 @@ public sealed class RecipeTests
                 DateTime.UtcNow,
                 0,
                 NodeProblem.None),
+            new PersistedNode(
+                3,
+                "session-1",
+                null,
+                null,
+                "backup-1.colpkg",
+                @"Users\Alice\AppData\Roaming\Anki2\User 1\backups\backup-1.colpkg",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                4,
+                "session-1",
+                null,
+                null,
+                "2040501954",
+                @"Users\Alice\AppData\Roaming\Anki2\addons21\2040501954",
+                NodeKind.Directory,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                5,
+                "session-1",
+                null,
+                4,
+                "manifest.json",
+                @"Users\Alice\AppData\Roaming\Anki2\addons21\2040501954\manifest.json",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
         ]);
 
         DetectResult fromIndex = new AnkiRecipe().Detect(
@@ -2200,7 +2253,11 @@ public sealed class RecipeTests
                     "session-1",
                     @"Users\Alice",
                     alice)));
-        Assert.Equal("1", Assert.Single(fromIndex.Cards).Facts["media"]);
+        RecipeCard indexed = Assert.Single(fromIndex.Cards);
+        Assert.Equal("1", indexed.Facts["media"]);
+        Assert.Equal("1", indexed.Facts["backups"]);
+        Assert.Equal("backup-1.colpkg", indexed.Facts["newestBackup"]);
+        Assert.Equal("1", indexed.Facts["addons"]);
 
         DetectResult fromDisk = new AnkiRecipe().Detect(
             new ProfileContext(
@@ -2211,7 +2268,10 @@ public sealed class RecipeTests
                 context.Exports,
                 context.SafeFs,
                 context.Runner));
-        Assert.Equal("2", Assert.Single(fromDisk.Cards).Facts["media"]);
+        RecipeCard walked = Assert.Single(fromDisk.Cards);
+        Assert.Equal("2", walked.Facts["media"]);
+        Assert.Equal("2", walked.Facts["backups"]);
+        Assert.Equal("2", walked.Facts["addons"]);
     }
 
     [Fact]
@@ -2489,6 +2549,15 @@ public sealed class RecipeTests
         Assert.Equal(string.Empty, gpgCard.Facts.GetValueOrDefault("mergeHint"));
         PlanResult gpgPlan = host.PlanCard(new GpgRecipe(), gpgCard, Dest(context));
         await host.ExecuteAsync("session-1", new GpgRecipe(), gpgPlan);
+        Assert.True(new GpgRecipe().Verify(gpgPlan).Ok);
+        string destKey = Path.Combine(context.Destination, "AppData", "Roaming", "gnupg", "private-keys-v1.d", "key");
+        Assert.True(File.Exists(destKey));
+        byte[] originalKey = await File.ReadAllBytesAsync(destKey);
+        await File.WriteAllTextAsync(destKey, "truncated");
+        RecipeVerifyResult truncatedRing = new GpgRecipe().Verify(gpgPlan);
+        Assert.False(truncatedRing.Ok);
+        Assert.Contains("size", truncatedRing.Detail, StringComparison.OrdinalIgnoreCase);
+        await File.WriteAllBytesAsync(destKey, originalKey);
         Assert.True(new GpgRecipe().Verify(gpgPlan).Ok);
         Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "gnupg", "private-keys-v1.d", "key")));
         Assert.False(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "gnupg", "random_seed")));

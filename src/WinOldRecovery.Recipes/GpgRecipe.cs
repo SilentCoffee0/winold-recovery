@@ -89,8 +89,11 @@ public sealed class GpgRecipe : IRecipe
             return new RecipeVerifyResult(false, "random_seed must not be restored");
         }
 
-        bool ok = plan.Writes.All(static write => File.Exists(write.DestinationPath));
-        return new RecipeVerifyResult(ok, ok ? "GPG files present" : "GPG destination missing");
+        return DetectorWalk.FilesPresentMatchingSourceLength(
+            plan,
+            "GPG files present",
+            "GPG destination missing",
+            "GPG destination size does not match the source");
     }
 
     public async Task<RecipeVerifyResult> VerifyAsync(

@@ -99,6 +99,25 @@ public sealed class RecipeIndex
         return paths;
     }
 
+    public IReadOnlyList<string> ParentsOfChildNamedUnderProfile(string relativeUnderProfile, string childName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeUnderProfile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(childName);
+        List<string> paths = [];
+        foreach (string relPath in sessionDb.ListRelPathsUnderPrefixByChildName(
+                     sessionId,
+                     CombinePrefix(profileRelPrefix, relativeUnderProfile),
+                     childName))
+        {
+            if (TryAbsolute(relPath, out string absolute))
+            {
+                paths.Add(absolute);
+            }
+        }
+
+        return paths;
+    }
+
     public IReadOnlyList<string> GitWorkingTrees() => ParentsOfChildNamed(".git");
 
     public IReadOnlyList<string> ParentsOfChildNamedUnder(string relativeUnderSource, string childName)

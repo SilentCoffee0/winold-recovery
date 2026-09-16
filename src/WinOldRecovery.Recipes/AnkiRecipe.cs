@@ -36,8 +36,8 @@ public sealed class AnkiRecipe : IRecipe
                 (int notes, int cardCount, string integrity, string schema) = ReadCollectionFacts(context, collection, Path.GetFileName(profile));
                 int media = CountMedia(context, Path.Combine(profile, "collection.media"));
                 bool hasWal = context.SafeFs.FileExists(Path.Combine(profile, "collection.anki2-wal"));
-                (int backups, string newestBackup) = CountBackups(context.SafeFs, Path.Combine(profile, "backups"));
-                int addons = CountAddons(context.SafeFs, Path.Combine(baseFolder, "addons21"));
+                (int backups, string newestBackup) = CountBackups(context, Path.Combine(profile, "backups"));
+                int addons = CountAddons(context, Path.Combine(baseFolder, "addons21"));
                 string destAnki = Path.Combine(context.DestinationProfileRoot, "AppData", "Roaming", "Anki2");
                 bool destPrefs = context.SafeFs.FileExists(Path.Combine(destAnki, "prefs21.db"));
                 cards.Add(
@@ -296,6 +296,43 @@ public sealed class AnkiRecipe : IRecipe
         return (notes, cards, "deferred", schema);
     }
 
+    private static (int Count, string Newest) CountBackups(ProfileContext context, string backups)
+    {
+        if (TryIndexRelative(context, backups, out RecipeIndex index, out string relative))
+        {
+            int count = 0;
+            DateTime newest = DateTime.MinValue;
+            string newestName = string.Empty;
+            foreach (string file in index.FilesWithExtensions([".colpkg"], skipAppData: false, relative))
+            {
+                string fileRelative = DetectorWalk.RelativeUnder(context.OldProfileRoot, file);
+                if (!string.Equals(Path.GetDirectoryName(fileRelative), relative, StringComparison.OrdinalIgnoreCase) ||
+                    !File.Exists(file))
+                {
+                    continue;
+                }
+
+                count++;
+                try
+                {
+                    DateTime written = File.GetLastWriteTimeUtc(file);
+                    if (written >= newest)
+                    {
+                        newest = written;
+                        newestName = Path.GetFileName(file);
+                    }
+                }
+                catch (IOException)
+                {
+                }
+            }
+
+            return (count, newestName);
+        }
+
+        return CountBackups(context.SafeFs, backups);
+    }
+
     private static (int Count, string Newest) CountBackups(SafeFs safeFs, string backups)
     {
         if (!safeFs.DirectoryExists(backups))
@@ -329,6 +366,26 @@ public sealed class AnkiRecipe : IRecipe
         }
 
         return (count, newestName);
+    }
+
+    private static int CountAddons(ProfileContext context, string addons21)
+    {
+        if (TryIndexRelative(context, addons21, out RecipeIndex index, out string relative))
+        {
+            int count = 0;
+            foreach (string addon in index.ParentsOfChildNamedUnderProfile(relative, "manifest.json"))
+            {
+                string addonRelative = DetectorWalk.RelativeUnder(context.OldProfileRoot, addon);
+                if (string.Equals(Path.GetDirectoryName(addonRelative), relative, StringComparison.OrdinalIgnoreCase))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        return CountAddons(context.SafeFs, addons21);
     }
 
     private static int CountAddons(SafeFs safeFs, string addons21)
@@ -371,18 +428,37 @@ public sealed class AnkiRecipe : IRecipe
 
     private static int CountMedia(ProfileContext context, string media)
     {
-        if (context.Index is { } index)
+        if (TryIndexRelative(context, media, out RecipeIndex index, out string relative))
         {
-            string relative = DetectorWalk.RelativeUnder(context.OldProfileRoot, media);
-            if (!string.IsNullOrWhiteSpace(relative) &&
-                !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) &&
-                !Path.IsPathRooted(relative))
-            {
-                return index.CountFilesUnder(relative, "media.trash");
-            }
+            return index.CountFilesUnder(relative, "media.trash");
         }
 
         return CountMedia(context.SafeFs, media);
+    }
+
+    private static bool TryIndexRelative(
+        ProfileContext context,
+        string path,
+        out RecipeIndex index,
+        out string relative)
+    {
+        index = null!;
+        relative = string.Empty;
+        if (context.Index is not { } found)
+        {
+            return false;
+        }
+
+        relative = DetectorWalk.RelativeUnder(context.OldProfileRoot, path);
+        if (string.IsNullOrWhiteSpace(relative) ||
+            relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+            Path.IsPathRooted(relative))
+        {
+            return false;
+        }
+
+        index = found;
+        return true;
     }
 
     private static int CountMedia(SafeFs safeFs, string media)
