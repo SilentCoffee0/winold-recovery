@@ -26,6 +26,7 @@ All notable changes to WinOld Recovery will be documented here.
 ### Fixed
 
 - Open last scan no longer freezes the window. Mixed-decision badges use immediate children instead of recursive CTEs over the whole tree, and last-scan hydrate reads SQLite off the UI thread.
+- After a scan finishes, the live path caption is cleared so leftover “Classifying scanned files…” no longer looks like the app is still scanning.
 - Selecting the High-value items or Regeneratable Decide card lists those badged files in All files (jump-to-tree). Inspect shows the per-rule counts when classify recorded a breakdown.
 - Scan source discovery applies bound `Sources` changes on the WPF dispatcher after `DiscoverAsync`, so filling the list no longer throws `NotSupportedException` from a CollectionView on a worker thread. Startup crash dialogs now write the exception to the session log (session `2026-09-16_125339_2a6ad19d` closed without one).
 - CI and tag-release workflows use `actions/checkout@v5`, `actions/setup-dotnet@v5`, and `actions/upload-artifact@v6` so GitHub-hosted runners stop warning about Node.js 20. Workflow file tests pin those versions instead of `@v4`.

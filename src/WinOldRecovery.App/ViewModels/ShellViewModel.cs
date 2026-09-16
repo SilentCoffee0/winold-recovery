@@ -1833,6 +1833,8 @@ public sealed class ShellViewModel : ObservableObject
         lastRecipeCards = snapshot.Cards;
         lastClassification = snapshot.Classification;
         scanCompleted = true;
+        CurrentPath = string.Empty;
+        CurrentPathFull = string.Empty;
         destinationByRelPath = snapshot.DestinationByRelPath;
         RebuildCards(lastProfiles);
         CurrentStep = WorkflowStep.Decide;
@@ -2150,6 +2152,8 @@ public sealed class ShellViewModel : ObservableObject
                 lastProfiles = result.Profiles;
                 lastClassification = result.Classification;
                 lastRecipeCards = cards;
+                CurrentPath = string.Empty;
+                CurrentPathFull = string.Empty;
                 ScanStatus = StatusStrip.FormatScanSummary(
                     result.Walk.NodesVisited,
                     result.Walk.BytesSeen,
@@ -2189,6 +2193,8 @@ public sealed class ShellViewModel : ObservableObject
                     OnPropertyChanged(nameof(ScanCompleted));
                     OnPropertyChanged(nameof(WindowTitle));
                     ScanStatus = "Scan cancelled. Choose Scan to start again.";
+                    CurrentPath = string.Empty;
+                    CurrentPathFull = string.Empty;
                 }).ConfigureAwait(true);
             }
             else

@@ -46,6 +46,7 @@ public sealed class ShellViewModelTests
         Assert.Contains(context.ViewModel.Cards, card => card.Title == "Alice");
         Assert.Contains(context.ViewModel.Cards, card => card.Title == "Desktop");
         Assert.Equal("Windows.old untouched", context.ViewModel.SourceIntegrityText);
+        Assert.Equal(string.Empty, context.ViewModel.CurrentPath);
     }
 
     [Fact]
