@@ -1,5 +1,6 @@
 using WinOldRecovery.Core.Decisions;
 using WinOldRecovery.Core.IO;
+using WinOldRecovery.Core.Processes;
 using WinOldRecovery.Core.Recipes;
 
 namespace WinOldRecovery.Recipes;
@@ -75,28 +76,9 @@ public sealed class GpgRecipe : IRecipe
         return new PlanResult(decisions.Card, writes);
     }
 
-    public async Task ExecuteAsync(PlanResult plan, IRecipeJournal journal, CancellationToken cancellationToken = default)
+    public Task ExecuteAsync(PlanResult plan, IRecipeJournal journal, CancellationToken cancellationToken = default)
     {
-        if (plan.Destination is null)
-        {
-            return;
-        }
-
-        string? home = DestinationHome(plan);
-        Dictionary<string, string?> environment = [];
-        if (!string.IsNullOrEmpty(home))
-        {
-            environment["GNUPGHOME"] = home;
-        }
-
-        await plan.Destination.ProcessRunner.RunAsync(
-                new WinOldRecovery.Core.Processes.ProcessRequest(
-                    "gpg.exe",
-                    ["--list-secret-keys"],
-                    Environment: environment.Count == 0 ? null : environment,
-                    Timeout: TimeSpan.FromSeconds(30)),
-                cancellationToken)
-            .ConfigureAwait(false);
+        return Task.CompletedTask;
     }
 
     public RecipeVerifyResult Verify(PlanResult plan)
@@ -109,6 +91,50 @@ public sealed class GpgRecipe : IRecipe
 
         bool ok = plan.Writes.All(static write => File.Exists(write.DestinationPath));
         return new RecipeVerifyResult(ok, ok ? "GPG files present" : "GPG destination missing");
+    }
+
+    public async Task<RecipeVerifyResult> VerifyAsync(
+        PlanResult plan,
+        CancellationToken cancellationToken = default)
+    {
+        RecipeVerifyResult files = Verify(plan);
+        if (!files.Ok || plan.Destination is null)
+        {
+            return files;
+        }
+
+        string? home = DestinationHome(plan);
+        Dictionary<string, string?> environment = [];
+        if (!string.IsNullOrEmpty(home))
+        {
+            environment["GNUPGHOME"] = home;
+        }
+
+        ProcessResult result;
+        try
+        {
+            result = await plan.Destination.ProcessRunner
+                .RunAsync(
+                    new ProcessRequest(
+                        "gpg.exe",
+                        ["--list-secret-keys"],
+                        Environment: environment.Count == 0 ? null : environment,
+                        Timeout: TimeSpan.FromSeconds(30)),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is not OutOfMemoryException and not StackOverflowException)
+        {
+            return files;
+        }
+
+        if (result.ExitCode != 0)
+        {
+            return new RecipeVerifyResult(false, "gpg --list-secret-keys failed");
+        }
+
+        return new RecipeVerifyResult(true, "gpg --list-secret-keys succeeded");
     }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>

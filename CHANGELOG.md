@@ -11,6 +11,7 @@ All notable changes to WinOld Recovery will be documented here.
 - GUI startup peeks leftover session databases and creates the new session folder at the same time. An unused new session is deleted when an interrupted restore is reopened. FindLatest skips leftover `session.db` files larger than 32 MiB (1M-scan leftovers), skips interrupted sessions whose source folder is gone (stale FlaUI fixtures), and is cancelled after 2 seconds so those databases cannot block MainWindow. Closing the splash window no longer shuts the process down; the single-instance mutex is released before the session database is disposed. A second GUI instance exits instead of stacking hung processes.
 - After a scan, Git/KeePass/Obsidian/Outlook and Anki Start-menu `.lnk` detect use the node index instead of walking the profile again. Anki still reads `-b` bytes from those shortcuts. Detect without a walker checkpoint still walks the disk (unit tests).
 - Anki L3 verify opens the restored `collection.anki2` for `PRAGMA integrity_check` and note-count compare, checks dest media file count against the source (excluding `media.trash`), and fails if the newest `.colpkg` was planned but missing.
+- GPG L3 verify runs `gpg --list-secret-keys` with `GNUPGHOME` on the restored ring. Missing `gpg.exe` is skipped; a non-zero exit fails verify. Restore no longer invokes gpg during copy.
 
 ### Fixed
 

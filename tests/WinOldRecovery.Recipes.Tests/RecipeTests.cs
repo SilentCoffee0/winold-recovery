@@ -2215,6 +2215,12 @@ public sealed class RecipeTests
         Assert.True(new GpgRecipe().Verify(gpgPlan).Ok);
         Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "gnupg", "private-keys-v1.d", "key")));
         Assert.False(File.Exists(Path.Combine(context.Destination, "AppData", "Roaming", "gnupg", "random_seed")));
+        Assert.DoesNotContain(
+            context.Runner.Requests,
+            request => request.FileName.Equals("gpg.exe", StringComparison.OrdinalIgnoreCase));
+        RecipeVerifyResult listed = await new GpgRecipe().VerifyAsync(gpgPlan);
+        Assert.True(listed.Ok);
+        Assert.Contains("list-secret-keys succeeded", listed.Detail, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
             context.Runner.Requests,
             request => request.FileName == "gpg.exe" &&
@@ -2700,6 +2706,34 @@ public sealed class RecipeTests
         Assert.Contains(
             plan.Writes,
             write => write.DestinationPath.Contains("gnupg.from-windows-old", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Gpg_VerifyAsync_FailsWhenListSecretKeysExitsNonZero()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string destKey = Path.Combine(context.Destination, "AppData", "Roaming", "gnupg", "pubring.kbx");
+        Directory.CreateDirectory(Path.GetDirectoryName(destKey)!);
+        await File.WriteAllTextAsync(destKey, "pub");
+        RecipeCard card = new(
+            "gpg",
+            "GPG",
+            "what",
+            "why",
+            "restored",
+            "cloud",
+            "regen",
+            "left",
+            [],
+            "gpg:test",
+            new Dictionary<string, string>());
+        PlanResult plan = new(
+            card,
+            [new RecipeWrite(RecipeWriteKind.CopyFile, destKey, destKey, null, 1, "ring")],
+            new DestinationContext(context.Destination, context.Exports, context.SafeFs, new ExitOneRunner()));
+        RecipeVerifyResult result = await new GpgRecipe().VerifyAsync(plan);
+        Assert.False(result.Ok);
+        Assert.Contains("list-secret-keys failed", result.Detail, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
