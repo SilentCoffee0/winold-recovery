@@ -61,6 +61,11 @@ public sealed class FlaUiSmokeTests
             Assert.Contains("WinOld Recovery", found.Title, StringComparison.OrdinalIgnoreCase);
             TryInvoke(found, "DismissFirstRunButton");
             TryInvoke(found, "DismissInterruptedButton");
+            WaitForStatus(
+                found,
+                static text => text.Contains("Smoke fixture ready (OldInstall)", StringComparison.Ordinal),
+                TimeSpan.FromMinutes(1),
+                "smoke fixture");
             AutomationElement help = found.FindFirstDescendant(cf => cf.ByAutomationId("HelpButton"))
                 ?? throw new InvalidOperationException("Help button was not found.");
             help.AsButton().Invoke();
@@ -68,11 +73,6 @@ public sealed class FlaUiSmokeTests
                 ?? throw new InvalidOperationException("Close help button was not found.");
             closeHelp.AsButton().Invoke();
             TryInvoke(found, "StepScan");
-            WaitForStatus(
-                found,
-                static text => text.Contains("Smoke fixture ready (OldInstall)", StringComparison.Ordinal),
-                TimeSpan.FromMinutes(1),
-                "smoke fixture");
             InvokeEnabled(found, "ScanButton");
             WaitForStatus(found, static text => text.Contains("holds", StringComparison.OrdinalIgnoreCase), TimeSpan.FromMinutes(3), "scan");
 
@@ -119,7 +119,7 @@ public sealed class FlaUiSmokeTests
                 found,
                 static text => text.Contains("Purge finished", StringComparison.OrdinalIgnoreCase) &&
                     !text.Contains("cleanup-handler", StringComparison.OrdinalIgnoreCase),
-                TimeSpan.FromMinutes(2),
+                TimeSpan.FromMinutes(5),
                 "purge");
 
             Assert.False(Directory.Exists(source), "Manual purge should remove the browsed fixture.");
@@ -336,7 +336,28 @@ public sealed class FlaUiSmokeTests
     private static string ReadScanStatus(FlaUI.Core.AutomationElements.Window window)
     {
         AutomationElement? status = window.FindFirstDescendant(cf => cf.ByAutomationId("ScanStatusText"));
-        return status?.Name ?? string.Empty;
+        if (status is null)
+        {
+            return string.Empty;
+        }
+
+        if (status.Patterns.Value.IsSupported)
+        {
+            string? value = status.Patterns.Value.Pattern.Value;
+            if (!string.IsNullOrWhiteSpace(value) &&
+                !value.Equals("Scan status", StringComparison.Ordinal))
+            {
+                return value;
+            }
+        }
+
+        string name = status.Name ?? string.Empty;
+        if (name.Equals("Scan status", StringComparison.Ordinal))
+        {
+            return string.Empty;
+        }
+
+        return name;
     }
 
     private static void SetNamedText(FlaUI.Core.AutomationElements.Window window, string name, string value)

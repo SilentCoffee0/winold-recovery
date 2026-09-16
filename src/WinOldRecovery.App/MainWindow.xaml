@@ -119,7 +119,7 @@
 
                 <StackPanel Grid.Row="0" Margin="0,0,0,8">
                     <TextBlock Text="{Binding ScanStatus}" TextWrapping="Wrap" ToolTip="{Binding SkipHint}"
-                               AutomationProperties.Name="Scan status"
+                               AutomationProperties.HelpText="Scan status"
                                AutomationProperties.AutomationId="ScanStatusText" />
                     <TextBlock Margin="0,4,0,0"
                                Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"

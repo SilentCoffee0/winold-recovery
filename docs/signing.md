@@ -13,7 +13,14 @@ Do not commit certificates or SignPath secrets. Do not tag `v0.1.0-m0` as a subs
 
 Repository: https://github.com/SilentCoffee0/winold-recovery
 
-After SignPath accepts the project, store the credentials SignPath issues as GitHub Actions secrets and set the repository variable `SIGNPATH_ENABLED` to `true`. Then add the SignPath action to `.github/workflows/release.yml` after both publishes and before checksums. Until that variable is set, release assets stay unsigned.
+After SignPath accepts the project, store `SIGNPATH_API_TOKEN` as a GitHub Actions secret and set these repository variables:
+
+- `SIGNPATH_ENABLED` = `true`
+- `SIGNPATH_ORGANIZATION_ID`
+- `SIGNPATH_PROJECT_SLUG`
+- `SIGNPATH_SIGNING_POLICY_SLUG`
+
+`.github/workflows/release.yml` already submits both published EXEs to SignPath when `SIGNPATH_ENABLED` is `true`, replaces the staged files with the signed copies, then writes SHA-256 checksums. Until that variable is set, those steps are skipped and release assets stay unsigned. Do not commit certificates or tokens.
 
 ## Azure Trusted Signing
 

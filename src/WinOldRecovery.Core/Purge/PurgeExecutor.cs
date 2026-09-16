@@ -81,15 +81,25 @@ public sealed class PurgeExecutor
                 }
             }
 
-            DeleteTree(
-                request.SafeFs,
-                request.CanonicalSourceRoot,
-                request.Token,
-                request.ProtectedPaths ?? [],
-                remaining,
-                clock,
-                ref deleted,
-                cancellationToken);
+            int deletedCount = deleted;
+            await Task.Run(
+                    () =>
+                    {
+                        int localDeleted = deletedCount;
+                        DeleteTree(
+                            request.SafeFs,
+                            request.CanonicalSourceRoot,
+                            request.Token,
+                            request.ProtectedPaths ?? [],
+                            remaining,
+                            clock,
+                            ref localDeleted,
+                            cancellationToken);
+                        deletedCount = localDeleted;
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+            deleted = deletedCount;
 
             bool gone = !Directory.Exists(Strip(request.CanonicalSourceRoot));
             clock.Report(deleted, request.CanonicalSourceRoot, force: true);

@@ -24,6 +24,7 @@ $csproj = Join-Path $root "src\WinOldRecovery.App\WinOldRecovery.App.csproj"
 $testproj = Join-Path $root "tests\WinOldRecovery.App.Tests\WinOldRecovery.App.Tests.csproj"
 
 Start-Transcript -Path $log | Out-Null
+$code = 1
 try {
     Write-Host ("Log={0}" -f $log)
     & $dotnet publish $csproj -c Release -r win-x64 --self-contained true `
@@ -42,8 +43,14 @@ try {
     & $dotnet test $testproj -c Release --filter FlaUiSmokeTests --nologo
     if ($LASTEXITCODE -ne 0) { throw "FlaUI e2e failed." }
     Write-Host "Passed=true"
+    $code = 0
+}
+catch {
+    Write-Host $_
+    $code = 1
 }
 finally {
     Stop-Transcript | Out-Null
     Write-Host ("Transcript={0}" -f $log)
 }
+exit $code

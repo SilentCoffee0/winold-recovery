@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   release:
@@ -69,6 +70,47 @@ jobs:
           New-Item -ItemType Directory -Force -Path artifacts/release | Out-Null
           Copy-Item $x64 artifacts/release/WinOldRecovery-win-x64.exe
           Copy-Item $arm artifacts/release/WinOldRecovery-win-arm64.exe
+
+      - name: Upload unsigned artifacts for SignPath
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        id: upload-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-exes
+          path: |
+            artifacts/release/WinOldRecovery-win-x64.exe
+            artifacts/release/WinOldRecovery-win-arm64.exe
+          if-no-files-found: error
+
+      - name: Sign with SignPath
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: ${{ github.workspace }}/artifacts/signed
+
+      - name: Replace staged EXEs with signed copies
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        shell: pwsh
+        run: |
+          $signed = @(Get-ChildItem -Path artifacts/signed -Recurse -Filter "WinOldRecovery-win-*.exe" -ErrorAction SilentlyContinue)
+          if ($signed.Count -lt 2) {
+            throw "SignPath did not return both signed EXEs."
+          }
+          foreach ($file in $signed) {
+            Copy-Item $file.FullName "artifacts/release/$($file.Name)" -Force
+          }
+          if (-not (Test-Path artifacts/release/WinOldRecovery-win-x64.exe)) { throw "signed x64 missing" }
+          if (-not (Test-Path artifacts/release/WinOldRecovery-win-arm64.exe)) { throw "signed arm64 missing" }
+
+      - name: Write SHA-256 checksums
+        shell: pwsh
+        run: |
           foreach ($name in @("WinOldRecovery-win-x64.exe", "WinOldRecovery-win-arm64.exe")) {
             $hash = (Get-FileHash "artifacts/release/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
             Set-Content -Path "artifacts/release/$name.sha256" -Value "$hash  $name" -NoNewline
@@ -84,4 +126,4 @@ jobs:
           artifacts/release/WinOldRecovery-win-arm64.exe
           artifacts/release/WinOldRecovery-win-arm64.exe.sha256
           --title "WinOld Recovery ${{ github.ref_name }}"
-          --notes "Unsigned self-contained x64 and ARM64 builds. SHA-256 checksums are attached. Signing is documented in docs/signing.md. Elevated/manual Milestone 0 checks remain pending unless the tag notes say otherwise."
+          --notes "${{ vars.SIGNPATH_ENABLED == 'true' && 'Signed self-contained x64 and ARM64 builds. SHA-256 checksums are attached.' || 'Unsigned self-contained x64 and ARM64 builds. SHA-256 checksums are attached. Signing is documented in docs/signing.md.' }} Elevated/manual Milestone 0 checks remain pending unless the tag notes say otherwise."

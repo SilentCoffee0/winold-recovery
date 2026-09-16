@@ -144,12 +144,10 @@ destination junction is deleted). That mutation was applied, observed red, then 
   2000 files, `%TEMP%\WinOldRecovery-kill-copy-e2b2930055f4487dab397a387aef55cc.log`).
   The WPF Resume overlay was dismissed by the FlaUI smoke on 15 Sep 2026.
 - FlaUI overlay smoke passed 15 Sep 2026 against the published EXE from an elevated
-  testhost (`%TEMP%\WinOldRecovery-flaui-elevated.txt`). The same test now drives
-  scan→purge on a browsed TEMP fixture (`WINOLD_RECOVERY_SMOKE_SOURCE` /
-  `WINOLD_RECOVERY_SMOKE_DEST`, PreferManualDelete) and refuses a volume-root
-  `Windows.old*`. It stays skipped without `RUN_FLAUI=1`, and skips instead of
-  failing when a Medium IL testhost is blocked by UIPI. The elevated scan→purge
-  pass is still required (`tools/run-flaui-e2e.ps1`).
+  testhost (`%TEMP%\WinOldRecovery-flaui-elevated.txt`). Scan→purge on a browsed
+  TEMP fixture passed 16 Sep 2026 (`%TEMP%\WinOldRecovery-flaui-e2e-0a07126628c84f209a178dfbd6f18c3c.log`,
+  23.6 s, PreferManualDelete). It stays skipped without `RUN_FLAUI=1`, and skips
+  instead of failing when a Medium IL testhost is blocked by UIPI.
 - Elevated deny-ACL FixtureGen, the 200 MB VHDX *preflight* disk-full probe, and
   the 1400 MB runtime disk-full pause/resume passed 15 Sep 2026. Published 1M-node
   `--scan` memory passed the same day (`Passed: true`, 103.7 MiB peak, report

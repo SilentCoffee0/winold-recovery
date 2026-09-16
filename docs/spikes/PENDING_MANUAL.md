@@ -7,10 +7,10 @@ they do not substitute for these tests.
 The backup-privilege 100k FixtureGen self-check passed 15 Sep 2026 on this
 development machine. The 200 MB VHDX preflight disk-full probe, 1400 MB runtime
 disk-full pause/resume, published 1M `--scan` memory ceiling, published
-mid-copy kill-and-resume, the FlaUI overlay smoke on the published EXE, and Explorer
-long-path `/select,` also passed the same day. The FlaUI scan→purge e2e, SignPath,
-and clean-VM `cleanmgr`/startup rows still need an elevated desktop or a
-disposable Windows 11 VM. The current agent process is
+mid-copy kill-and-resume, Explorer long-path `/select,`, and the FlaUI
+scan→purge e2e on a browsed TEMP fixture also passed. SignPath and clean-VM
+`cleanmgr`/startup still need signing credentials or a disposable Windows 11
+VM. The current agent process is
 not elevated (`S-1-16-8192`); the passing runs were launched through UAC
 `RunAs` where elevation was required.
 
@@ -128,26 +128,24 @@ The WPF Resume overlay was exercised by the FlaUI smoke below. Do not tag.
 
 ## FlaUI smoke on the published EXE
 
-Overlay/Help/step navigation passed 15 Sep 2026 on this development machine
-(interactive desktop, elevated testhost). **That overlay row is complete.**
-The same test now continues through scan→decide→preview→restore→verify→purge
-on a browsed TEMP `OldInstall` folder. **The scan→purge e2e still needs an
-elevated `tools/run-flaui-e2e.ps1` pass.** It will not click Scan unless the
-status line shows `Smoke fixture ready (OldInstall)`, it forces
-PreferManualDelete, and it refuses a volume-root `Windows.old*`. It never
-selects `C:\Windows.old` and never arms Previous Installations `cleanmgr`.
+Overlay/Help/step navigation passed 15 Sep 2026. **Scan→decide→preview→restore→verify→purge
+passed 16 Sep 2026** on this development machine (elevated testhost,
+`tools/run-flaui-e2e.ps1`). **The FlaUI e2e row is complete.** It uses a browsed
+TEMP `OldInstall` folder, refuses a volume-root `Windows.old*`, forces
+PreferManualDelete, and never arms Previous Installations `cleanmgr`.
+`C:\Windows.old` was left in place.
 
-The overlay smoke launches the published `requireAdministrator` EXE, attaches
-with UIA3, dismisses the first-run and interrupted-restore overlays, opens and
-closes Help, finds Preview plan, clicks the Scan step, and finds the Purge
-step.
+Evidence (scan→purge e2e):
 
-Evidence (overlay):
+- Transcript: `%TEMP%\WinOldRecovery-flaui-e2e-0a07126628c84f209a178dfbd6f18c3c.log`
+- EXE: `%TEMP%\wor-publish-flaui\WinOldRecovery.exe` (single-file, self-contained, not ReadyToRun)
+- Result: `Passed=true`, `failed: 0, succeeded: 1`, duration 23.6 s
+- Manual purge of the six-item fixture ran on a background thread so the dispatcher could show `Purge finished`
+
+Evidence (overlay, 15 Sep 2026):
 
 - Transcript: `%TEMP%\WinOldRecovery-flaui-elevated.txt`
-- EXE: `%TEMP%\wor-publish-flaui\WinOldRecovery.exe` (single-file, self-contained, not ReadyToRun)
 - Result: `Passed! - Failed: 0, Passed: 1, Skipped: 0, Total: 1, Duration: 6 s`
-- The run reopened this machine's existing interrupted session, so `DismissInterruptedButton` was on screen and was invoked.
 
 Two environment facts came out of the failures that preceded the pass:
 
@@ -186,7 +184,7 @@ Recorded from the development console session. This is not a pass.
 - Interactive desktop: console logon for user `VJ` is present, but launching the `requireAdministrator` EXE still needs a UAC consent that this Medium IL process cannot complete by itself. FlaUI smoke uses `ProcessStartInfo.Verb = runas` when `RUN_FLAUI=1`.
 - Explorer long paths: code selects the nearest ancestor whose path is at most 259 characters (and strips `\\?\`). Interactive confirmation passed 15 Sep 2026 (`tools/run-explorer-long-path.ps1`, transcript `%TEMP%\WinOldRecovery-explorer-longpath-f3b01ca150e84361b4df4dc92f248625.log`): Explorer selected the 251-character ancestor of a 345-character leaf.
 - Crash-resume overlay: unit tests cover journal detection and the Resume prompt. Integration kills `RestoreHarness` mid-CopyTree of 50k files. Headless published kill-and-resume passed 15 Sep 2026 (450/2000 files killed, resume `Passed: true`). The WPF overlay was then dismissed by the FlaUI smoke on an elevated interactive desktop the same day.
-- SignPath / Trusted Signing: no signing identity, API token, or `SIGNPATH_ENABLED` variable is configured. Release assets stay unsigned.
+- SignPath / Trusted Signing: no signing identity, API token, or `SIGNPATH_ENABLED` variable is configured. `release.yml` already gates SignPath on that variable; without it, release assets stay unsigned.
 - `cleanmgr` and a setup-created Windows.old were not run. Use `tools/run-cleanmgr-spike.ps1` on a disposable VM (`WOR_CLEANMGR_CONFIRM=SETUP_CREATED_WINDOWS_OLD`). The 1,000,000-node published `--scan` later passed on 15 Sep 2026.
 
 To run the backup-privilege FixtureGen spike, open an elevated PowerShell in the repo and run `tools/run-elevated-m0.ps1`. To run FlaUI scan→purge, from an **elevated** PowerShell (a Medium IL testhost cannot attach to the elevated GUI):
