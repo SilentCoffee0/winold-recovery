@@ -77,6 +77,16 @@ public sealed class WslRecipe : IRecipe
                             false,
                             null,
                             false),
+                        new RecipeComponent(
+                            "ownCopy",
+                            "Let WSL own a copy",
+                            wslInstalled
+                                ? "wsl --import --vhd into a folder WSL manages (second copy of the disk)"
+                                : "Install WSL first (wsl --install --no-distribution) then reboot",
+                            Decision.LeaveBehind,
+                            false,
+                            null,
+                            false),
                     ],
                     context.ProfileName + ":" + disk,
                     new Dictionary<string, string>
@@ -150,6 +160,7 @@ public sealed class WslRecipe : IRecipe
             Path.GetFileName(source));
         Dictionary<string, string> facts = new(decisions.Card.Facts, StringComparer.Ordinal);
         facts["register"] = RecipeDecisions.ShouldRestore(decisions, "register") ? "1" : "0";
+        facts["ownCopy"] = RecipeDecisions.ShouldRestore(decisions, "ownCopy") ? "1" : "0";
         return new PlanResult(
             decisions.Card with { Facts = facts },
             [new RecipeWrite(RecipeWriteKind.CopyFile, source, dest, null, 1, "disk")]);
@@ -157,7 +168,8 @@ public sealed class WslRecipe : IRecipe
 
     public async Task ExecuteAsync(PlanResult plan, IRecipeJournal journal, CancellationToken cancellationToken = default)
     {
-        if (plan.Card.Facts.GetValueOrDefault("register") != "1" ||
+        if ((plan.Card.Facts.GetValueOrDefault("register") != "1" &&
+             plan.Card.Facts.GetValueOrDefault("ownCopy") != "1") ||
             plan.Destination is null)
         {
             return;
@@ -194,7 +206,26 @@ public sealed class WslRecipe : IRecipe
 
             string registerName = ChooseRegisteredDistroName(plan.Card.Facts["name"], listed.StandardOutput);
             RememberRegisterName(plan.Card, registerName);
-            foreach (ProcessRequest request in CreateRegisterRequests(registerName, destinationVhdx))
+            bool ownCopy = plan.Card.Facts.GetValueOrDefault("ownCopy") == "1";
+            string ownedRoot = Path.GetFullPath(
+                Path.Combine(
+                    plan.Destination.DestinationProfileRoot,
+                    "AppData",
+                    "Local",
+                    "wsl",
+                    "owned",
+                    registerName));
+            if (ownCopy &&
+                (ownedRoot.Equals(sourceVhdx, StringComparison.OrdinalIgnoreCase) ||
+                 ownedRoot.StartsWith(sourcePrefix, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException("WSL owned import refuses a folder that is still under Windows.old.");
+            }
+
+            IReadOnlyList<ProcessRequest> requests = ownCopy
+                ? CreateOwnedImportRequests(registerName, ownedRoot, destinationVhdx)
+                : CreateRegisterRequests(registerName, destinationVhdx);
+            foreach (ProcessRequest request in requests)
             {
                 ProcessResult result = await runner
                     .RunAsync(request, cancellationToken)
@@ -225,6 +256,21 @@ public sealed class WslRecipe : IRecipe
         [
             new("wsl.exe", ["--shutdown"], Timeout: TimeSpan.FromSeconds(60)),
             new("wsl.exe", ["--import-in-place", distroName, destinationVhdx], Timeout: TimeSpan.FromMinutes(2)),
+        ];
+    }
+
+    public static IReadOnlyList<ProcessRequest> CreateOwnedImportRequests(
+        string distroName,
+        string installLocation,
+        string sourceVhdx)
+    {
+        return
+        [
+            new("wsl.exe", ["--shutdown"], Timeout: TimeSpan.FromSeconds(60)),
+            new(
+                "wsl.exe",
+                ["--import", distroName, installLocation, sourceVhdx, "--vhd"],
+                Timeout: TimeSpan.FromMinutes(5)),
         ];
     }
 
@@ -534,7 +580,8 @@ public sealed class WslRecipe : IRecipe
     {
         RecipeVerifyResult header = Verify(plan);
         if (!header.Ok ||
-            plan.Card.Facts.GetValueOrDefault("register") != "1" ||
+            (plan.Card.Facts.GetValueOrDefault("register") != "1" &&
+             plan.Card.Facts.GetValueOrDefault("ownCopy") != "1") ||
             plan.Destination is null)
         {
             return header;

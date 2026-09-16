@@ -2120,6 +2120,9 @@ public sealed class RecipeTests
         Assert.Equal("wsl.exe", register[0].FileName);
         Assert.Contains("--import-in-place", register[1].Arguments);
         Assert.Contains("C:\\tmp\\ext4.vhdx", register[1].Arguments);
+        Assert.DoesNotContain(
+            context.Runner.Requests,
+            request => request.Arguments.Contains("--vhd"));
         Assert.Contains("getent passwd", wslCard.Facts["defaultUserCommands"], StringComparison.Ordinal);
         Assert.Contains("--set-default-user", wslCard.Facts["defaultUserCommands"], StringComparison.Ordinal);
         IReadOnlyList<WinOldRecovery.Core.Processes.ProcessRequest> defaultUser =
@@ -2189,15 +2192,17 @@ public sealed class RecipeTests
         RecipeCard wslCard = Assert.Single(cards, card => card.RecipeId == "wsl");
         Dictionary<string, Decision> decisions = wslCard.Components.ToDictionary(
             static component => component.Key,
-            static component => component.Key == "register" ? Decision.LeaveBehind : Decision.Restore);
+            static component => component.Key is "register" or "ownCopy" ? Decision.LeaveBehind : Decision.Restore);
         PlanResult plan = new WslRecipe().Plan(new CardDecisions(wslCard, decisions), Dest(context))
             with { Destination = Dest(context) };
         Assert.Equal("0", plan.Card.Facts["register"]);
+        Assert.Equal("0", plan.Card.Facts["ownCopy"]);
         await host.ExecuteAsync("session-1", new WslRecipe(), plan);
         Assert.DoesNotContain(
             context.Runner.Requests,
             request => request.Arguments.Contains("--import-in-place") ||
-                request.Arguments.Contains("--shutdown"));
+                request.Arguments.Contains("--shutdown") ||
+                request.Arguments.Contains("--vhd"));
         RecipeVerifyResult verify = await new WslRecipe().VerifyAsync(plan);
         Assert.True(verify.Ok);
         Assert.DoesNotContain(
@@ -2285,6 +2290,68 @@ public sealed class RecipeTests
             runner.Requests,
             request => request.Arguments.Contains("--set-default-user") &&
                 request.Arguments.Contains("Ubuntu-recovered"));
+    }
+
+    [Fact]
+    public async Task Wsl_OwnCopy_UsesImportVhdNotInPlace()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string wsl = Path.Combine(alice, "AppData", "Local", "wsl", "{guid}", "ext4.vhdx");
+        Directory.CreateDirectory(Path.GetDirectoryName(wsl)!);
+        byte[] vhdx = new byte[512];
+        System.Text.Encoding.ASCII.GetBytes("vhdxfile").CopyTo(vhdx, 0);
+        await File.WriteAllBytesAsync(wsl, vhdx);
+
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, RecipeCatalog.All);
+        IReadOnlyList<RecipeCard> cards = await host.DetectAsync(
+            "session-1",
+            [
+                new DetectedProfile(
+                    "Alice",
+                    "Alice",
+                    alice,
+                    @"Users\Alice",
+                    ProfileKind.Human,
+                    null,
+                    [],
+                    [],
+                    []),
+            ],
+            context.Destination,
+            context.Temp,
+            context.Exports);
+        RecipeCard wslCard = Assert.Single(cards, card => card.RecipeId == "wsl");
+        Assert.Equal(Decision.LeaveBehind, wslCard.Components.Single(component => component.Key == "ownCopy").SuggestedDefault);
+        Dictionary<string, Decision> decisions = wslCard.Components.ToDictionary(
+            static component => component.Key,
+            static component => component.Key == "ownCopy" ? Decision.Restore : component.Key == "register" ? Decision.LeaveBehind : Decision.Restore);
+        PlanResult planned = new WslRecipe().Plan(new CardDecisions(wslCard, decisions), Dest(context));
+        Assert.Equal("1", planned.Card.Facts["ownCopy"]);
+        Assert.Equal("0", planned.Card.Facts["register"]);
+        ScriptedWslRunner runner = new();
+        PlanResult plan = planned with
+        {
+            Destination = new DestinationContext(context.Destination, context.Exports, context.SafeFs, runner),
+        };
+        await host.ExecuteAsync("session-1", new WslRecipe(), plan);
+        ProcessRequest import = Assert.Single(
+            runner.Requests,
+            request => request.Arguments.Contains("--import") && request.Arguments.Contains("--vhd"));
+        Assert.Contains(Assert.Single(planned.Writes).DestinationPath, import.Arguments);
+        Assert.Contains(
+            import.Arguments,
+            static argument => argument.Contains(Path.Combine("wsl", "owned"), StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(
+            runner.Requests,
+            request => request.Arguments.Contains("--import-in-place"));
+        IReadOnlyList<ProcessRequest> owned = WslRecipe.CreateOwnedImportRequests(
+            "Ubuntu",
+            @"C:\Users\VJ\AppData\Local\wsl\owned\Ubuntu",
+            @"C:\tmp\ext4.vhdx");
+        Assert.Contains("--import", owned[1].Arguments);
+        Assert.Contains("--vhd", owned[1].Arguments);
+        Assert.DoesNotContain("--import-in-place", owned[1].Arguments);
     }
 
     [Fact]
