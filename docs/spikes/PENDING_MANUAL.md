@@ -128,8 +128,6 @@ The WPF Resume overlay was exercised by the FlaUI smoke below. Do not tag.
 
 ## FlaUI smoke on the published EXE
 
-## FlaUI smoke on the published EXE
-
 Overlay/Help/step navigation passed 15 Sep 2026. **Scan→decide→preview→restore→verify→purge
 passed 16 Sep 2026** on this development machine (elevated testhost,
 `tools/run-flaui-e2e.ps1`). **The FlaUI e2e row is complete.** It uses a browsed

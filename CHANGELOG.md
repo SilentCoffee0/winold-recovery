@@ -7,7 +7,7 @@ All notable changes to WinOld Recovery will be documented here.
 ### Fixed
 
 - Owner SID tests assert the file ACL owner, not the testhost identity. GitHub Actions TEMP files are owned by `BUILTIN\Administrators`, which is not `WindowsIdentity.GetCurrent()`.
-- I15 kill-and-resume no longer redirects RestoreHarness stdout/stderr (a full pipe can stall the copy). The case has a 15-minute budget and CI runs test projects one at a time (`-m:1`).
+- I15 kill-and-resume no longer redirects RestoreHarness stdout/stderr (a full pipe can stall the copy). The case has a 15-minute budget and CI runs test projects one at a time (`-m:1`). The tag-release workflow uses the same test settings so a `v*` tag does not reintroduce the parallel-test timeouts.
 - The 1M on-disk walker is skipped on GitHub Actions unless `WOR_SCALE_1M=1`. Creating and deleting a million empty files exceeds `windows-latest`; CI still pages 1M synthetic children, and the published `--scan` probe covers 8.2.
 - Startup no longer opens every past session database as a writer while looking for an interrupted restore. A read-only probe checks for `Started`/`Paused`/`Failed` journal rows first, so leftover scan-only sessions are skipped without running migrations against them.
 - Manual purge deletes on a background thread so the UI can show progress and Cancel can run. The FlaUI scan→purge pass was blocking on `Deleting…` because `DeleteTree` ran on the dispatcher.
