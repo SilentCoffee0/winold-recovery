@@ -12,6 +12,7 @@ public sealed class ThunderbirdRecipe : IRecipe
         "key4.db",
         "logins.json",
         "logins-backup.json",
+        "logins.db",
         "prefs.js",
         "user.js",
         "cert9.db",

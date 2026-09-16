@@ -3170,6 +3170,56 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task Thunderbird_Verify_AcceptsLoginsDbPairedWithKey4()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string profile = Path.Combine(alice, "AppData", "Roaming", "Thunderbird", "Profiles", "mail.loginsdb");
+        Directory.CreateDirectory(Path.Combine(profile, "Mail"));
+        await File.WriteAllTextAsync(Path.Combine(profile, "prefs.js"), "user_pref(\"fixture\", true);");
+        await File.WriteAllTextAsync(Path.Combine(profile, "key4.db"), "key");
+        await File.WriteAllTextAsync(Path.Combine(profile, "logins.db"), "logins");
+        await File.WriteAllTextAsync(Path.Combine(profile, "Mail", "Inbox"), "mail");
+
+        DetectResult detected = new ThunderbirdRecipe().Detect(
+            new ProfileContext(
+                "Alice",
+                alice,
+                context.Destination,
+                context.Temp,
+                context.Exports,
+                context.SafeFs,
+                context.Runner));
+        RecipeCard card = Assert.Single(detected.Cards);
+        Assert.Contains("logins.db", card.Facts["files"], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("logins.json", card.Facts["files"], StringComparison.OrdinalIgnoreCase);
+        RecipeHost host = new(context.Database, context.SafeFs, context.Runner, [new ThunderbirdRecipe()]);
+        PlanResult plan = host.PlanCard(new ThunderbirdRecipe(), card, Dest(context));
+        await host.ExecuteAsync("session-1", new ThunderbirdRecipe(), plan);
+        Assert.True(new ThunderbirdRecipe().Verify(plan).Ok);
+        Assert.True(
+            File.Exists(
+                Path.Combine(
+                    context.Destination,
+                    "AppData",
+                    "Roaming",
+                    "Thunderbird",
+                    "Profiles",
+                    "mail.loginsdb-recovered",
+                    "logins.db")));
+        Assert.False(
+            File.Exists(
+                Path.Combine(
+                    context.Destination,
+                    "AppData",
+                    "Roaming",
+                    "Thunderbird",
+                    "Profiles",
+                    "mail.loginsdb-recovered",
+                    "logins.json")));
+    }
+
+    [Fact]
     public async Task HighValueDetectors_CopyKeePassVsCodeThunderbirdTerminalObsidianAndOutlookPst()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
