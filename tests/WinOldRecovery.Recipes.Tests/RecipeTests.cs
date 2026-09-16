@@ -4636,6 +4636,33 @@ public sealed class RecipeTests
     }
 
     [Fact]
+    public async Task GameSaves_Detect_FindsKnownFoldersFromRecipeIndexWithoutWalkingProfile()
+    {
+        await using RecipeContext context = await RecipeContext.CreateAsync();
+        string alice = Path.Combine(context.Source, "Users", "Alice");
+        string riot = Path.Combine(alice, "AppData", "LocalLow", "Riot Games");
+        string saved = Path.Combine(alice, "Saved Games");
+        Directory.CreateDirectory(Path.Combine(riot, "League"));
+        Directory.CreateDirectory(saved);
+        await File.WriteAllTextAsync(Path.Combine(riot, "League", "settings.yaml"), "riot");
+        await File.WriteAllTextAsync(Path.Combine(saved, "slot.sav"), "walked");
+        const string riotRel = @"Users\Alice\AppData\LocalLow\Riot Games";
+        await context.Database.InsertNodesAsync(
+        [
+            Indexed(1, null, "Riot Games", riotRel, NodeKind.Directory),
+            Indexed(2, 1, "settings.yaml", riotRel + @"\League\settings.yaml"),
+        ]);
+
+        GameSavesRecipe recipe = new();
+        IReadOnlyList<RecipeCard> fromIndex = recipe.Detect(WithIndex(context, alice)).Cards;
+        Assert.Contains(fromIndex, card => card.Title.Contains("Riot Games", StringComparison.Ordinal));
+        Assert.DoesNotContain(fromIndex, card => card.Title.Contains("Saved Games", StringComparison.Ordinal));
+        IReadOnlyList<RecipeCard> fromDisk = recipe.Detect(WithoutIndex(context, alice)).Cards;
+        Assert.Contains(fromDisk, card => card.Title.Contains("Riot Games", StringComparison.Ordinal));
+        Assert.Contains(fromDisk, card => card.Title.Contains("Saved Games", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task GameSaves_Detect_FindsSteamLibrarySavesFromRecipeIndexWithoutWalkingCommon()
     {
         await using RecipeContext context = await RecipeContext.CreateAsync();
@@ -4827,6 +4854,12 @@ public sealed class RecipeTests
             fromIndex.Cards,
             card => card.Facts["kind"] == "joplin" &&
                 card.Facts["source"].Equals(relocatedJoplin, StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(fromIndex.Cards, card => card.Facts["kind"] == "calibre");
+        Assert.DoesNotContain(fromIndex.Cards, card => card.Facts["kind"] == "logseq");
+        Assert.DoesNotContain(
+            fromIndex.Cards,
+            card => card.Facts["kind"] == "joplin" &&
+                card.Facts["source"].Equals(joplin, StringComparison.OrdinalIgnoreCase));
         DetectResult fromDisk = new LibrariesRecipe().Detect(
             new ProfileContext(
                 "Alice",

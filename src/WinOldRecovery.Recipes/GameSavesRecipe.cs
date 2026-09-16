@@ -74,7 +74,7 @@ public sealed class GameSavesRecipe : IRecipe
         foreach ((string relative, string title, Decision suggested) in KnownFolders)
         {
             string source = Path.Combine(context.OldProfileRoot, relative);
-            if (!context.SafeFs.DirectoryExists(source) || DetectorWalk.IsReparse(source) || !seen.Add(source))
+            if (!FolderPresent(context, source, relative) || !seen.Add(source))
             {
                 continue;
             }
@@ -82,23 +82,53 @@ public sealed class GameSavesRecipe : IRecipe
             AddCard(context, cards, badges, source, relative, title, suggested);
         }
 
-        foreach (string steamUserdata in SteamUserdataFolders(context.OldProfileRoot))
+        if (context.Index is { } steamIndex)
         {
-            if (!context.SafeFs.DirectoryExists(steamUserdata) ||
-                DetectorWalk.IsReparse(steamUserdata) ||
-                !seen.Add(steamUserdata))
+            foreach (string steamRel in new[]
+                     {
+                         Path.Combine("Program Files (x86)", "Steam"),
+                         Path.Combine("Program Files", "Steam"),
+                     })
             {
-                continue;
-            }
+                foreach (string parent in steamIndex.ParentsOfChildNamedUnder(steamRel, "userdata"))
+                {
+                    string userdata = Path.Combine(parent, "userdata");
+                    if (!seen.Add(userdata))
+                    {
+                        continue;
+                    }
 
-            AddCard(
-                context,
-                cards,
-                badges,
-                steamUserdata,
-                Path.Combine("Saved Games", "Steam userdata"),
-                "Steam userdata",
-                Decision.Restore);
+                    AddCard(
+                        context,
+                        cards,
+                        badges,
+                        userdata,
+                        Path.Combine("Saved Games", "Steam userdata"),
+                        "Steam userdata",
+                        Decision.Restore);
+                }
+            }
+        }
+        else
+        {
+            foreach (string steamUserdata in SteamUserdataFolders(context.OldProfileRoot))
+            {
+                if (!context.SafeFs.DirectoryExists(steamUserdata) ||
+                    DetectorWalk.IsReparse(steamUserdata) ||
+                    !seen.Add(steamUserdata))
+                {
+                    continue;
+                }
+
+                AddCard(
+                    context,
+                    cards,
+                    badges,
+                    steamUserdata,
+                    Path.Combine("Saved Games", "Steam userdata"),
+                    "Steam userdata",
+                    Decision.Restore);
+            }
         }
 
         foreach ((string source, string relative, string title) in SteamLibrarySaves(context))
@@ -111,17 +141,16 @@ public sealed class GameSavesRecipe : IRecipe
             AddCard(context, cards, badges, source, relative, title, Decision.Restore);
         }
 
-        IEnumerable<string> extraParents = context.Index is { } index
-            ? index.ParentsOfChildNamed("userdata")
-                .Concat(index.ParentsOfChildNamed("SaveGames"))
-            : [];
-        foreach (string parent in extraParents)
+        if (context.Index is { } extraIndex)
         {
-            string userdata = Path.Combine(parent, "userdata");
-            if (context.SafeFs.DirectoryExists(userdata) &&
-                !DetectorWalk.IsReparse(userdata) &&
-                seen.Add(userdata))
+            foreach (string parent in extraIndex.ParentsOfChildNamed("userdata"))
             {
+                string userdata = Path.Combine(parent, "userdata");
+                if (!seen.Add(userdata))
+                {
+                    continue;
+                }
+
                 string relative = DetectorWalk.RelativeUnder(context.OldProfileRoot, userdata);
                 if (relative.Contains("Steam", StringComparison.OrdinalIgnoreCase))
                 {
@@ -129,11 +158,14 @@ public sealed class GameSavesRecipe : IRecipe
                 }
             }
 
-            string saveGames = Path.Combine(parent, "SaveGames");
-            if (context.SafeFs.DirectoryExists(saveGames) &&
-                !DetectorWalk.IsReparse(saveGames) &&
-                seen.Add(saveGames))
+            foreach (string parent in extraIndex.ParentsOfChildNamed("SaveGames"))
             {
+                string saveGames = Path.Combine(parent, "SaveGames");
+                if (!seen.Add(saveGames))
+                {
+                    continue;
+                }
+
                 string relative = DetectorWalk.RelativeUnder(context.OldProfileRoot, saveGames);
                 if (relative.Contains(
                         "Saved" + Path.DirectorySeparatorChar + "SaveGames",
@@ -216,6 +248,23 @@ public sealed class GameSavesRecipe : IRecipe
                     ["relative"] = relative,
                 }));
         DetectorWalk.AddTreeBadge(badges, context.OldProfileRoot, source, "Game save", title);
+    }
+
+    private static bool FolderPresent(ProfileContext context, string source, string relative)
+    {
+        if (context.Index is { } index)
+        {
+            string name = Path.GetFileName(relative);
+            string? parent = Path.GetDirectoryName(relative);
+            if (string.IsNullOrEmpty(parent) || parent == ".")
+            {
+                return index.CountFilesUnder(relative) > 0 || index.ParentsOfChildNamed(name).Count > 0;
+            }
+
+            return DetectorWalk.IndexedChildFolder(index, parent, name);
+        }
+
+        return context.SafeFs.DirectoryExists(source) && !DetectorWalk.IsReparse(source);
     }
 
     private static IEnumerable<string> SteamUserdataFolders(string oldProfileRoot)

@@ -211,12 +211,64 @@ public sealed class LibrariesRecipe : IRecipe
         kind = string.Empty;
         title = string.Empty;
         marker = string.Empty;
+        string name = Path.GetFileName(source);
+        if (context.Index is { } index)
+        {
+            string relative = DetectorWalk.RelativeUnder(context.OldProfileRoot, source);
+            if (string.IsNullOrWhiteSpace(relative) ||
+                relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+                Path.IsPathRooted(relative))
+            {
+                return false;
+            }
+
+            if (DetectorWalk.IndexedImmediatePath(index, source, relative, "zotero.sqlite") is not null)
+            {
+                kind = "zotero";
+                title = "Zotero library";
+                marker = "zotero.sqlite";
+                return true;
+            }
+
+            if (DetectorWalk.IndexedImmediatePath(index, source, relative, "metadata.db") is not null &&
+                name.Contains("Calibre", StringComparison.OrdinalIgnoreCase))
+            {
+                kind = "calibre";
+                title = "Calibre Library";
+                marker = "metadata.db";
+                return true;
+            }
+
+            if (DetectorWalk.IndexedImmediatePath(index, source, relative, "database.sqlite") is not null &&
+                name.Equals("Joplin", StringComparison.OrdinalIgnoreCase))
+            {
+                kind = "joplin";
+                title = "Joplin notes";
+                marker = "database.sqlite";
+                return true;
+            }
+
+            if (DetectorWalk.IndexedImmediatePath(
+                    index,
+                    Path.Combine(source, "logseq"),
+                    Path.Combine(relative, "logseq"),
+                    "config.edn") is not null ||
+                (name.Equals("logseq", StringComparison.OrdinalIgnoreCase) &&
+                 DetectorWalk.IndexedImmediatePath(index, source, relative, "config.edn") is not null))
+            {
+                kind = "logseq";
+                title = "Logseq graph — " + name;
+                marker = "config.edn";
+                return true;
+            }
+
+            return false;
+        }
+
         if (!context.SafeFs.DirectoryExists(source) || DetectorWalk.IsReparse(source))
         {
             return false;
         }
-
-        string name = Path.GetFileName(source);
         if (context.SafeFs.FileExists(Path.Combine(source, "zotero.sqlite")))
         {
             kind = "zotero";
