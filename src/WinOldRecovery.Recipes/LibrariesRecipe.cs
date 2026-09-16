@@ -158,6 +158,15 @@ public sealed class LibrariesRecipe : IRecipe
                 }
             }
 
+            foreach (string parent in index.ParentsOfChildNamed("database.sqlite"))
+            {
+                if (TryClassify(context, parent, out string kind, out string title, out string marker) &&
+                    kind == "joplin")
+                {
+                    yield return (parent, kind, title, marker);
+                }
+            }
+
             foreach (string logseqDir in index.ParentsOfChildNamed("config.edn"))
             {
                 if (!Path.GetFileName(logseqDir).Equals("logseq", StringComparison.OrdinalIgnoreCase))

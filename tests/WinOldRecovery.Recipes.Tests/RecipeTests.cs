@@ -3857,6 +3857,9 @@ public sealed class RecipeTests
         string joplin = Path.Combine(alice, "AppData", "Roaming", "Joplin");
         Directory.CreateDirectory(joplin);
         await File.WriteAllTextAsync(Path.Combine(joplin, "database.sqlite"), "joplin");
+        string relocatedJoplin = Path.Combine(alice, "Projects", "Joplin");
+        Directory.CreateDirectory(relocatedJoplin);
+        await File.WriteAllTextAsync(Path.Combine(relocatedJoplin, "database.sqlite"), "relocated-joplin");
         string graph = Path.Combine(alice, "Documents", "Notes");
         Directory.CreateDirectory(Path.Combine(graph, "logseq"));
         await File.WriteAllTextAsync(Path.Combine(graph, "logseq", "config.edn"), "{:meta {}}");
@@ -3891,6 +3894,34 @@ public sealed class RecipeTests
                 DateTime.UtcNow,
                 0,
                 NodeProblem.None),
+            new PersistedNode(
+                3,
+                "session-1",
+                null,
+                null,
+                "Joplin",
+                @"Users\Alice\Projects\Joplin",
+                NodeKind.Directory,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
+            new PersistedNode(
+                4,
+                "session-1",
+                null,
+                3,
+                "database.sqlite",
+                @"Users\Alice\Projects\Joplin\database.sqlite",
+                NodeKind.File,
+                0,
+                0,
+                0,
+                DateTime.UtcNow,
+                0,
+                NodeProblem.None),
         ]);
 
         DetectResult fromIndex = new LibrariesRecipe().Detect(
@@ -3908,6 +3939,10 @@ public sealed class RecipeTests
                     @"Users\Alice",
                     alice)));
         Assert.Contains(fromIndex.Cards, card => card.Facts["kind"] == "zotero");
+        Assert.Contains(
+            fromIndex.Cards,
+            card => card.Facts["kind"] == "joplin" &&
+                card.Facts["source"].Equals(relocatedJoplin, StringComparison.OrdinalIgnoreCase));
         DetectResult fromDisk = new LibrariesRecipe().Detect(
             new ProfileContext(
                 "Alice",
@@ -3920,6 +3955,9 @@ public sealed class RecipeTests
         Assert.DoesNotContain(fromDisk.Cards, card => card.Facts["kind"] == "zotero");
         Assert.Contains(fromDisk.Cards, card => card.Facts["kind"] == "calibre");
         Assert.Contains(fromDisk.Cards, card => card.Facts["kind"] == "joplin");
+        Assert.DoesNotContain(
+            fromDisk.Cards,
+            card => card.Facts["source"].Equals(relocatedJoplin, StringComparison.OrdinalIgnoreCase));
         Assert.Contains(fromDisk.Cards, card => card.Facts["kind"] == "logseq");
 
         RecipeCard calibreCard = Assert.Single(fromDisk.Cards, card => card.Facts["kind"] == "calibre");
