@@ -246,6 +246,11 @@ public sealed class RecipeIndexTests
                 "docker_data.vhdx"),
             disks,
             StringComparer.OrdinalIgnoreCase);
+        IReadOnlyList<string> named = index.FilesNamed("ext4.vhdx", "docker_data.vhdx");
+        Assert.Equal(2, named.Count);
+        Assert.DoesNotContain(
+            named,
+            path => path.EndsWith("backup.vhdx", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

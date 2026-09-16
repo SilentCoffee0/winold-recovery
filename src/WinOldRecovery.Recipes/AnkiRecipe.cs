@@ -54,7 +54,7 @@ public sealed class AnkiRecipe : IRecipe
                             new RecipeComponent(
                                 "profile",
                                 "Profile",
-                                notes + " notes, " + cardCount + " cards, integrity " + integrity,
+                                notes + " notes, " + cardCount + " cards",
                                 Decision.Restore,
                                 false,
                                 null,
@@ -254,32 +254,46 @@ public sealed class AnkiRecipe : IRecipe
     {
         try
         {
-            string copy = ReadOnlySqlite.CopyToTemp(
-                context.SafeFs,
-                collection,
-                Path.Combine(context.SessionTemporaryDirectory, "anki", profileName),
-                "collection.anki2");
-            using SqliteConnection connection = ReadOnlySqlite.OpenReadOnly(copy);
-            string integrity = Scalar(connection, "PRAGMA integrity_check;") ?? "unknown";
-            int notes = TableCount(connection, "notes");
-            int cards = TableCount(connection, "cards");
-            string schema = string.Empty;
+            string copy = collection;
             try
             {
-                schema = Scalar(connection, "SELECT ver FROM col LIMIT 1;")
-                    ?? Scalar(connection, "SELECT scm FROM col LIMIT 1;")
-                    ?? string.Empty;
+                using SqliteConnection direct = ReadOnlySqlite.OpenReadOnly(collection);
+                return ReadCollectionFacts(direct);
             }
-            catch (SqliteException)
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SqliteException)
             {
+                copy = ReadOnlySqlite.CopyToTemp(
+                    context.SafeFs,
+                    collection,
+                    Path.Combine(context.SessionTemporaryDirectory, "anki", profileName),
+                    "collection.anki2");
             }
 
-            return (notes, cards, integrity, schema);
+            using SqliteConnection connection = ReadOnlySqlite.OpenReadOnly(copy);
+            return ReadCollectionFacts(connection);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SqliteException)
         {
-            return (0, 0, "unreadable", string.Empty);
+            return (0, 0, "unknown", string.Empty);
         }
+    }
+
+    private static (int Notes, int Cards, string Integrity, string Schema) ReadCollectionFacts(SqliteConnection connection)
+    {
+        int notes = TableCount(connection, "notes");
+        int cards = TableCount(connection, "cards");
+        string schema = string.Empty;
+        try
+        {
+            schema = Scalar(connection, "SELECT ver FROM col LIMIT 1;")
+                ?? Scalar(connection, "SELECT scm FROM col LIMIT 1;")
+                ?? string.Empty;
+        }
+        catch (SqliteException)
+        {
+        }
+
+        return (notes, cards, "deferred", schema);
     }
 
     private static (int Count, string Newest) CountBackups(SafeFs safeFs, string backups)

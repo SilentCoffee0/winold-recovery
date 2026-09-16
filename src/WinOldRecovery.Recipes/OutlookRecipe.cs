@@ -14,26 +14,25 @@ public sealed class OutlookRecipe : IRecipe
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
         if (context.Index is { } index)
         {
-            foreach (string pst in index.FilesWithExtensions([".pst"], skipAppData: false))
+            foreach (string relative in PstSearchRelatives())
             {
-                if (!IsUnderAny(pst, PstSearchRoots(context.OldProfileRoot)) ||
-                    !seen.Add(Path.GetFullPath(pst)))
+                foreach (string pst in index.FilesWithExtensions([".pst"], skipAppData: false, relative))
                 {
-                    continue;
-                }
+                    if (!seen.Add(Path.GetFullPath(pst)))
+                    {
+                        continue;
+                    }
 
-                AddPst(context, cards, badges, pst);
+                    AddPst(context, cards, badges, pst);
+                }
             }
 
-            string localOstRoot = Path.Combine(
-                context.OldProfileRoot,
-                "AppData",
-                "Local",
-                "Microsoft",
-                "Outlook");
-            foreach (string ost in index.FilesWithExtensions([".ost"], skipAppData: false))
+            foreach (string ost in index.FilesWithExtensions(
+                         [".ost"],
+                         skipAppData: false,
+                         Path.Combine("AppData", "Local", "Microsoft", "Outlook")))
             {
-                if (!IsUnderAny(ost, [localOstRoot]))
+                if (!seen.Add(Path.GetFullPath(ost)))
                 {
                     continue;
                 }
@@ -205,24 +204,13 @@ public sealed class OutlookRecipe : IRecipe
             Path.GetFileName(ost));
     }
 
-    private static bool IsUnderAny(string path, IEnumerable<string> roots)
+    private static IEnumerable<string> PstSearchRelatives()
     {
-        string full = Path.GetFullPath(path);
-        foreach (string root in roots)
-        {
-            string rootFull = Path.GetFullPath(root);
-            if (full.Equals(rootFull, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            if (full.StartsWith(rootFull.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        yield return "Documents";
+        yield return "Desktop";
+        yield return "Downloads";
+        yield return Path.Combine("AppData", "Local", "Microsoft", "Outlook");
+        yield return Path.Combine("AppData", "Roaming", "Microsoft", "Outlook");
     }
 
     private static IEnumerable<string> PstSearchRoots(string profileRoot)

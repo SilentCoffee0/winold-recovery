@@ -1400,14 +1400,14 @@ public sealed class SessionDb : IAsyncDisposable
         for (int index = 0; index < extensions.Count; index++)
         {
             string parameter = "$ext" + index.ToString(CultureInfo.InvariantCulture);
-            likes.Add("lower(name) GLOB " + parameter);
+            likes.Add("name LIKE " + parameter + " ESCAPE '\\'");
             string extension = extensions[index];
             if (!extension.StartsWith(".", StringComparison.Ordinal))
             {
                 extension = "." + extension;
             }
 
-            command.Parameters.AddWithValue(parameter, "*" + extension.ToLowerInvariant());
+            command.Parameters.AddWithValue(parameter, "%" + extension);
         }
 
         command.CommandText =
@@ -1415,13 +1415,13 @@ public sealed class SessionDb : IAsyncDisposable
             SELECT rel_path, name
             FROM nodes
             WHERE session_id = $sessionId
+            """ + RelPathPrefixSql("rel_path", prefix) +
+            """
               AND kind = 'File'
               AND (
             """ + string.Join(" OR ", likes) +
             """
               )
-            """ + RelPathPrefixSql("rel_path", prefix) +
-            """
               AND ($skipAppData = 0 OR instr(rel_path, $prefix || '\AppData\') = 0);
             """;
         command.Parameters.AddWithValue("$sessionId", sessionId);
@@ -1442,6 +1442,53 @@ public sealed class SessionDb : IAsyncDisposable
             {
                 paths.Add(reader.GetString(0));
             }
+        }
+
+        return paths;
+    }
+
+    public IReadOnlyList<string> ListFileRelPathsByExactNames(
+        string sessionId,
+        string profileRelPrefix,
+        IReadOnlyList<string> names)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        ArgumentNullException.ThrowIfNull(names);
+        profileRelPrefix ??= string.Empty;
+        if (names.Count == 0)
+        {
+            return [];
+        }
+
+        string prefix = profileRelPrefix.Replace('/', '\\').Trim('\\');
+        using SqliteConnection connection = OpenReadConnection();
+        using SqliteCommand command = connection.CreateCommand();
+        List<string> equals = new(names.Count);
+        for (int index = 0; index < names.Count; index++)
+        {
+            string parameter = "$name" + index.ToString(CultureInfo.InvariantCulture);
+            equals.Add("name = " + parameter + " COLLATE NOCASE");
+            command.Parameters.AddWithValue(parameter, names[index]);
+        }
+
+        command.CommandText =
+            """
+            SELECT rel_path
+            FROM nodes
+            WHERE session_id = $sessionId
+              AND kind = 'File'
+              AND (
+            """ + string.Join(" OR ", equals) +
+            """
+              )
+            """ + RelPathPrefixSql("rel_path", prefix) + ";";
+        command.Parameters.AddWithValue("$sessionId", sessionId);
+        BindRelPathPrefix(command, prefix);
+        List<string> paths = [];
+        using SqliteDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            paths.Add(reader.GetString(0));
         }
 
         return paths;

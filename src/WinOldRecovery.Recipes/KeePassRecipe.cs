@@ -123,9 +123,12 @@ public sealed class KeePassRecipe : IRecipe
     {
         if (context.Index is { } index)
         {
-            foreach (string vault in index.FilesWithExtensions(".kdbx", ".kdb"))
+            foreach (string relative in new[] { "Documents", "Desktop", "Downloads" })
             {
-                yield return vault;
+                foreach (string vault in index.FilesWithExtensions([".kdbx", ".kdb"], skipAppData: true, relative))
+                {
+                    yield return vault;
+                }
             }
 
             yield break;

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using WinOldRecovery.Core.IO;
 
 namespace WinOldRecovery.Core.Registry;
@@ -25,18 +27,23 @@ public sealed class OfflineRegistryHive
         ArgumentNullException.ThrowIfNull(safeFs);
 
         safeFs.CreateDirectory(sessionTemporaryDirectory);
-        string copyPath = Path.Combine(
-            sessionTemporaryDirectory,
-            $"hive-{Guid.NewGuid():N}.dat");
-
-        await using (FileStream source = safeFs.OpenRead(sourceHivePath))
-        await using (FileStream destination = safeFs.OpenWrite(copyPath, FileMode.CreateNew))
+        string copyPath = Path.Combine(sessionTemporaryDirectory, HiveCopyFileName(sourceHivePath));
+        if (!safeFs.FileExists(copyPath))
         {
+            await using FileStream source = safeFs.OpenRead(sourceHivePath);
+            await using FileStream destination = safeFs.OpenWrite(copyPath, FileMode.CreateNew);
             await source.CopyToAsync(destination, cancellationToken).ConfigureAwait(false);
             await destination.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
 
         return new OfflineRegistryHive(copyPath);
+    }
+
+    internal static string HiveCopyFileName(string sourceHivePath)
+    {
+        string canonical = PathCanonicalizer.WithoutExtendedPrefix(Path.GetFullPath(sourceHivePath));
+        string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+        return "hive-" + hash[..16].ToLowerInvariant() + ".dat";
     }
 
     public bool ContainsKey(string keyPath)

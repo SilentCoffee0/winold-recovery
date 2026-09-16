@@ -2062,6 +2062,9 @@ public sealed class ShellViewModel : ObservableObject
             IReadOnlyList<RecipeCard> cards = [];
             if (recipeHost is not null)
             {
+                await UiThread.InvokeAsync(() =>
+                    ScanStatus = "Looking for apps… Nothing has been changed.")
+                    .ConfigureAwait(false);
                 cards = await recipeHost.DetectAsync(
                         workspace.SessionId,
                         result.Profiles,

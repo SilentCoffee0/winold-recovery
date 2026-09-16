@@ -103,7 +103,6 @@ public sealed class ScanOrchestrator
                 })
             .ConfigureAwait(false);
         classifyClock.Stop();
-        ReportPhase("Looking for apps…");
 
         return new ScanRunResult(
             registered,

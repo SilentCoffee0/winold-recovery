@@ -148,6 +148,12 @@ public sealed class ProfileDetectorTests : IDisposable
             values.Keys,
             key => key.Contains("Desktop", StringComparison.OrdinalIgnoreCase) ||
                 key.Contains("B4BFCC3A", StringComparison.OrdinalIgnoreCase));
+        WinOldRecovery.Core.Registry.OfflineRegistryHive again =
+            await WinOldRecovery.Core.Registry.OfflineRegistryHive.OpenCopyAsync(
+                defaultHive,
+                Path.Combine(testRoot, "hive-tmp"),
+                safeFs);
+        Assert.Equal(hive.CopiedHivePath, again.CopiedHivePath);
     }
 
     public void Dispose()

@@ -675,10 +675,7 @@ public sealed class WslRecipe : IRecipe
     {
         if (context.Index is { } index)
         {
-            foreach (string disk in index.FilesWithExtensions(
-                         [".vhdx"],
-                         skipAppData: false,
-                         relativeUnderProfile: Path.Combine("AppData", "Local")))
+            foreach (string disk in index.FilesNamed("ext4.vhdx", "docker_data.vhdx"))
             {
                 if (IsWslDiskName(disk))
                 {

@@ -57,6 +57,21 @@ public sealed class RecipeIndex
         return paths;
     }
 
+    public IReadOnlyList<string> FilesNamed(params string[] names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        List<string> paths = [];
+        foreach (string relPath in sessionDb.ListFileRelPathsByExactNames(sessionId, profileRelPrefix, names))
+        {
+            if (TryAbsolute(relPath, out string absolute))
+            {
+                paths.Add(absolute);
+            }
+        }
+
+        return paths;
+    }
+
     public IReadOnlyList<string> ParentsOfChildNamed(string childName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(childName);
