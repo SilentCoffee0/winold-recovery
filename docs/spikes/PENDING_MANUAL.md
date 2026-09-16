@@ -200,3 +200,7 @@ Recorded from the development console session. This is not a pass.
 To run the backup-privilege FixtureGen spike, open an elevated PowerShell in the repo and run `tools/run-elevated-m0.ps1`. To run FlaUI scan→purge, from an **elevated** PowerShell (a Medium IL testhost cannot attach to the elevated GUI):
 
 `powershell -File tools/run-flaui-e2e.ps1`
+
+To watch published `--scan` for non-loopback sockets (I7, TEMP `OldInstall`, never `C:\Windows.old`):
+
+`powershell -File tools/run-i7-published-scan.ps1`
