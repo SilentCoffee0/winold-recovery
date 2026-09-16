@@ -216,6 +216,14 @@ public sealed class AnkiRecipe : IRecipe
             return new RecipeVerifyResult(false, "Anki collection unreadable");
         }
 
+        string destMedia = Path.Combine(Path.GetDirectoryName(collection)!, "collection.media");
+        if (plan.Card.Facts.TryGetValue("media", out string? expectedMedia) &&
+            int.TryParse(expectedMedia, System.Globalization.CultureInfo.InvariantCulture, out int wantedMedia) &&
+            CountMediaOnDisk(destMedia) != wantedMedia)
+        {
+            return new RecipeVerifyResult(false, "Anki media count mismatch");
+        }
+
         if (plan.Card.Facts.TryGetValue("newestBackup", out string? newest) &&
             !string.IsNullOrWhiteSpace(newest) &&
             plan.Writes.Any(static write => write.ComponentKey == "backups") &&
@@ -357,6 +365,38 @@ public sealed class AnkiRecipe : IRecipe
         int count = 0;
         CountFiles(safeFs, media, ref count);
         return count;
+    }
+
+    private static int CountMediaOnDisk(string media)
+    {
+        if (!Directory.Exists(media))
+        {
+            return 0;
+        }
+
+        int count = 0;
+        CountFilesOnDisk(media, ref count);
+        return count;
+    }
+
+    private static void CountFilesOnDisk(string directory, ref int count)
+    {
+        foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
+        {
+            if (Path.GetFileName(entry).Equals("media.trash", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (Directory.Exists(entry))
+            {
+                CountFilesOnDisk(entry, ref count);
+            }
+            else
+            {
+                count++;
+            }
+        }
     }
 
     private static void CountFiles(SafeFs safeFs, string directory, ref int count)

@@ -2135,6 +2135,7 @@ public sealed class RecipeTests
 
         RecipeCard ankiCard = Assert.Single(cards, card => card.RecipeId == "anki");
         Assert.Equal("1", ankiCard.Facts["notes"]);
+        Assert.Equal("1", ankiCard.Facts["media"]);
         Assert.Equal("0", ankiCard.Facts["backups"]);
         Assert.Equal("0", ankiCard.Facts["addons"]);
         PlanResult ankiPlan = host.PlanCard(new AnkiRecipe(), ankiCard, Dest(context));
@@ -2146,6 +2147,10 @@ public sealed class RecipeTests
         Assert.True(File.Exists(Path.Combine(destAnki, "collection.media", "image.png")));
         Assert.False(File.Exists(Path.Combine(destAnki, "collection.media.db2")));
         Assert.False(Directory.Exists(Path.Combine(destAnki, "collection.media", "media.trash")));
+        File.WriteAllText(Path.Combine(destAnki, "collection.media", "extra.png"), "extra");
+        RecipeVerifyResult extraMedia = new AnkiRecipe().Verify(ankiPlan);
+        Assert.False(extraMedia.Ok);
+        Assert.Contains("media count", extraMedia.Detail, StringComparison.OrdinalIgnoreCase);
 
         RecipeCard wslCard = Assert.Single(cards, card => card.RecipeId == "wsl");
         Assert.Equal("512", wslCard.Facts["fileSize"]);
