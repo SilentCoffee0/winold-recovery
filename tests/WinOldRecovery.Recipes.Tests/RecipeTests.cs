@@ -1677,6 +1677,22 @@ public sealed class RecipeTests
         await host.ExecuteAsync("session-1", recipe, plan);
         Assert.True(recipe.Verify(plan).Ok);
 
+        string destKey4 = Path.Combine(
+            context.Destination,
+            "AppData",
+            "Roaming",
+            "Mozilla",
+            "Firefox",
+            "Profiles",
+            "l3.default-recovered",
+            "key4.db");
+        await File.WriteAllTextAsync(destKey4, "truncated");
+        RecipeVerifyResult truncatedKey = recipe.Verify(plan);
+        Assert.False(truncatedKey.Ok);
+        Assert.Contains("size", truncatedKey.Detail, StringComparison.OrdinalIgnoreCase);
+        await File.WriteAllTextAsync(destKey4, "k");
+        Assert.True(recipe.Verify(plan).Ok);
+
         string destPlaces = Path.Combine(
             context.Destination,
             "AppData",

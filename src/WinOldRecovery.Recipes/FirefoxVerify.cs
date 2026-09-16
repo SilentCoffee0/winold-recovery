@@ -10,9 +10,14 @@ internal static class FirefoxVerify
     public static RecipeVerifyResult Check(PlanResult plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        if (plan.Writes.Any(static write => !File.Exists(write.DestinationPath)))
+        RecipeVerifyResult present = DetectorWalk.FilesPresentMatchingSourceLength(
+            plan,
+            "Firefox files present",
+            "Firefox transplant missing",
+            "Firefox destination size does not match the source");
+        if (!present.Ok)
         {
-            return new RecipeVerifyResult(false, "Firefox transplant missing");
+            return present;
         }
 
         RecipeVerifyResult? registration = CheckRegistration(plan);
