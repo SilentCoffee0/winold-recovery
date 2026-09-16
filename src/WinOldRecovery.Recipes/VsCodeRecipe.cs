@@ -156,8 +156,32 @@ public sealed class VsCodeRecipe : IRecipe
         return Task.CompletedTask;
     }
 
-    public RecipeVerifyResult Verify(PlanResult plan) =>
-        DetectorWalk.FilesPresent(plan, "VS Code files present", "VS Code destination missing");
+    public RecipeVerifyResult Verify(PlanResult plan)
+    {
+        if (plan.Writes.Any(static write => !File.Exists(write.DestinationPath)))
+        {
+            return new RecipeVerifyResult(false, "VS Code destination missing");
+        }
+
+        RecipeWrite? script = plan.Writes.FirstOrDefault(static write =>
+            write.DestinationPath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase));
+        if (script is null)
+        {
+            return new RecipeVerifyResult(true, "VS Code files present");
+        }
+
+        string text = File.ReadAllText(script.DestinationPath);
+        string extensions = plan.Card.Facts.GetValueOrDefault("extensions") ?? string.Empty;
+        foreach (string id in extensions.Split('|', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!text.Contains("--install-extension " + id, StringComparison.Ordinal))
+            {
+                return new RecipeVerifyResult(false, "install-extensions.cmd missing " + id);
+            }
+        }
+
+        return new RecipeVerifyResult(true, "VS Code files and extension script present");
+    }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite("Code", "Close VS Code, VSCodium, or Cursor before restoring settings.")];

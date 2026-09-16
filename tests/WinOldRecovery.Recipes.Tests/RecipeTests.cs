@@ -3115,6 +3115,11 @@ public sealed class RecipeTests
         string cmd = await File.ReadAllTextAsync(Path.Combine(context.Exports, "install-extensions-code.cmd"));
         Assert.Contains("code --install-extension ms-python.python", cmd, StringComparison.Ordinal);
         Assert.DoesNotContain(Canary, cmd, StringComparison.Ordinal);
+        string cmdPath = Path.Combine(context.Exports, "install-extensions-code.cmd");
+        await File.WriteAllTextAsync(cmdPath, "@echo off\n");
+        RecipeVerifyResult missingExt = new VsCodeRecipe().Verify(vscodePlan);
+        Assert.False(missingExt.Ok);
+        Assert.Contains("install-extensions", missingExt.Detail, StringComparison.OrdinalIgnoreCase);
 
         RecipeCard thunderbird = Assert.Single(cards, card => card.RecipeId == "thunderbird");
         PlanResult thunderPlan = host.PlanCard(new ThunderbirdRecipe(), thunderbird, Dest(context));
