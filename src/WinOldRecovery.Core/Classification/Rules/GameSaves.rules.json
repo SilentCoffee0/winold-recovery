@@ -96,6 +96,15 @@
       "why": "Steam-compatible save folder found in AppData.",
       "suggestedDefault": "Restore",
       "pathContains": ["\\Goldberg SteamEmu Saves", "\\GSE Saves", "\\CODEX\\", "\\SmartSteamEmu\\"]
+    },
+    {
+      "id": "steam-library-saves",
+      "kind": "GameSave",
+      "badge": "Game save",
+      "why": "Save folder inside a Steam library steamapps\\common title.",
+      "suggestedDefault": "Restore",
+      "directoryNames": ["saves", "save", "SaveGames"],
+      "pathContains": ["\\steamapps\\common\\"]
     }
   ]
 }

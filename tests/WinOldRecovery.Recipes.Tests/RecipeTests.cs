@@ -3344,6 +3344,16 @@ public sealed class RecipeTests
         string steam = Path.Combine(context.Source, "Program Files (x86)", "Steam", "userdata", "12345", "760");
         Directory.CreateDirectory(steam);
         await File.WriteAllTextAsync(Path.Combine(steam, "remote.sav"), "steam");
+        string celeste = Path.Combine(
+            context.Source,
+            "Program Files (x86)",
+            "Steam",
+            "steamapps",
+            "common",
+            "Celeste",
+            "saves");
+        Directory.CreateDirectory(celeste);
+        await File.WriteAllTextAsync(Path.Combine(celeste, "slot.sav"), "celeste");
         string riot = Path.Combine(alice, "AppData", "LocalLow", "Riot Games", "League");
         Directory.CreateDirectory(riot);
         await File.WriteAllTextAsync(Path.Combine(riot, "settings.yaml"), "riot");
@@ -3375,6 +3385,18 @@ public sealed class RecipeTests
             plan.Writes,
             write => write.DestinationPath.EndsWith(
                 Path.Combine("Saved Games", "Steam userdata", "12345", "760", "remote.sav"),
+                StringComparison.OrdinalIgnoreCase));
+        RecipeCard library = Assert.Single(
+            detected.Cards,
+            card => card.Title.Contains("Celeste", StringComparison.Ordinal));
+        Assert.Equal(Path.Combine("Saved Games", "Celeste", "saves"), library.Facts["relative"]);
+        PlanResult libraryPlan = new GameSavesRecipe().Plan(
+            new CardDecisions(library, new Dictionary<string, Decision> { ["saves"] = Decision.Restore }),
+            Dest(context));
+        Assert.Contains(
+            libraryPlan.Writes,
+            write => write.DestinationPath.EndsWith(
+                Path.Combine("Saved Games", "Celeste", "saves", "slot.sav"),
                 StringComparison.OrdinalIgnoreCase));
     }
 

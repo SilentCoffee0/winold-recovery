@@ -152,6 +152,16 @@ public sealed class ClassificationEngineTests
         Directory.CreateDirectory(Path.Combine(alice, "AppData", "Roaming", "Battle.net"));
         Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "Riot Games", "Riot Client"));
         Directory.CreateDirectory(Path.Combine(alice, "AppData", "LocalLow", "Riot Games", "League"));
+        Directory.CreateDirectory(
+            Path.Combine(
+                context.Root,
+                "Windows.old",
+                "Program Files (x86)",
+                "Steam",
+                "steamapps",
+                "common",
+                "Celeste",
+                "saves"));
         Directory.CreateDirectory(Path.Combine(alice, "AppData", "Roaming", "NotAGame"));
         await File.WriteAllTextAsync(Path.Combine(alice, "NTUSER.DAT"), "hive");
         await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Roaming", ".minecraft", "saves", "world", "level.dat"), "save");
@@ -161,6 +171,18 @@ public sealed class ClassificationEngineTests
         await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Roaming", "Battle.net", "Battle.net.config"), "bnet");
         await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Local", "Riot Games", "Riot Client", "config.yaml"), "riot");
         await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "LocalLow", "Riot Games", "League", "settings.yaml"), "riot-low");
+        await File.WriteAllTextAsync(
+            Path.Combine(
+                context.Root,
+                "Windows.old",
+                "Program Files (x86)",
+                "Steam",
+                "steamapps",
+                "common",
+                "Celeste",
+                "saves",
+                "slot.sav"),
+            "celeste");
         await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Roaming", "NotAGame", "notes.txt"), "plain");
 
         ScanOrchestrator orchestrator = new(context.Database, context.SafeFs, context.Guard);
@@ -176,6 +198,9 @@ public sealed class ClassificationEngineTests
         Assert.Contains("Game save", Find(context, @"Users\Alice\AppData\Roaming\Battle.net\Battle.net.config").BadgeText);
         Assert.Contains("Game save", Find(context, @"Users\Alice\AppData\Local\Riot Games\Riot Client\config.yaml").BadgeText);
         Assert.Contains("Game save", Find(context, @"Users\Alice\AppData\LocalLow\Riot Games\League\settings.yaml").BadgeText);
+        Assert.Contains(
+            "Game save",
+            Find(context, @"Program Files (x86)\Steam\steamapps\common\Celeste\saves").BadgeText);
         Assert.DoesNotContain("Game save", Find(context, @"Users\Alice\AppData\Roaming\NotAGame\notes.txt").BadgeText);
     }
 

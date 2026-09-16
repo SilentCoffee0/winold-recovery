@@ -49,6 +49,14 @@ public sealed class GameSavesRecipe : IRecipe
         (Path.Combine("AppData", "Local", "SmartSteamEmu"), "Steam-compatible saves", Decision.Restore),
     ];
 
+    private static readonly string[] SteamLibrarySaveRelatives =
+    [
+        Path.Combine("Saved", "SaveGames"),
+        "SaveGames",
+        "saves",
+        "save",
+    ];
+
     public DetectResult Detect(ProfileContext context)
     {
         List<RecipeCard> cards = [];
@@ -82,6 +90,16 @@ public sealed class GameSavesRecipe : IRecipe
                 Path.Combine("Saved Games", "Steam userdata"),
                 "Steam userdata",
                 Decision.Restore);
+        }
+
+        foreach ((string source, string relative, string title) in SteamLibrarySaves(context))
+        {
+            if (!seen.Add(source))
+            {
+                continue;
+            }
+
+            AddCard(context, cards, badges, source, relative, title, Decision.Restore);
         }
 
         IEnumerable<string> extraParents = context.Index is { } index
@@ -193,5 +211,55 @@ public sealed class GameSavesRecipe : IRecipe
             Path.Combine(oldProfileRoot, "..", "..", "Program Files (x86)", "Steam", "userdata"));
         yield return Path.GetFullPath(
             Path.Combine(oldProfileRoot, "..", "..", "Program Files", "Steam", "userdata"));
+    }
+
+    private static IEnumerable<(string Source, string Relative, string Title)> SteamLibrarySaves(
+        ProfileContext context)
+    {
+        foreach (string common in SteamCommonFolders(context.OldProfileRoot))
+        {
+            if (!context.SafeFs.DirectoryExists(common) || DetectorWalk.IsReparse(common))
+            {
+                continue;
+            }
+
+            foreach (string game in context.SafeFs.EnumerateDirectories(common))
+            {
+                if (DetectorWalk.IsReparse(game))
+                {
+                    continue;
+                }
+
+                string name = Path.GetFileName(DetectorWalk.StripExtended(game));
+                if (string.IsNullOrEmpty(name))
+                {
+                    continue;
+                }
+
+                foreach (string saveRelative in SteamLibrarySaveRelatives)
+                {
+                    string source = DetectorWalk.StripExtended(Path.Combine(game, saveRelative));
+                    if (!context.SafeFs.DirectoryExists(source) || DetectorWalk.IsReparse(source))
+                    {
+                        continue;
+                    }
+
+                    yield return (
+                        source,
+                        Path.Combine("Saved Games", name, Path.GetFileName(source)),
+                        "Steam library — " + name);
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<string> SteamCommonFolders(string oldProfileRoot)
+    {
+        yield return Path.GetFullPath(
+            Path.Combine(oldProfileRoot, "..", "..", "Program Files (x86)", "Steam", "steamapps", "common"));
+        yield return Path.GetFullPath(
+            Path.Combine(oldProfileRoot, "..", "..", "Program Files", "Steam", "steamapps", "common"));
+        yield return Path.GetFullPath(
+            Path.Combine(oldProfileRoot, "..", "..", "Steam", "steamapps", "common"));
     }
 }
