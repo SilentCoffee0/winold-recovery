@@ -595,6 +595,22 @@
                                 </Style.Triggers>
                             </Style>
                         </DockPanel.Style>
+                        <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold" Margin="0,0,0,4" Text="Conflict policy" />
+                        <RadioButton DockPanel.Dock="Top" GroupName="ConflictPolicy"
+                                     Content="Keep both (restored copy gets a suffix)"
+                                     IsChecked="{Binding IsKeepBothPolicy}"
+                                     AutomationProperties.Name="Keep both conflict policy"
+                                     AutomationProperties.AutomationId="ConflictKeepBothRadio" />
+                        <RadioButton DockPanel.Dock="Top" GroupName="ConflictPolicy"
+                                     Content="Skip existing"
+                                     IsChecked="{Binding IsSkipExistingPolicy}"
+                                     AutomationProperties.Name="Skip existing conflict policy"
+                                     AutomationProperties.AutomationId="ConflictSkipRadio" />
+                        <RadioButton DockPanel.Dock="Top" GroupName="ConflictPolicy" Margin="0,0,0,8"
+                                     Content="Overwrite existing — requires per-file confirmation"
+                                     IsChecked="{Binding IsOverwritePolicy}"
+                                     AutomationProperties.Name="Overwrite existing conflict policy"
+                                     AutomationProperties.AutomationId="ConflictOverwriteRadio" />
                         <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap"
                                    Text="Conflicts: existing destination files. Keep both is the default. Overwrite needs a per-file tick and the confirmation button." />
                         <StackPanel DockPanel.Dock="Top" Margin="0,8,0,8">

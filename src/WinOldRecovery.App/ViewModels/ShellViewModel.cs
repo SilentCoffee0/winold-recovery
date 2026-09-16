@@ -359,6 +359,45 @@ public sealed class ShellViewModel : ObservableObject
             {
                 RefreshPreflight();
                 ApproveOverwritesCommand.NotifyCanExecuteChanged();
+                OnPropertyChanged(nameof(IsKeepBothPolicy));
+                OnPropertyChanged(nameof(IsSkipExistingPolicy));
+                OnPropertyChanged(nameof(IsOverwritePolicy));
+            }
+        }
+    }
+
+    public bool IsKeepBothPolicy
+    {
+        get => selectedConflictPolicy == ConflictPolicy.KeepBoth;
+        set
+        {
+            if (value)
+            {
+                SelectedConflictPolicy = ConflictPolicy.KeepBoth;
+            }
+        }
+    }
+
+    public bool IsSkipExistingPolicy
+    {
+        get => selectedConflictPolicy == ConflictPolicy.Skip;
+        set
+        {
+            if (value)
+            {
+                SelectedConflictPolicy = ConflictPolicy.Skip;
+            }
+        }
+    }
+
+    public bool IsOverwritePolicy
+    {
+        get => selectedConflictPolicy == ConflictPolicy.OverwriteApproved;
+        set
+        {
+            if (value)
+            {
+                SelectedConflictPolicy = ConflictPolicy.OverwriteApproved;
             }
         }
     }

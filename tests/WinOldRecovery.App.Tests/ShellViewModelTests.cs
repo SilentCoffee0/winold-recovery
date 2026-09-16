@@ -95,6 +95,24 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task ConflictPolicy_KeepBothIsDefaultAndSkipAndOverwriteSwitch()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        Assert.True(context.ViewModel.IsKeepBothPolicy);
+        Assert.Equal(ConflictPolicy.KeepBoth, context.ViewModel.SelectedConflictPolicy);
+
+        context.ViewModel.IsSkipExistingPolicy = true;
+        Assert.True(context.ViewModel.IsSkipExistingPolicy);
+        Assert.False(context.ViewModel.IsKeepBothPolicy);
+        Assert.Equal(ConflictPolicy.Skip, context.ViewModel.SelectedConflictPolicy);
+
+        context.ViewModel.IsOverwritePolicy = true;
+        Assert.True(context.ViewModel.IsOverwritePolicy);
+        Assert.Equal(ConflictPolicy.OverwriteApproved, context.ViewModel.SelectedConflictPolicy);
+        Assert.False(context.ViewModel.ApproveOverwritesCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task RunPublishedMemoryProbeAsync_ScansASmallTreeAndPagesChildren()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();

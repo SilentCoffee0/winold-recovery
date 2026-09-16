@@ -76,6 +76,9 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("Restore into Recovered folder", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"MergeIntoProfileRadio\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"RestoreIntoRecoveredRadio\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"ConflictKeepBothRadio\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"ConflictSkipRadio\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"ConflictOverwriteRadio\"", xaml, StringComparison.Ordinal);
         Assert.Contains("SystemFonts.MessageFontFamilyKey", xaml, StringComparison.Ordinal);
         Assert.Contains("SystemFonts.MessageFontSizeKey", xaml, StringComparison.Ordinal);
         Assert.Contains("UseLayoutRounding", xaml, StringComparison.Ordinal);
