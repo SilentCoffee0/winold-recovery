@@ -21,36 +21,123 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="VisibleWhenTrue" />
     </Window.Resources>
-    <Grid>
+    <Grid Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
     <DockPanel>
-        <Border DockPanel.Dock="Top" Padding="12,8" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+        <Border DockPanel.Dock="Top" Style="{StaticResource ChromeBar}" BorderThickness="0,0,0,1">
             <StackPanel>
-                <TextBlock FontWeight="SemiBold" Text="WinOld Recovery" />
-                <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Text="{Binding PromisesText}"
-                           AutomationProperties.Name="Recovery promises" />
-                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                    <Button Margin="0,0,8,0" Command="{Binding}" Tag="1" Click="OnStepClick" Content="1 Scan"
-                            AutomationProperties.Name="Scan step" AutomationProperties.AutomationId="StepScan" />
-                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
-                    <Button Margin="0,0,8,0" Tag="2" Click="OnStepClick" Content="2 Decide"
-                            AutomationProperties.Name="Decide step" AutomationProperties.AutomationId="StepDecide" />
-                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
-                    <Button Margin="0,0,8,0" Tag="3" Click="OnStepClick" Content="3 Preview"
-                            AutomationProperties.Name="Preview step" AutomationProperties.AutomationId="StepPreview" />
-                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
-                    <Button Margin="0,0,8,0" Tag="4" Click="OnStepClick" Content="4 Restore"
-                            AutomationProperties.Name="Restore step" AutomationProperties.AutomationId="StepRestore" />
-                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
-                    <Button Margin="0,0,8,0" Tag="5" Click="OnStepClick" Content="5 Verify"
-                            AutomationProperties.Name="Verify step" AutomationProperties.AutomationId="StepVerify" />
-                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" Text="→" />
-                    <Button Tag="6" Click="OnStepClick" Content="6 Purge"
-                            AutomationProperties.Name="Purge step" AutomationProperties.AutomationId="StepPurge" />
-                </StackPanel>
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Left"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Text="WinOld Recovery" />
+                    <TextBlock Margin="16,0,0,0"
+                               VerticalAlignment="Center"
+                               Style="{StaticResource CaptionText}"
+                               Text="{Binding PromisesText}"
+                               AutomationProperties.Name="Recovery promises" />
+                </DockPanel>
+                <WrapPanel Margin="0,14,0,0">
+                    <Button Tag="1" Click="OnStepClick" Content="1  Scan"
+                            AutomationProperties.Name="Scan step" AutomationProperties.AutomationId="StepScan">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource StepButton}">
+                                <Setter Property="Margin" Value="0,0,4,4" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CurrentStep}" Value="Scan">
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
+                                        <Setter Property="BorderThickness" Value="2" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,4" Opacity="0.55" Text="›" />
+                    <Button Tag="2" Click="OnStepClick" Content="2  Decide"
+                            AutomationProperties.Name="Decide step" AutomationProperties.AutomationId="StepDecide">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource StepButton}">
+                                <Setter Property="Margin" Value="0,0,4,4" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CurrentStep}" Value="Decide">
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
+                                        <Setter Property="BorderThickness" Value="2" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,4" Opacity="0.55" Text="›" />
+                    <Button Tag="3" Click="OnStepClick" Content="3  Preview"
+                            AutomationProperties.Name="Preview step" AutomationProperties.AutomationId="StepPreview">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource StepButton}">
+                                <Setter Property="Margin" Value="0,0,4,4" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CurrentStep}" Value="Preview">
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
+                                        <Setter Property="BorderThickness" Value="2" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,4" Opacity="0.55" Text="›" />
+                    <Button Tag="4" Click="OnStepClick" Content="4  Restore"
+                            AutomationProperties.Name="Restore step" AutomationProperties.AutomationId="StepRestore">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource StepButton}">
+                                <Setter Property="Margin" Value="0,0,4,4" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CurrentStep}" Value="Restore">
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
+                                        <Setter Property="BorderThickness" Value="2" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,4" Opacity="0.55" Text="›" />
+                    <Button Tag="5" Click="OnStepClick" Content="5  Verify"
+                            AutomationProperties.Name="Verify step" AutomationProperties.AutomationId="StepVerify">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource StepButton}">
+                                <Setter Property="Margin" Value="0,0,4,4" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CurrentStep}" Value="Verify">
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
+                                        <Setter Property="BorderThickness" Value="2" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,4" Opacity="0.55" Text="›" />
+                    <Button Tag="6" Click="OnStepClick" Content="6  Purge"
+                            AutomationProperties.Name="Purge step" AutomationProperties.AutomationId="StepPurge">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource StepButton}">
+                                <Setter Property="Margin" Value="0,0,4,4" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CurrentStep}" Value="Purge">
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
+                                        <Setter Property="BorderThickness" Value="2" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </WrapPanel>
             </StackPanel>
         </Border>
 
-        <StatusBar DockPanel.Dock="Bottom">
+        <StatusBar DockPanel.Dock="Bottom" Padding="16,8">
             <StatusBarItem>
                 <TextBlock Text="{Binding SourceIntegrityText, StringFormat=● {0}}"
                            AutomationProperties.Name="Source integrity">
@@ -94,17 +181,17 @@
             <Separator />
             <StatusBarItem HorizontalAlignment="Right">
                 <StackPanel Orientation="Horizontal">
-                    <Button Content="Log" Command="{Binding ShowLogCommand}" Margin="0,0,8,0"
+                    <Button Style="{StaticResource QuietButton}" Content="Log" Command="{Binding ShowLogCommand}" Margin="0,0,8,0"
                             AutomationProperties.Name="Open session log"
                             AutomationProperties.AutomationId="LogButton" />
-                    <Button Content="Help" Command="{Binding OpenHelpCommand}"
+                    <Button Style="{StaticResource QuietButton}" Content="Help" Command="{Binding OpenHelpCommand}"
                             AutomationProperties.Name="Open help"
                             AutomationProperties.AutomationId="HelpButton" />
                 </StackPanel>
             </StatusBarItem>
         </StatusBar>
 
-        <Grid Margin="12">
+        <Grid Margin="20,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="MainColumn" Width="2*" />
                 <ColumnDefinition x:Name="SplitterColumn" Width="12" />
@@ -117,17 +204,17 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <StackPanel Grid.Row="0" Margin="0,0,0,8">
-                    <TextBlock Text="{Binding ScanStatus}" TextWrapping="Wrap" ToolTip="{Binding SkipHint}"
+                <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                    <TextBlock FontSize="15" FontWeight="SemiBold" Text="{Binding ScanStatus}" TextWrapping="Wrap" ToolTip="{Binding SkipHint}"
                                AutomationProperties.HelpText="Scan status"
                                AutomationProperties.AutomationId="ScanStatusText" />
-                    <TextBlock Margin="0,4,0,0"
-                               Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
-                               Text="{Binding ElevationNote}" TextWrapping="Wrap" />
-                    <TextBlock Margin="0,4,0,0" TextWrapping="Wrap" Text="{Binding SourceHint}" />
-                    <TextBlock Margin="0,4,0,0" Text="{Binding CurrentPath}"
+                    <TextBlock Margin="0,6,0,0"
+                               Style="{StaticResource CaptionText}"
+                               Text="{Binding ElevationNote}" />
+                    <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Text="{Binding SourceHint}" />
+                    <TextBlock Margin="0,6,0,0" Style="{StaticResource CaptionText}" Text="{Binding CurrentPath}"
                                ToolTip="{Binding CurrentPathFull}" />
-                    <TextBlock Margin="0,4,0,0" Text="{Binding RestoreProgress}" TextWrapping="Wrap"
+                    <TextBlock Margin="0,6,0,0" Text="{Binding RestoreProgress}" TextWrapping="Wrap"
                                AutomationProperties.Name="Restore progress" />
                 </StackPanel>
 
@@ -142,23 +229,48 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <ListBox Grid.Row="0" MaxHeight="140"
-                             ItemsSource="{Binding Sources}"
-                             DisplayMemberPath="DisplayLabel"
-                             SelectedValuePath="Path"
-                             SelectedValue="{Binding SelectedSourcePath}"
-                             AutomationProperties.Name="Windows.old sources" />
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
-                        <Button Content="Browse…" Command="{Binding BrowseSourceCommand}"
+                    <DockPanel Grid.Row="0" LastChildFill="True">
+                        <Button DockPanel.Dock="Right" Margin="8,0,0,0" VerticalAlignment="Top"
+                                Content="Browse…" Command="{Binding BrowseSourceCommand}"
                                 AutomationProperties.Name="Browse for Windows.old"
                                 AutomationProperties.AutomationId="BrowseSourceButton" />
-                    </StackPanel>
+                        <ListBox MaxHeight="148"
+                                 ItemsSource="{Binding Sources}"
+                                 DisplayMemberPath="DisplayLabel"
+                                 SelectedValuePath="Path"
+                                 SelectedValue="{Binding SelectedSourcePath}"
+                                 AutomationProperties.Name="Windows.old sources" />
+                    </DockPanel>
 
                     <DockPanel Grid.Row="1" Margin="0,8,0,8">
-                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
-                            <Button Content="Cards" Command="{Binding ShowCardsCommand}" Margin="0,0,8,0" />
-                            <Button Content="Files" Command="{Binding ShowFilesCommand}" Margin="0,0,8,0" />
-                            <Button Content="Inspect" Command="{Binding ShowInspectCommand}" Margin="0,0,8,0"
+                        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                            <Button Content="Cards" Command="{Binding ShowCardsCommand}" Margin="0,0,8,8">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsCardsPane}" Value="True">
+                                                <Setter Property="FontWeight" Value="SemiBold" />
+                                                <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
+                                                <Setter Property="BorderThickness" Value="2" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Content="Files" Command="{Binding ShowFilesCommand}" Margin="0,0,8,8">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFilesPane}" Value="True">
+                                                <Setter Property="FontWeight" Value="SemiBold" />
+                                                <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
+                                                <Setter Property="BorderThickness" Value="2" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Content="Inspect" Command="{Binding ShowInspectCommand}" Margin="0,0,8,8"
                                     AutomationProperties.Name="Inspect pane">
                                 <Button.Style>
                                     <Style TargetType="Button">
@@ -171,27 +283,27 @@
                                     </Style>
                                 </Button.Style>
                             </Button>
-                            <RadioButton Content="Tree" IsChecked="{Binding IsTreeView}" Margin="8,0,8,0"
+                            <RadioButton Content="Tree" IsChecked="{Binding IsTreeView}" Margin="8,0,8,8"
                                          VerticalAlignment="Center"
                                          AutomationProperties.Name="Tree view"
                                          AutomationProperties.AutomationId="FilesViewTree" />
-                            <RadioButton Content="Largest" IsChecked="{Binding IsLargestView}" Margin="0,0,8,0"
+                            <RadioButton Content="Largest" IsChecked="{Binding IsLargestView}" Margin="0,0,8,8"
                                          VerticalAlignment="Center"
                                          AutomationProperties.Name="Largest view"
                                          AutomationProperties.AutomationId="FilesViewLargest" />
-                            <RadioButton Content="Recent" IsChecked="{Binding IsRecentView}" Margin="0,0,8,0"
+                            <RadioButton Content="Recent" IsChecked="{Binding IsRecentView}" Margin="0,0,8,8"
                                          VerticalAlignment="Center"
                                          AutomationProperties.Name="Recent view"
                                          AutomationProperties.AutomationId="FilesViewRecent" />
-                            <RadioButton Content="Unknown" IsChecked="{Binding IsUnknownView}" Margin="0,0,8,0"
+                            <RadioButton Content="Unknown" IsChecked="{Binding IsUnknownView}" Margin="0,0,8,8"
                                          VerticalAlignment="Center"
                                          AutomationProperties.Name="Unknown view"
                                          AutomationProperties.AutomationId="FilesViewUnknown" />
-                            <RadioButton Content="Problems" IsChecked="{Binding IsProblemsView}" Margin="0,0,8,0"
+                            <RadioButton Content="Problems" IsChecked="{Binding IsProblemsView}" Margin="0,0,8,8"
                                          VerticalAlignment="Center"
                                          AutomationProperties.Name="Problems view"
                                          AutomationProperties.AutomationId="FilesViewProblems" />
-                            <ComboBox Width="72" Margin="8,0,0,0"
+                            <ComboBox Width="72" Margin="8,0,8,8"
                                       ItemsSource="{Binding RecentDayChoices}"
                                       SelectedItem="{Binding RecentDays}"
                                       AutomationProperties.Name="Recent days">
@@ -206,13 +318,13 @@
                                     </Style>
                                 </ComboBox.Style>
                             </ComboBox>
-                            <TextBox x:Name="SearchBox" Width="180" Margin="8,0,0,0"
+                            <TextBox x:Name="SearchBox" MinWidth="200" Width="220" Margin="8,0,8,8"
                                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.Name="Search files"
                                      AutomationProperties.AutomationId="SearchBox" />
-                            <Button Content="Search" Command="{Binding SearchCommand}" Margin="8,0,0,0"
+                            <Button Content="Search" Command="{Binding SearchCommand}" Margin="0,0,0,8"
                                     AutomationProperties.Name="Search now" />
-                        </StackPanel>
+                        </WrapPanel>
                         <ListBox ItemsSource="{Binding Cards}"
                                  SelectedItem="{Binding SelectedCard}">
                             <ListBox.Style>
@@ -231,9 +343,10 @@
                             </ListBox.Style>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Margin="0,0,0,8">
-                                        <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
-                                        <TextBlock Text="{Binding Summary}">
+                                    <Border Style="{StaticResource CardBorder}">
+                                    <StackPanel>
+                                        <TextBlock FontWeight="SemiBold" FontSize="14" Text="{Binding Title}" TextWrapping="Wrap" />
+                                        <TextBlock Margin="0,4,0,0" Text="{Binding Summary}" TextWrapping="Wrap">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Style.Triggers>
@@ -244,10 +357,9 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBlock Text="{Binding Facts}"
-                                                   Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}">
+                                        <TextBlock Margin="0,4,0,0" Text="{Binding Facts}">
                                             <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding Kind}" Value="Absent">
                                                             <Setter Property="Visibility" Value="Collapsed" />
@@ -256,7 +368,7 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <TextBlock Text="{Binding DecisionLabel}"
+                                        <TextBlock Margin="0,6,0,0" Text="{Binding DecisionLabel}"
                                                    ToolTip="{Binding DecisionTooltip}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
@@ -268,9 +380,9 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                            <StackPanel.Style>
-                                                <Style TargetType="StackPanel">
+                                        <WrapPanel Margin="0,10,0,0">
+                                            <WrapPanel.Style>
+                                                <Style TargetType="WrapPanel">
                                                     <Setter Property="Visibility" Value="Collapsed" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding ShowVerbs}" Value="True">
@@ -278,36 +390,37 @@
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
-                                            </StackPanel.Style>
-                                            <Button Content="Inspect" Margin="0,0,8,0"
+                                            </WrapPanel.Style>
+                                            <Button Content="Inspect" Margin="0,0,8,4"
                                                     Command="{Binding DataContext.InspectOverviewCardCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     CommandParameter="{Binding}"
                                                     AutomationProperties.Name="Inspect this card" />
-                                            <Button Content="Open Folder" Margin="0,0,8,0"
+                                            <Button Content="Open Folder" Margin="0,0,8,4"
                                                     Command="{Binding DataContext.OpenOverviewCardCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     CommandParameter="{Binding}"
                                                     AutomationProperties.Name="Open this card folder" />
-                                            <Button Content="Restore" Margin="0,0,8,0"
+                                            <Button Content="Restore" Margin="0,0,8,4"
                                                     Command="{Binding DataContext.RestoreOverviewCardCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     CommandParameter="{Binding}"
                                                     IsEnabled="{Binding DataContext.CanMutateSession, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     AutomationProperties.Name="Restore this card" />
-                                            <Button Content="Leave Behind"
+                                            <Button Content="Leave Behind" Margin="0,0,0,4"
                                                     Command="{Binding DataContext.LeaveOverviewCardCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     CommandParameter="{Binding}"
                                                     IsEnabled="{Binding DataContext.CanMutateSession, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     AutomationProperties.Name="Leave this card behind" />
-                                        </StackPanel>
+                                        </WrapPanel>
                                         <StackPanel.Style>
                                             <Style TargetType="StackPanel">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding Kind}" Value="Absent">
-                                                        <Setter Property="Margin" Value="0,0,0,2" />
+                                                        <Setter Property="Margin" Value="0" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </StackPanel.Style>
                                     </StackPanel>
+                                    </Border>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
@@ -410,65 +523,66 @@
                         </TextBox>
                     </DockPanel>
 
-                    <StackPanel Grid.Row="2">
-                        <StackPanel Orientation="Horizontal">
-                        <Button Content="{Binding ScanButtonLabel}" Command="{Binding ScanCommand}" Margin="0,0,8,0"
+                    <StackPanel Grid.Row="2" Margin="0,4,0,0">
+                        <WrapPanel>
+                        <Button Style="{StaticResource AccentButton}" Content="{Binding ScanButtonLabel}" Command="{Binding ScanCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Start scan" AutomationProperties.AutomationId="ScanButton" />
-                        <Button Content="Pause" Command="{Binding PauseScanCommand}" Margin="0,0,8,0"
+                        <Button Content="Pause" Command="{Binding PauseScanCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Pause scan" />
-                        <Button Content="Cancel" Command="{Binding CancelScanCommand}" Margin="0,0,8,0"
+                        <Button Content="Cancel" Command="{Binding CancelScanCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Cancel scan" />
-                        <Button Content="Restore (R)" Command="{Binding RestoreCommand}" Margin="0,0,8,0"
+                        <Button Content="Restore (R)" Command="{Binding RestoreCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Mark restore" />
-                        <Button Content="Leave Behind (L)" Command="{Binding LeaveBehindCommand}" Margin="0,0,8,0"
+                        <Button Content="Leave Behind (L)" Command="{Binding LeaveBehindCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Mark leave behind" />
-                        <Button Content="Undecided (U)" Command="{Binding UndecidedCommand}" Margin="0,0,8,0"
+                        <Button Content="Undecided (U)" Command="{Binding UndecidedCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Mark undecided" />
-                        <Button Content="Undo (Ctrl+Z)" Command="{Binding UndoDecisionCommand}" Margin="0,0,8,0"
+                        <Button Content="Undo (Ctrl+Z)" Command="{Binding UndoDecisionCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Undo last decision"
                                 AutomationProperties.AutomationId="UndoDecisionButton" />
-                        <Button Content="Open Folder (O)" Command="{Binding OpenFolderCommand}" Margin="0,0,8,0"
+                        <Button Content="Open Folder (O)" Command="{Binding OpenFolderCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Open folder" />
-                        <Button Content="Preview plan" Command="{Binding PreparePreviewCommand}" Margin="0,0,8,0"
+                        <Button Content="Preview plan" Command="{Binding PreparePreviewCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Preview plan"
                                 AutomationProperties.AutomationId="PreviewPlanButton" />
-                        <ComboBox Width="160" Margin="0,0,8,0"
+                        <ComboBox Width="160" Margin="0,0,8,8"
                                   ItemsSource="{Binding ConflictPolicies}"
                                   SelectedItem="{Binding SelectedConflictPolicy}"
                                   AutomationProperties.Name="Conflict policy" />
-                        <Button Content="Run restore" Command="{Binding ExecuteRestoreCommand}" Margin="0,0,8,0"
+                        <Button Content="Run restore" Command="{Binding ExecuteRestoreCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Run restore"
                                 AutomationProperties.AutomationId="RunRestoreButton" />
-                        <Button Content="Cancel restore" Command="{Binding CancelRestoreCommand}" Margin="0,0,8,0"
+                        <Button Content="Cancel restore" Command="{Binding CancelRestoreCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Cancel restore"
                                 AutomationProperties.AutomationId="CancelRestoreButton" />
-                        <Button Content="Pause restore" Command="{Binding PauseRestoreCommand}" Margin="0,0,8,0"
+                        <Button Content="Pause restore" Command="{Binding PauseRestoreCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Pause restore"
                                 AutomationProperties.AutomationId="PauseRestoreButton" />
-                        <Button Content="Verify" Command="{Binding ExecuteVerifyCommand}" Margin="0,0,8,0"
+                        <Button Content="Verify" Command="{Binding ExecuteVerifyCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Run verify"
                                 AutomationProperties.AutomationId="RunVerifyButton" />
-                        <Button Content="Expand" Command="{Binding ExpandCommand}" CommandParameter="{Binding SelectedNode}"
+                        <Button Content="Expand" Command="{Binding ExpandCommand}" CommandParameter="{Binding SelectedNode}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Expand folder" />
-                        <Button Content="Show more" Command="{Binding ShowMoreCommand}" Margin="8,0,0,0"
+                        <Button Content="Show more" Command="{Binding ShowMoreCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Show more children"
                                 Visibility="{Binding TreeTruncated, Converter={StaticResource VisibleWhenTrue}}" />
-                        <Button Content="Reveal in tree" Command="{Binding RevealInTreeCommand}" Margin="8,0,0,0"
+                        <Button Content="Reveal in tree" Command="{Binding RevealInTreeCommand}" Margin="0,0,8,8"
                                 AutomationProperties.Name="Reveal in tree" />
-                        <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" Text="{Binding PagingStatus}" />
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <TextBlock VerticalAlignment="Center" Margin="0,0,12,0" Text="Scan options" />
+                        <TextBlock Margin="4,8,8,8" VerticalAlignment="Center" Text="{Binding PagingStatus}" />
+                        </WrapPanel>
+                        <WrapPanel Margin="0,4,0,0">
+                            <TextBlock VerticalAlignment="Center" Margin="0,0,12,8" FontWeight="SemiBold" Text="Scan options" />
                             <CheckBox Content="Compute folder sizes and counts (recommended)"
                                       IsChecked="{Binding ComputeFolderSizes}"
                                       VerticalAlignment="Center"
-                                      Margin="0,0,16,0"
+                                      Margin="0,0,16,8"
                                       AutomationProperties.Name="Compute folder sizes and counts" />
                             <CheckBox Content="Hash files smaller than 64 MB during scan (slower; enables strong verify)"
                                       IsChecked="{Binding HashDuringScan}"
                                       VerticalAlignment="Center"
+                                      Margin="0,0,0,8"
                                       AutomationProperties.Name="Hash files smaller than 64 MB during scan" />
-                        </StackPanel>
+                        </WrapPanel>
                     </StackPanel>
                     <DockPanel Grid.Row="3">
                         <DockPanel.Style>
@@ -690,9 +804,9 @@
                             </Style.Triggers>
                         </Style>
                     </DockPanel.Style>
-                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-                        <TextBlock Text="Planned destination (top-level folders; children follow)" />
-                        <DockPanel Margin="0,4,0,0">
+                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                        <TextBlock FontWeight="SemiBold" Text="Planned destination (top-level folders; children follow)" />
+                        <DockPanel Margin="0,8,0,0">
                             <Button DockPanel.Dock="Right" Content="Change…"
                                     Command="{Binding BrowseDestinationCommand}"
                                     IsEnabled="{Binding CanEditDestination}"
@@ -733,21 +847,21 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                            <Button Content="Inspect" Command="{Binding ShowInspectCommand}" Margin="0,0,8,0"
+                        <WrapPanel Orientation="Horizontal" Margin="0,16,0,0">
+                            <Button Content="Inspect" Command="{Binding ShowInspectCommand}" Margin="0,0,8,8"
                                     AutomationProperties.Name="Inspect this app card"
                                     AutomationProperties.AutomationId="RecipeInspectButton" />
-                            <Button Content="Open Folder" Command="{Binding OpenFolderCommand}" Margin="0,0,8,0"
+                            <Button Content="Open Folder" Command="{Binding OpenFolderCommand}" Margin="0,0,8,8"
                                     AutomationProperties.Name="Open this app folder"
                                     AutomationProperties.AutomationId="RecipeOpenFolderButton" />
-                            <Button Content="Restore" Command="{Binding RestoreCommand}" Margin="0,0,8,0"
+                            <Button Content="Restore" Command="{Binding RestoreCommand}" Margin="0,0,8,8"
                                     IsEnabled="{Binding CanMutateSession}"
                                     AutomationProperties.Name="Restore this app card" />
-                            <Button Content="Leave Behind" Command="{Binding LeaveBehindCommand}"
+                            <Button Content="Leave Behind" Command="{Binding LeaveBehindCommand}" Margin="0,0,8,8"
                                     IsEnabled="{Binding CanMutateSession}"
                                     AutomationProperties.Name="Leave this app card behind" />
                             <Button Content="Analyze repositories" Command="{Binding AnalyzeGitCommand}"
-                                    Margin="8,0,0,0"
+                                    Margin="0,0,0,8"
                                     AutomationProperties.Name="Analyze Git repositories"
                                     AutomationProperties.AutomationId="AnalyzeGitButton">
                                 <Button.Style>
@@ -761,23 +875,24 @@
                                     </Style>
                                 </Button.Style>
                             </Button>
-                        </StackPanel>
+                        </WrapPanel>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
         </Grid>
     </DockPanel>
-        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+        <Border Style="{StaticResource DialogHost}"
                 Panel.ZIndex="1"
                 Visibility="{Binding HelpVisible, Converter={StaticResource VisibleWhenTrue}}">
-            <DockPanel Margin="24">
-                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+            <Border Style="{StaticResource DialogCard}" MaxWidth="960" HorizontalAlignment="Stretch" Margin="32">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,16">
                     <Button DockPanel.Dock="Right" Content="Close help" Command="{Binding CloseHelpCommand}"
                             AutomationProperties.Name="Close help"
                             AutomationProperties.AutomationId="CloseHelpButton" />
-                    <TextBlock FontWeight="SemiBold" VerticalAlignment="Center" Text="Help (local pages, no network)" />
+                    <TextBlock FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" Text="Help (local pages, no network)" />
                 </DockPanel>
-                <ListBox DockPanel.Dock="Left" Width="280" Margin="0,0,12,0"
+                <ListBox DockPanel.Dock="Left" Width="280" Margin="0,0,16,0"
                          ItemsSource="{Binding HelpTopics}"
                          DisplayMemberPath="Title"
                          SelectedItem="{Binding SelectedHelpTopic}"
@@ -788,16 +903,18 @@
                          Text="{Binding HelpText, Mode=OneWay}"
                          AutomationProperties.Name="Help page" />
             </DockPanel>
+            </Border>
         </Border>
-        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+        <Border Style="{StaticResource DialogHost}"
                 Panel.ZIndex="1"
                 Visibility="{Binding LogVisible, Converter={StaticResource VisibleWhenTrue}}">
-            <DockPanel Margin="24">
-                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+            <Border Style="{StaticResource DialogCard}" MaxWidth="960" HorizontalAlignment="Stretch" Margin="32">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,16">
                     <Button DockPanel.Dock="Right" Content="Close log" Command="{Binding CloseLogCommand}"
                             AutomationProperties.Name="Close log"
                             AutomationProperties.AutomationId="CloseLogButton" />
-                    <TextBlock FontWeight="SemiBold" VerticalAlignment="Center" Text="Session log (redacted, no secrets)" />
+                    <TextBlock FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" Text="Session log (redacted, no secrets)" />
                 </DockPanel>
                 <TextBox IsReadOnly="True"
                          TextWrapping="Wrap"
@@ -806,29 +923,35 @@
                          AutomationProperties.Name="Session log"
                          AutomationProperties.AutomationId="SessionLogView" />
             </DockPanel>
+            </Border>
         </Border>
-        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+        <Border Style="{StaticResource DialogHost}"
                 Panel.ZIndex="2"
                 Visibility="{Binding FirstRunVisible, Converter={StaticResource VisibleWhenTrue}}">
-            <StackPanel Margin="48" MaxWidth="640" VerticalAlignment="Center">
-                <TextBlock FontWeight="SemiBold" Text="WinOld Recovery" />
-                <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" Text="{Binding FirstRunBody}"
+            <Border Style="{StaticResource DialogCard}">
+            <StackPanel>
+                <TextBlock FontSize="22" FontWeight="SemiBold" Text="WinOld Recovery" />
+                <TextBlock Margin="0,16,0,0" Style="{StaticResource CaptionText}" Text="{Binding FirstRunBody}"
                            AutomationProperties.Name="First run explanation" />
-                <Button Margin="0,24,0,0" HorizontalAlignment="Left" Content="Continue"
+                <Button Margin="0,28,0,0" HorizontalAlignment="Left"
+                        Style="{StaticResource AccentButton}"
+                        Content="Continue"
                         Command="{Binding DismissFirstRunCommand}"
                         AutomationProperties.Name="Dismiss first run"
                         AutomationProperties.AutomationId="DismissFirstRunButton" />
             </StackPanel>
+            </Border>
         </Border>
-        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+        <Border Style="{StaticResource DialogHost}"
                 Panel.ZIndex="3"
                 Visibility="{Binding InterruptedRestoreVisible, Converter={StaticResource VisibleWhenTrue}}">
-            <StackPanel Margin="48" MaxWidth="640" VerticalAlignment="Center">
-                <TextBlock FontWeight="SemiBold" Text="Resume interrupted restore?" />
+            <Border Style="{StaticResource DialogCard}">
+            <StackPanel>
+                <TextBlock FontSize="20" FontWeight="SemiBold" Text="Resume interrupted restore?" />
                 <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" Text="{Binding InterruptedRestoreText}"
                            AutomationProperties.AutomationId="InterruptedRestoreText" />
-                <StackPanel Margin="0,24,0,0" Orientation="Horizontal">
-                    <Button Content="Resume"
+                <StackPanel Margin="0,28,0,0" Orientation="Horizontal">
+                    <Button Style="{StaticResource AccentButton}" Content="Resume"
                             Command="{Binding ResumeInterruptedCommand}"
                             AutomationProperties.Name="Resume interrupted restore"
                             AutomationProperties.AutomationId="ResumeInterruptedButton" />
@@ -838,16 +961,18 @@
                             AutomationProperties.AutomationId="DismissInterruptedButton" />
                 </StackPanel>
             </StackPanel>
+            </Border>
         </Border>
-        <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+        <Border Style="{StaticResource DialogHost}"
                 Panel.ZIndex="4"
                 Visibility="{Binding DiskFullVisible, Converter={StaticResource VisibleWhenTrue}}">
-            <StackPanel Margin="48" MaxWidth="640" VerticalAlignment="Center">
-                <TextBlock FontWeight="SemiBold" Text="Destination volume is full" />
+            <Border Style="{StaticResource DialogCard}">
+            <StackPanel>
+                <TextBlock FontSize="20" FontWeight="SemiBold" Text="Destination volume is full" />
                 <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" Text="{Binding DiskFullText}"
                            AutomationProperties.Name="Disk full explanation" />
-                <StackPanel Margin="0,24,0,0" Orientation="Horizontal">
-                    <Button Content="Resume"
+                <StackPanel Margin="0,28,0,0" Orientation="Horizontal">
+                    <Button Style="{StaticResource AccentButton}" Content="Resume"
                             Command="{Binding ResumeDiskFullCommand}"
                             AutomationProperties.Name="Resume restore after freeing space"
                             AutomationProperties.AutomationId="ResumeDiskFullButton" />
@@ -857,6 +982,7 @@
                             AutomationProperties.AutomationId="CancelDiskFullButton" />
                 </StackPanel>
             </StackPanel>
+            </Border>
         </Border>
     </Grid>
 </Window>

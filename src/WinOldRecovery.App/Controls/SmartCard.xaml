@@ -1,30 +1,37 @@
 <UserControl x:Class="WinOldRecovery.App.Controls.SmartCard"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <StackPanel>
-        <TextBlock FontWeight="SemiBold" Text="{Binding Title}" TextWrapping="Wrap" />
-        <TextBlock Margin="0,8,0,0" Text="What is this?" FontWeight="SemiBold" />
-        <TextBlock Text="{Binding What}" TextWrapping="Wrap" />
-        <TextBlock Margin="0,8,0,0" Text="Why does it matter?" FontWeight="SemiBold" />
-        <TextBlock Text="{Binding WhyItMatters}" TextWrapping="Wrap" />
-        <TextBlock Margin="0,8,0,0" Text="What is restored?" FontWeight="SemiBold" />
-        <TextBlock Text="{Binding WhatIsRestored}" TextWrapping="Wrap" />
-        <TextBlock Margin="0,8,0,0" Text="Can the cloud restore it?" FontWeight="SemiBold" />
-        <TextBlock Text="{Binding CloudAlternative}" TextWrapping="Wrap" />
-        <TextBlock Margin="0,8,0,0" Text="Does it regenerate?" FontWeight="SemiBold" />
-        <TextBlock Text="{Binding Regeneratable}" TextWrapping="Wrap" />
-        <TextBlock Margin="0,8,0,0" Text="If I leave it behind?" FontWeight="SemiBold" />
-        <TextBlock Text="{Binding IfLeftBehind}" TextWrapping="Wrap" />
-        <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding Components}">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <TextBlock Margin="0,4,0,0" TextWrapping="Wrap">
-                        <Run Text="{Binding Title, Mode=OneWay}" />
-                        <Run Text=" — " />
-                        <Run Text="{Binding Summary, Mode=OneWay}" />
-                    </TextBlock>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
-    </StackPanel>
+    <Border Style="{StaticResource CardBorder}" Margin="0">
+        <StackPanel>
+            <TextBlock FontSize="18" FontWeight="SemiBold" Text="{Binding Title}" TextWrapping="Wrap" />
+            <TextBlock Margin="0,16,0,0" Style="{StaticResource SectionLabel}" Text="What is this?" />
+            <TextBlock Text="{Binding What}" TextWrapping="Wrap" />
+            <TextBlock Style="{StaticResource SectionLabel}" Text="Why does it matter?" />
+            <TextBlock Text="{Binding WhyItMatters}" TextWrapping="Wrap" />
+            <TextBlock Style="{StaticResource SectionLabel}" Text="What is restored?" />
+            <TextBlock Text="{Binding WhatIsRestored}" TextWrapping="Wrap" />
+            <TextBlock Style="{StaticResource SectionLabel}" Text="Can the cloud restore it?" />
+            <TextBlock Text="{Binding CloudAlternative}" TextWrapping="Wrap" />
+            <TextBlock Style="{StaticResource SectionLabel}" Text="Does it regenerate?" />
+            <TextBlock Text="{Binding Regeneratable}" TextWrapping="Wrap" />
+            <TextBlock Style="{StaticResource SectionLabel}" Text="If I leave it behind?" />
+            <TextBlock Text="{Binding IfLeftBehind}" TextWrapping="Wrap" />
+            <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding Components}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Margin="0,0,0,8"
+                                Padding="10,8"
+                                CornerRadius="6"
+                                Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                            <TextBlock TextWrapping="Wrap">
+                                <Run FontWeight="SemiBold" Text="{Binding Title, Mode=OneWay}" />
+                                <Run Text=" — " />
+                                <Run Text="{Binding Summary, Mode=OneWay}" />
+                            </TextBlock>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </Border>
 </UserControl>

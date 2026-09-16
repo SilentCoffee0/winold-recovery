@@ -34,6 +34,7 @@ All notable changes to WinOld Recovery will be documented here.
 
 ### Added
 
+- The WPF shell uses Fluent control padding, a highlighted current step, card-styled overview items, wrapping command bars, and overlay dialog cards. High-contrast still uses `SystemColors` (no hardcoded Gray/hex chrome).
 - WSL restore with Registration on copies `ext4.vhdx` then records `wsl --shutdown` / `--import-in-place` against the recovered path only (never the file still inside Windows.old). Default-user commands stay listed on the card. L3 verify then records `wsl -l -v` and `wsl -d <name> -u root -- true`.
 - I7 watches `RestoreHarness` during a local CopyTree with `netstat -ano` and fails if that PID opens a non-loopback TCP/UDP remote.
 - FlaUI scan→decide→preview→restore→verify→purge on a browsed TEMP fixture passed 16 Sep 2026 (`tools/run-flaui-e2e.ps1`, 23.6 s). A second FlaUI case kills published `--restore` mid-copy and asserts the Resume overlay (27.2 s, two tests). The app refuses a volume-root `Windows.old*` smoke path, forces PreferManualDelete, and will not start the scan until the status line shows `Smoke fixture ready`. Still skipped in CI unless `RUN_FLAUI=1`.
