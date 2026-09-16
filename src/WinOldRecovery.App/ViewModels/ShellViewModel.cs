@@ -98,6 +98,7 @@ public sealed class ShellViewModel : ObservableObject
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         "Recovered");
     private bool helpVisible;
+    private bool aboutVisible;
     private bool firstRunVisible;
     private bool interruptedVisible;
     private string interruptedText = string.Empty;
@@ -268,6 +269,8 @@ public sealed class ShellViewModel : ObservableObject
         firstRunVisible = !this.firstRun.IsDismissed();
         OpenHelpCommand = new RelayCommand(OpenHelp);
         CloseHelpCommand = new RelayCommand(() => HelpVisible = false);
+        OpenAboutCommand = new RelayCommand(OpenAbout);
+        CloseAboutCommand = new RelayCommand(() => AboutVisible = false);
         ShowLogCommand = new RelayCommand(OpenLog);
         CloseLogCommand = new RelayCommand(() => LogVisible = false);
         DismissFirstRunCommand = new RelayCommand(DismissFirstRun);
@@ -338,6 +341,8 @@ public sealed class ShellViewModel : ObservableObject
     public IRelayCommand CreateSupportBundleCommand { get; }
     public IRelayCommand OpenHelpCommand { get; }
     public IRelayCommand CloseHelpCommand { get; }
+    public IRelayCommand OpenAboutCommand { get; }
+    public IRelayCommand CloseAboutCommand { get; }
     public IRelayCommand ShowLogCommand { get; }
     public IRelayCommand CloseLogCommand { get; }
     public IRelayCommand DismissFirstRunCommand { get; }
@@ -679,6 +684,14 @@ public sealed class ShellViewModel : ObservableObject
         get => helpVisible;
         private set => SetProperty(ref helpVisible, value);
     }
+
+    public bool AboutVisible
+    {
+        get => aboutVisible;
+        private set => SetProperty(ref aboutVisible, value);
+    }
+
+    public string AboutText { get; } = AppIdentity.Format(AppIdentity.Current);
 
     public bool FirstRunVisible
     {
@@ -1456,12 +1469,19 @@ public sealed class ShellViewModel : ObservableObject
 
     public void OpenHelp()
     {
+        AboutVisible = false;
         HelpVisible = true;
         SelectedHelpTopic ??= HelpTopics[0];
         if (selectedHelpTopic is HelpTopic topic)
         {
             LoadHelp(topic);
         }
+    }
+
+    public void OpenAbout()
+    {
+        HelpVisible = false;
+        AboutVisible = true;
     }
 
     private void LoadHelp(HelpTopic topic)

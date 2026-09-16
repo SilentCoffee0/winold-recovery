@@ -1196,6 +1196,15 @@ public sealed class ShellViewModelTests
         Assert.True(context.ViewModel.LogVisible);
         Assert.DoesNotContain("WINOLD_RECOVERY_CANARY_DO_NOT_LOG_7F3A91", context.ViewModel.LogText, StringComparison.Ordinal);
 
+        context.ViewModel.OpenAboutCommand.Execute(null);
+        Assert.True(context.ViewModel.AboutVisible);
+        Assert.False(context.ViewModel.HelpVisible);
+        Assert.Contains("0.1.0", context.ViewModel.AboutText, StringComparison.Ordinal);
+        Assert.Contains("independent community project", context.ViewModel.AboutText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not affiliated", context.ViewModel.AboutText, StringComparison.OrdinalIgnoreCase);
+        context.ViewModel.CloseAboutCommand.Execute(null);
+        Assert.False(context.ViewModel.AboutVisible);
+
         context.ViewModel.SetWindowWidth(1100);
         Assert.True(context.ViewModel.CompactLayout);
         context.ViewModel.ShowInspectCommand.Execute(null);

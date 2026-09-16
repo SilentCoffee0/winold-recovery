@@ -1,0 +1,31 @@
+<Project>
+  <Target Name="StampGitIdentity"
+          BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec Command="git rev-parse HEAD"
+          WorkingDirectory="$(MSBuildThisFileDirectory)"
+          ConsoleToMSBuild="true"
+          IgnoreExitCode="true"
+          StandardOutputImportance="Low"
+          StandardErrorImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitHead" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitHeadExit" />
+    </Exec>
+    <Exec Command="git log -1 --format=%cs"
+          WorkingDirectory="$(MSBuildThisFileDirectory)"
+          ConsoleToMSBuild="true"
+          IgnoreExitCode="true"
+          StandardOutputImportance="Low"
+          StandardErrorImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitCommitDate" />
+    </Exec>
+    <PropertyGroup>
+      <_GitHead>$(_GitHead.Trim())</_GitHead>
+      <_GitCommitDate>$(_GitCommitDate.Trim())</_GitCommitDate>
+      <SourceRevisionId Condition="'$(_GitHeadExit)' == '0' and '$(_GitHead)' != '' and !($(_GitHead.Contains(' ')))">$(_GitHead)</SourceRevisionId>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(_GitCommitDate)' != '' and $([System.Text.RegularExpressions.Regex]::IsMatch('$(_GitCommitDate)', '^\d{4}-\d{2}-\d{2}$'))">
+      <AssemblyMetadata Include="BuildDate" Value="$(_GitCommitDate)" />
+    </ItemGroup>
+  </Target>
+</Project>

@@ -123,7 +123,7 @@ public partial class App : Application
                                 created.SessionId,
                                 startedAt,
                                 "Created",
-                                typeof(App).Assembly.GetName().Version?.ToString() ?? "0.1.0"))
+                                typeof(App).Assembly.GetName().Version?.ToString(3) ?? AppIdentity.Current.Version))
                         .GetAwaiter()
                         .GetResult();
                     return (created, opened);
@@ -192,7 +192,7 @@ public partial class App : Application
                                 created.SessionId,
                                 startedAt,
                                 "Created",
-                                typeof(App).Assembly.GetName().Version?.ToString() ?? "0.1.0"))
+                                typeof(App).Assembly.GetName().Version?.ToString(3) ?? AppIdentity.Current.Version))
                         .ConfigureAwait(false);
                     return (created, opened);
                 });

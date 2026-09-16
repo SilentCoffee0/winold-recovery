@@ -184,6 +184,9 @@
                     <Button Style="{StaticResource QuietButton}" Content="Log" Command="{Binding ShowLogCommand}" Margin="0,0,8,0"
                             AutomationProperties.Name="Open session log"
                             AutomationProperties.AutomationId="LogButton" />
+                    <Button Style="{StaticResource QuietButton}" Content="About" Command="{Binding OpenAboutCommand}" Margin="0,0,8,0"
+                            AutomationProperties.Name="Open about"
+                            AutomationProperties.AutomationId="AboutButton" />
                     <Button Style="{StaticResource QuietButton}" Content="Help" Command="{Binding OpenHelpCommand}"
                             AutomationProperties.Name="Open help"
                             AutomationProperties.AutomationId="HelpButton" />
@@ -1017,6 +1020,27 @@
                          AutomationProperties.Name="Session log"
                          AutomationProperties.AutomationId="SessionLogView" />
             </DockPanel>
+            </Border>
+        </Border>
+        <Border Style="{StaticResource DialogHost}"
+                Panel.ZIndex="1"
+                Visibility="{Binding AboutVisible, Converter={StaticResource VisibleWhenTrue}}">
+            <Border Style="{StaticResource DialogCard}" MaxWidth="640" HorizontalAlignment="Stretch" Margin="32">
+            <StackPanel>
+                <DockPanel Margin="0,0,0,16">
+                    <Button DockPanel.Dock="Right" Content="Close about" Command="{Binding CloseAboutCommand}"
+                            AutomationProperties.Name="Close about"
+                            AutomationProperties.AutomationId="CloseAboutButton" />
+                    <TextBlock FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" Text="About WinOld Recovery" />
+                </DockPanel>
+                <TextBox IsReadOnly="True"
+                         TextWrapping="Wrap"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         Text="{Binding AboutText, Mode=OneWay}"
+                         AutomationProperties.Name="About WinOld Recovery"
+                         AutomationProperties.AutomationId="AboutText" />
+            </StackPanel>
             </Border>
         </Border>
         <Border Style="{StaticResource DialogHost}"

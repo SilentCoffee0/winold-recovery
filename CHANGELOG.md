@@ -17,6 +17,7 @@ All notable changes to WinOld Recovery will be documented here.
 - Anki L3 verify opens the restored `collection.anki2` for `PRAGMA integrity_check` and note-count compare, checks dest media file count against the source (excluding `media.trash`), and fails if the newest `.colpkg` was planned but missing.
 - VS Code L3 verify requires dest `install-extensions-<cli>.cmd` to list every source extension id.
 - SSH L3 verify runs `ssh -G localhost` against the restored `.ssh` folder when ssh.exe answers. Missing ssh skips the process check. Game-save cards also restore `Program Files (x86)\Steam\userdata` into `Saved Games\Steam userdata`, Steam library `steamapps\common` save folders, and LocalLow publisher / Steam-compatible folders. After a walker checkpoint, those Steam library folders come from the node index instead of listing every title. Firefox help documents `logins.db` next to `logins.json`. Thunderbird copies `logins.db` with `key4.db` the same way.
+- About (next to Log and Help) shows version 0.1.0, the git commit when the build stamped SourceRevisionId, the commit date, and the independent-project trademark note.
 - Zotero, Calibre Library, Joplin, and Logseq graphs are recipe cards. Verify requires the catalog file (`zotero.sqlite`, `metadata.db`, `database.sqlite`, or `config.edn`). After a walker checkpoint, Zotero/Calibre/Logseq folders come from the node index.
 
 ### Fixed

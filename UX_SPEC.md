@@ -30,7 +30,7 @@ Guiding rules:
 - **Status strip** (always visible):
   - Source-integrity indicator: "● Windows.old untouched" (green) until purge; during purge "Deleting…"; after purge "Windows.old removed".
   - Space budget: bytes selected for restore vs. free space on the destination volume(s). Turns amber at 90 % of free space minus the safety margin, red when it does not fit.
-  - Log button opens the session log viewer (secret-free).
+  - Log, About, and Help buttons. About shows the version (from the git tag when present), commit, build date, and the independent-project trademark note.
 - **Window title** includes the source path and step, so screenshots posted in support threads are self-explanatory.
 - **Elevation**: the app runs elevated. On launch it explains why in one sentence in the About/first-run dialog ("Files in Windows.old belong to a user account that no longer exists; reading them needs administrator rights.").
 
