@@ -37,7 +37,8 @@ public sealed record DestinationContext(
     string DestinationProfileRoot,
     string SessionExportsDirectory,
     SafeFs SafeFs,
-    IProcessRunner ProcessRunner);
+    IProcessRunner ProcessRunner,
+    string? SessionTemporaryDirectory = null);
 
 public enum RecipeWriteKind
 {

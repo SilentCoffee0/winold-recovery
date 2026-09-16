@@ -52,10 +52,8 @@ internal static class FirefoxVerify
 
             SqliteConnection.ClearAllPools();
             (int count, _) = SqliteExports.FirefoxBookmarks(copy);
-            if (!int.TryParse(
-                    plan.Card.Facts.GetValueOrDefault("bookmarkCount"),
-                    out int expected) ||
-                count != expected)
+            int expected = CountSourceBookmarks(plan, places);
+            if (count != expected)
             {
                 return new RecipeVerifyResult(false, "Bookmark count does not match the source");
             }
@@ -144,6 +142,24 @@ internal static class FirefoxVerify
         }
 
         return null;
+    }
+
+    private static int CountSourceBookmarks(PlanResult plan, RecipeWrite places)
+    {
+        if (places.SourcePath is string source && File.Exists(source))
+        {
+            string copy = CopyPlaces(plan, source);
+            (int expected, _) = SqliteExports.FirefoxBookmarks(copy);
+            SqliteConnection.ClearAllPools();
+            return expected;
+        }
+
+        if (int.TryParse(plan.Card.Facts.GetValueOrDefault("bookmarkCount"), out int fromFacts))
+        {
+            return fromFacts;
+        }
+
+        return -1;
     }
 
     private static string CopyPlaces(PlanResult plan, string destinationPlaces)

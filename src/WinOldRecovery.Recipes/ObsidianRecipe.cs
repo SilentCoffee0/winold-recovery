@@ -79,8 +79,40 @@ public sealed class ObsidianRecipe : IRecipe
         return Task.CompletedTask;
     }
 
-    public RecipeVerifyResult Verify(PlanResult plan) =>
-        DetectorWalk.FilesPresent(plan, "Obsidian vault present", "Obsidian vault missing");
+    public RecipeVerifyResult Verify(PlanResult plan)
+    {
+        RecipeVerifyResult present = DetectorWalk.FilesPresent(
+            plan,
+            "Obsidian vault present",
+            "Obsidian vault missing");
+        if (!present.Ok || plan.Writes.Count == 0)
+        {
+            return present;
+        }
+
+        return DestinationHasObsidianFolder(plan)
+            ? present
+            : new RecipeVerifyResult(false, "Obsidian destination missing .obsidian");
+    }
+
+    private static bool DestinationHasObsidianFolder(PlanResult plan)
+    {
+        foreach (RecipeWrite write in plan.Writes)
+        {
+            string? directory = Path.GetDirectoryName(write.DestinationPath);
+            while (!string.IsNullOrEmpty(directory))
+            {
+                if (Directory.Exists(Path.Combine(directory, ".obsidian")))
+                {
+                    return true;
+                }
+
+                directory = Path.GetDirectoryName(directory);
+            }
+        }
+
+        return false;
+    }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite("Obsidian", "Close Obsidian before restoring a vault.")];

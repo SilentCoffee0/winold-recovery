@@ -70,6 +70,7 @@ public sealed class RecipeHost
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 progress?.Report(recipe.Id);
+                await Task.Yield();
                 DetectResult detected = recipe.Detect(context);
                 foreach (RecipeCard card in detected.Cards)
                 {

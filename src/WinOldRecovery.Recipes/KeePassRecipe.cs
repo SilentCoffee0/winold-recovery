@@ -86,8 +86,36 @@ public sealed class KeePassRecipe : IRecipe
         return Task.CompletedTask;
     }
 
-    public RecipeVerifyResult Verify(PlanResult plan) =>
-        DetectorWalk.FilesPresent(plan, "KeePass files present", "KeePass destination missing");
+    public RecipeVerifyResult Verify(PlanResult plan)
+    {
+        if (plan.Writes.Count > 0 &&
+            plan.Card.Facts.TryGetValue("keys", out string? packed) &&
+            !string.IsNullOrEmpty(packed))
+        {
+            RecipeWrite? vault = plan.Writes.FirstOrDefault(static write =>
+            {
+                string extension = Path.GetExtension(write.DestinationPath);
+                return extension.Equals(".kdbx", StringComparison.OrdinalIgnoreCase) ||
+                       extension.Equals(".kdb", StringComparison.OrdinalIgnoreCase);
+            });
+            string? directory = Path.GetDirectoryName(vault?.DestinationPath);
+            if (string.IsNullOrEmpty(directory))
+            {
+                return new RecipeVerifyResult(false, "KeePass key file missing");
+            }
+
+            foreach (string key in packed.Split('|', StringSplitOptions.RemoveEmptyEntries))
+            {
+                string destKey = Path.Combine(directory, Path.GetFileName(key));
+                if (!File.Exists(destKey))
+                {
+                    return new RecipeVerifyResult(false, "KeePass key file missing");
+                }
+            }
+        }
+
+        return DetectorWalk.FilesPresent(plan, "KeePass files present", "KeePass destination missing");
+    }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) => [];
 

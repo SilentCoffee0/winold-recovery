@@ -100,8 +100,54 @@ public sealed class TerminalRecipe : IRecipe
         return Task.CompletedTask;
     }
 
-    public RecipeVerifyResult Verify(PlanResult plan) =>
-        DetectorWalk.FilesPresent(plan, "Terminal settings present", "Terminal settings missing");
+    public RecipeVerifyResult Verify(PlanResult plan)
+    {
+        RecipeVerifyResult present = DetectorWalk.FilesPresent(
+            plan,
+            "Terminal settings present",
+            "Terminal settings missing");
+        if (!present.Ok)
+        {
+            return present;
+        }
+
+        foreach (RecipeWrite write in plan.Writes)
+        {
+            if (!Path.GetFileName(write.DestinationPath)
+                    .Equals("settings.from-windows-old.json", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string? directory = Path.GetDirectoryName(write.DestinationPath);
+            if (string.IsNullOrEmpty(directory))
+            {
+                continue;
+            }
+
+            string live = Path.Combine(directory, "settings.json");
+            if (!File.Exists(live))
+            {
+                return new RecipeVerifyResult(false, "Terminal existing settings.json missing");
+            }
+
+            if (write.SourcePath is string source &&
+                File.Exists(source) &&
+                FilesMatch(source, live))
+            {
+                return new RecipeVerifyResult(false, "Windows Terminal overwrote existing settings.json");
+            }
+        }
+
+        return present;
+    }
+
+    private static bool FilesMatch(string left, string right)
+    {
+        byte[] leftBytes = File.ReadAllBytes(left);
+        byte[] rightBytes = File.ReadAllBytes(right);
+        return leftBytes.AsSpan().SequenceEqual(rightBytes);
+    }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite("WindowsTerminal", "Close Windows Terminal before replacing settings.")];

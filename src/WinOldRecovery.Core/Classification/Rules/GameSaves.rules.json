@@ -88,6 +88,14 @@
       "why": "Riot Games client or title data.",
       "suggestedDefault": "Restore",
       "pathContains": ["\\Riot Games\\"]
+    },
+    {
+      "id": "steam-compatible-saves",
+      "kind": "GameSave",
+      "badge": "Game save",
+      "why": "Steam-compatible save folder found in AppData.",
+      "suggestedDefault": "Restore",
+      "pathContains": ["\\Goldberg SteamEmu Saves", "\\GSE Saves", "\\CODEX\\", "\\SmartSteamEmu\\"]
     }
   ]
 }

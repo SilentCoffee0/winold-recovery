@@ -101,8 +101,28 @@ public sealed class OutlookRecipe : IRecipe
         return Task.CompletedTask;
     }
 
-    public RecipeVerifyResult Verify(PlanResult plan) =>
-        DetectorWalk.FilesPresent(plan, "Outlook files present", "Outlook destination missing");
+    public RecipeVerifyResult Verify(PlanResult plan)
+    {
+        if (plan.Card.Facts.TryGetValue("kind", out string? kind) &&
+            kind.Equals("ost", StringComparison.OrdinalIgnoreCase))
+        {
+            if (plan.Writes.Count > 0)
+            {
+                return new RecipeVerifyResult(false, "Outlook OST must not be restored");
+            }
+
+            return new RecipeVerifyResult(true, "OST left behind");
+        }
+
+        if (plan.Writes.Any(static write =>
+                Path.GetExtension(write.DestinationPath)
+                    .Equals(".ost", StringComparison.OrdinalIgnoreCase)))
+        {
+            return new RecipeVerifyResult(false, "Outlook OST must not be restored");
+        }
+
+        return DetectorWalk.FilesPresent(plan, "Outlook files present", "Outlook destination missing");
+    }
 
     public IReadOnlyList<Prerequisite> Prerequisites(PlanResult plan) =>
         [new Prerequisite("outlook", "Close Outlook before opening a restored PST.")];

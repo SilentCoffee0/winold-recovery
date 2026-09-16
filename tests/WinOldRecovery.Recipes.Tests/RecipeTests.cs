@@ -1634,8 +1634,25 @@ public sealed class RecipeTests
         await host.ExecuteAsync("session-1", recipe, plan);
         Assert.True(recipe.Verify(plan).Ok);
 
-        Dictionary<string, string> wrongCount = new(plan.Card.Facts) { ["bookmarkCount"] = "99" };
-        Assert.False(recipe.Verify(plan with { Card = plan.Card with { Facts = wrongCount } }).Ok);
+        string destPlaces = Path.Combine(
+            context.Destination,
+            "AppData",
+            "Roaming",
+            "Mozilla",
+            "Firefox",
+            "Profiles",
+            "l3.default-recovered",
+            "places.sqlite");
+        File.Delete(destPlaces);
+        WriteSqlite(
+            destPlaces,
+            """
+            CREATE TABLE moz_places(id INTEGER PRIMARY KEY, url TEXT, title TEXT, hidden INTEGER DEFAULT 0);
+            CREATE TABLE moz_bookmarks(id INTEGER PRIMARY KEY, type INTEGER, fk INTEGER, title TEXT, parent INTEGER);
+            """);
+        Assert.False(recipe.Verify(plan).Ok);
+        File.Copy(Path.Combine(firefox, "places.sqlite"), destPlaces, overwrite: true);
+        Assert.True(recipe.Verify(plan).Ok);
 
         string destLogins = Path.Combine(
             context.Destination,
@@ -2782,7 +2799,6 @@ public sealed class RecipeTests
         RecipeCard chromeCard = cards.Single(card => card.RecipeId == "chrome");
         string dump = string.Join(';', chromeCard.Facts.Values);
         Assert.DoesNotContain(Canary, dump, StringComparison.Ordinal);
-        Assert.Contains("Alice Fixture", chromeCard.Facts["autofillCsv"], StringComparison.Ordinal);
         Assert.DoesNotContain(chromeCard.Components, component => component.Key == "bookmarks-transplant");
 
         ChromiumRecipe recipe = (ChromiumRecipe)RecipeCatalog.All.Single(item => item.Id == "chrome");
@@ -3027,6 +3043,7 @@ public sealed class RecipeTests
                 "settings.json"),
             """{"profiles":{}}""");
         Directory.CreateDirectory(Path.Combine(alice, "Documents", "Notes", ".obsidian"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "Documents", "Notes", ".obsidian", "app.json"), "{}");
         await File.WriteAllTextAsync(Path.Combine(alice, "Documents", "Notes", "welcome.md"), "hello");
         Directory.CreateDirectory(Path.Combine(alice, "Desktop"));
         await File.WriteAllTextAsync(Path.Combine(alice, "Desktop", "backup.pst"), "desktop-pst");
@@ -3034,6 +3051,12 @@ public sealed class RecipeTests
         await File.WriteAllTextAsync(Path.Combine(alice, "Documents", "Outlook Files", "archive.pst"), "pst");
         Directory.CreateDirectory(Path.Combine(alice, "AppData", "Local", "Microsoft", "Outlook"));
         await File.WriteAllTextAsync(Path.Combine(alice, "AppData", "Local", "Microsoft", "Outlook", "user.ost"), "ost");
+        Directory.CreateDirectory(Path.Combine(alice, "Saved Games", "SomeTitle"));
+        await File.WriteAllTextAsync(Path.Combine(alice, "Saved Games", "SomeTitle", "slot.sav"), "save");
+        Directory.CreateDirectory(Path.Combine(alice, "AppData", "Roaming", "Goldberg SteamEmu Saves", "AppId"));
+        await File.WriteAllTextAsync(
+            Path.Combine(alice, "AppData", "Roaming", "Goldberg SteamEmu Saves", "AppId", "achievements.json"),
+            "{}");
         Directory.CreateDirectory(Path.Combine(context.Destination, "AppData", "Local", "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState"));
         await File.WriteAllTextAsync(
             Path.Combine(context.Destination, "AppData", "Local", "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState", "settings.json"),
@@ -3105,7 +3128,14 @@ public sealed class RecipeTests
         await host.ExecuteAsync("session-1", new KeePassRecipe(), keepassPlan);
         Assert.True(new KeePassRecipe().Verify(keepassPlan).Ok);
         Assert.True(File.Exists(Path.Combine(context.Destination, "Documents", "Passwords", "fixture.kdbx")));
-        Assert.True(File.Exists(Path.Combine(context.Destination, "Documents", "Passwords", "fixture.keyx")));
+        string destKeyx = Path.Combine(context.Destination, "Documents", "Passwords", "fixture.keyx");
+        Assert.True(File.Exists(destKeyx));
+        File.Delete(destKeyx);
+        RecipeVerifyResult missingKey = new KeePassRecipe().Verify(keepassPlan);
+        Assert.False(missingKey.Ok);
+        Assert.Contains("key", missingKey.Detail, StringComparison.OrdinalIgnoreCase);
+        await File.WriteAllTextAsync(destKeyx, "key");
+        Assert.True(new KeePassRecipe().Verify(keepassPlan).Ok);
 
         RecipeCard vscode = Assert.Single(cards, card => card.RecipeId == "vscode");
         PlanResult vscodePlan = host.PlanCard(new VsCodeRecipe(), vscode, Dest(context));
@@ -3133,14 +3163,33 @@ public sealed class RecipeTests
         PlanResult terminalPlan = host.PlanCard(new TerminalRecipe(), terminal, Dest(context));
         await host.ExecuteAsync("session-1", new TerminalRecipe(), terminalPlan);
         Assert.True(new TerminalRecipe().Verify(terminalPlan).Ok);
+        string destSettings = Path.Combine(context.Destination, "AppData", "Local", "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState", "settings.json");
         Assert.True(File.Exists(Path.Combine(context.Destination, "AppData", "Local", "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState", "settings.from-windows-old.json")));
-        Assert.Contains("existing", await File.ReadAllTextAsync(Path.Combine(context.Destination, "AppData", "Local", "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState", "settings.json")), StringComparison.Ordinal);
+        Assert.Contains("existing", await File.ReadAllTextAsync(destSettings), StringComparison.Ordinal);
+        string terminalSource = Assert.Single(terminalPlan.Writes).SourcePath!;
+        await File.WriteAllTextAsync(destSettings, await File.ReadAllTextAsync(terminalSource));
+        RecipeVerifyResult clobberedSettings = new TerminalRecipe().Verify(terminalPlan);
+        Assert.False(clobberedSettings.Ok);
+        Assert.Contains("overwrote", clobberedSettings.Detail, StringComparison.OrdinalIgnoreCase);
+        await File.WriteAllTextAsync(destSettings, """{"existing":true}""");
+        Assert.True(new TerminalRecipe().Verify(terminalPlan).Ok);
 
         RecipeCard obsidian = Assert.Single(cards, card => card.RecipeId == "obsidian");
         PlanResult obsidianPlan = host.PlanCard(new ObsidianRecipe(), obsidian, Dest(context));
         await host.ExecuteAsync("session-1", new ObsidianRecipe(), obsidianPlan);
         Assert.True(new ObsidianRecipe().Verify(obsidianPlan).Ok);
         Assert.True(File.Exists(Path.Combine(context.Destination, "Documents", "Notes", "welcome.md")));
+        Directory.Delete(Path.Combine(context.Destination, "Documents", "Notes", ".obsidian"), true);
+        PlanResult notesWithoutConfig = obsidianPlan with
+        {
+            Writes = obsidianPlan.Writes
+                .Where(static write =>
+                    write.DestinationPath.IndexOf(".obsidian", StringComparison.OrdinalIgnoreCase) < 0)
+                .ToArray(),
+        };
+        RecipeVerifyResult missingVaultConfig = new ObsidianRecipe().Verify(notesWithoutConfig);
+        Assert.False(missingVaultConfig.Ok);
+        Assert.Contains(".obsidian", missingVaultConfig.Detail, StringComparison.Ordinal);
 
         Assert.Equal(2, cards.Count(card => card.RecipeId == "outlook" && card.Facts["kind"] == "pst"));
         RecipeCard archivePst = Assert.Single(
@@ -3160,6 +3209,36 @@ public sealed class RecipeTests
         RecipeCard ost = Assert.Single(cards, card => card.Title.Contains("OST", StringComparison.Ordinal));
         PlanResult ostPlan = host.PlanCard(new OutlookRecipe(), ost, Dest(context));
         Assert.Empty(ostPlan.Writes);
+        RecipeVerifyResult ostVerify = new OutlookRecipe().Verify(ostPlan);
+        Assert.True(ostVerify.Ok);
+        Assert.Contains("OST", ostVerify.Detail, StringComparison.Ordinal);
+        PlanResult leakedOst = ostPlan with
+        {
+            Writes =
+            [
+                new RecipeWrite(
+                    RecipeWriteKind.CopyFile,
+                    ost.Facts["source"],
+                    Path.Combine(context.Destination, "AppData", "Local", "Microsoft", "Outlook", "user.ost"),
+                    null,
+                    1,
+                    "mail"),
+            ],
+        };
+        RecipeVerifyResult ostCopied = new OutlookRecipe().Verify(leakedOst);
+        Assert.False(ostCopied.Ok);
+        Assert.Contains("OST", ostCopied.Detail, StringComparison.Ordinal);
+
+        RecipeCard savedGames = Assert.Single(
+            cards,
+            card => card.RecipeId == "game-saves" && card.Title.Contains("Saved Games", StringComparison.Ordinal));
+        PlanResult gamesPlan = host.PlanCard(new GameSavesRecipe(), savedGames, Dest(context));
+        await host.ExecuteAsync("session-1", new GameSavesRecipe(), gamesPlan);
+        Assert.True(new GameSavesRecipe().Verify(gamesPlan).Ok);
+        Assert.True(File.Exists(Path.Combine(context.Destination, "Saved Games", "SomeTitle", "slot.sav")));
+        Assert.Contains(
+            cards,
+            card => card.RecipeId == "game-saves" && card.Title.Contains("Steam-compatible", StringComparison.Ordinal));
     }
 
     private static string CreateCertificatePem()
@@ -3178,7 +3257,7 @@ public sealed class RecipeTests
 
     private static DestinationContext Dest(RecipeContext context)
     {
-        return new DestinationContext(context.Destination, context.Exports, context.SafeFs, context.Runner);
+        return new DestinationContext(context.Destination, context.Exports, context.SafeFs, context.Runner, context.Temp);
     }
 
     private static async Task<(GitRecipe Recipe, PlanResult Plan)> RestoreGitRepoAsync(

@@ -256,6 +256,24 @@ public partial class App : Application
                     logger?.LogError(exception, "Interrupted-restore overlay was skipped.");
                 }
             }
+            else
+            {
+                try
+                {
+                    CompletedScanPointer? lastScan = CompletedScan.TryRead(
+                        safeFs,
+                        CompletedScan.PointerPathFromWorkspace(createdWorkspace.RootPath));
+                    if (lastScan is not null)
+                    {
+                        viewModel.OfferCompletedScan(lastScan);
+                    }
+                }
+                catch (Exception exception) when (
+                    exception is not OutOfMemoryException and not StackOverflowException)
+                {
+                    logger?.LogError(exception, "Last-scan overlay was skipped.");
+                }
+            }
 
             ApplyOptionalSmokeFixture(viewModel);
 
@@ -267,7 +285,8 @@ public partial class App : Application
             // schtasks /Query used to block first paint (15 s timeout). Discover
             // after Show, and skip it when smoke/resume already picked a source.
             if (string.IsNullOrEmpty(viewModel.SelectedSourcePath) &&
-                !viewModel.InterruptedRestoreVisible)
+                !viewModel.InterruptedRestoreVisible &&
+                !viewModel.CompletedScanVisible)
             {
                 await viewModel.LoadSourcesAsync().ConfigureAwait(true);
             }
@@ -412,11 +431,17 @@ public partial class App : Application
         {
             logger?.LogInformation("Session closed normally.");
         }
-        if (sessionDatabase is not null)
+        SessionDb? database = sessionDatabase;
+        if (MainWindow is MainWindow window)
+        {
+            database = window.ViewModel.SessionDatabase;
+        }
+
+        if (database is not null)
         {
             try
             {
-                sessionDatabase.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2));
+                database.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2));
             }
             catch (Exception exception) when (
                 exception is not OutOfMemoryException and not StackOverflowException)

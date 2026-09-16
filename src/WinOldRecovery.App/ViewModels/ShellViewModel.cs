@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WinOldRecovery.App;
@@ -45,16 +46,17 @@ public enum SubfolderPolicy
 
 public sealed class ShellViewModel : ObservableObject
 {
-    private readonly SessionDb sessionDb;
-    private readonly SessionWorkspace workspace;
+    private SessionDb sessionDb;
+    private SessionWorkspace workspace;
     private readonly SourceDiscovery sourceDiscovery;
-    private readonly ScanOrchestrator scanOrchestrator;
+    private ScanOrchestrator scanOrchestrator;
     private readonly IProcessRunner processRunner;
     private readonly SafeFs safeFs;
     private readonly SourceGuard sourceGuard;
-    private readonly RecipeHost? recipeHost;
-    private readonly DecisionEngine decisionEngine;
-    private readonly NodeBrowser nodeBrowser;
+    private RecipeHost? recipeHost;
+    private DecisionEngine decisionEngine;
+    private NodeBrowser nodeBrowser;
+    private readonly IReadOnlyList<IRecipe> recipeCatalog;
     private readonly IReadOnlyList<ClassificationRule> classificationRules = ClassificationRuleCatalog.LoadEmbedded();
     private readonly FirstRunState firstRun;
     private readonly LocalHelp localHelp;
@@ -117,6 +119,9 @@ public sealed class ShellViewModel : ObservableObject
     private bool scanAbortRequested;
     private string? pausedSourcePath;
     private string sourceHint = string.Empty;
+    private CompletedScanPointer? lastScanPointer;
+    private bool completedScanVisible;
+    private string completedScanText = string.Empty;
     private readonly IFolderPicker folderPicker;
     private readonly ITextClipboard textClipboard;
     private readonly IProcessPresence processPresence;
@@ -167,8 +172,9 @@ public sealed class ShellViewModel : ObservableObject
         this.processRunner = processRunner;
         this.safeFs = safeFs;
         this.sourceGuard = sourceGuard;
-        recipeHost = recipes is { Count: > 0 }
-            ? new RecipeHost(sessionDb, safeFs, processRunner, recipes)
+        recipeCatalog = recipes ?? [];
+        recipeHost = recipeCatalog.Count > 0
+            ? new RecipeHost(sessionDb, safeFs, processRunner, recipeCatalog)
             : null;
         decisionEngine = new DecisionEngine(sessionDb, workspace.SessionId);
         nodeBrowser = new NodeBrowser(sessionDb, workspace.SessionId);
@@ -200,18 +206,22 @@ public sealed class ShellViewModel : ObservableObject
             static card => card is { ShowVerbs: true });
         AnalyzeGitCommand = new AsyncRelayCommand(AnalyzeGitAsync, CanAnalyzeGit);
         ExpandCommand = new RelayCommand<TreeNodeRow>(Expand);
-        ShowCardsCommand = new RelayCommand(() =>
-        {
-            compactInspect = false;
-            DecidePane = DecidePane.Cards;
-            OnPropertyChanged(nameof(CompactInspect));
-        });
-        ShowFilesCommand = new RelayCommand(() =>
-        {
-            compactInspect = false;
-            DecidePane = DecidePane.Files;
-            OnPropertyChanged(nameof(CompactInspect));
-        });
+        ShowCardsCommand = new RelayCommand(
+            () =>
+            {
+                compactInspect = false;
+                DecidePane = DecidePane.Cards;
+                OnPropertyChanged(nameof(CompactInspect));
+            },
+            () => !IsScanning && scanCompleted);
+        ShowFilesCommand = new RelayCommand(
+            () =>
+            {
+                compactInspect = false;
+                DecidePane = DecidePane.Files;
+                OnPropertyChanged(nameof(CompactInspect));
+            },
+            () => !IsScanning && scanCompleted);
         ShowInspectCommand = new RelayCommand(() =>
         {
             compactInspect = true;
@@ -265,6 +275,10 @@ public sealed class ShellViewModel : ObservableObject
             ResumeInterruptedAsync,
             () => CanWriteSession && lastPlan is not null && !isRestoring);
         DismissInterruptedCommand = new RelayCommand(DismissInterrupted);
+        ContinueLastScanCommand = new AsyncRelayCommand(
+            ContinueLastScanAsync,
+            () => CanWriteSession && lastScanPointer is not null && !IsScanning);
+        DismissLastScanCommand = new RelayCommand(DismissLastScan);
         BrowseDestinationCommand = new RelayCommand(BrowseDestination, () => CanWriteSession);
         ResumeDiskFullCommand = new AsyncRelayCommand(
             ResumeDiskFullAsync,
@@ -284,6 +298,8 @@ public sealed class ShellViewModel : ObservableObject
         destinationByRelPath = DestinationMap.Parse(sessionDb.GetKv(workspace.SessionId, DestinationMap.KvKey));
         ApplySessionLockFromStore();
     }
+
+    public SessionDb SessionDatabase => sessionDb;
 
     public IAsyncRelayCommand ScanCommand { get; }
     public IRelayCommand CancelScanCommand { get; }
@@ -327,6 +343,8 @@ public sealed class ShellViewModel : ObservableObject
     public IRelayCommand DismissFirstRunCommand { get; }
     public IAsyncRelayCommand ResumeInterruptedCommand { get; }
     public IRelayCommand DismissInterruptedCommand { get; }
+    public IAsyncRelayCommand ContinueLastScanCommand { get; }
+    public IRelayCommand DismissLastScanCommand { get; }
     public IRelayCommand BrowseDestinationCommand { get; }
     public IAsyncRelayCommand ResumeDiskFullCommand { get; }
     public IRelayCommand CancelDiskFullCommand { get; }
@@ -678,6 +696,18 @@ public sealed class ShellViewModel : ObservableObject
     {
         get => interruptedText;
         private set => SetProperty(ref interruptedText, value);
+    }
+
+    public bool CompletedScanVisible
+    {
+        get => completedScanVisible;
+        private set => SetProperty(ref completedScanVisible, value);
+    }
+
+    public string CompletedScanText
+    {
+        get => completedScanText;
+        private set => SetProperty(ref completedScanText, value);
     }
 
     public bool DiskFullVisible
@@ -1529,6 +1559,8 @@ public sealed class ShellViewModel : ObservableObject
         safeFs.CreateDirectory(destination);
         PreferCleanupHandler = false;
         InterruptedRestoreVisible = false;
+        CompletedScanVisible = false;
+        lastScanPointer = null;
         CurrentStep = WorkflowStep.Scan;
         SourceCandidate candidate = sourceDiscovery.InspectBrowsedPath(source, cleanupTaskPresent: false);
         if (!Sources.Any(existing => existing.Path.Equals(candidate.Path, StringComparison.OrdinalIgnoreCase)))
@@ -1633,6 +1665,180 @@ public sealed class ShellViewModel : ObservableObject
     private void DismissInterrupted()
     {
         InterruptedRestoreVisible = false;
+    }
+
+    public void OfferCompletedScan(CompletedScanPointer pointer)
+    {
+        ArgumentNullException.ThrowIfNull(pointer);
+        lastScanPointer = pointer;
+        if (!string.IsNullOrWhiteSpace(pointer.SourceRoot) &&
+            Directory.Exists(pointer.SourceRoot) &&
+            Sources.All(existing => !existing.Path.Equals(pointer.SourceRoot, StringComparison.OrdinalIgnoreCase)))
+        {
+            Sources.Add(sourceDiscovery.InspectBrowsedPath(pointer.SourceRoot, cleanupTaskPresent: false));
+        }
+
+        SelectedSourcePath = pointer.SourceRoot;
+        CompletedScanText =
+            "A scan of " +
+            pointer.SourceRoot +
+            " finished on " +
+            pointer.CompletedAt.ToLocalTime().ToString("d MMM yyyy 'at' HH:mm", CultureInfo.InvariantCulture) +
+            ". " +
+            pointer.NodesVisited.ToString("N0", CultureInfo.InvariantCulture) +
+            " files are already indexed. Open it instead of scanning again?";
+        CompletedScanVisible = true;
+        ContinueLastScanCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(SelectedSourcePath));
+    }
+
+    private async Task ContinueLastScanAsync()
+    {
+        if (lastScanPointer is not CompletedScanPointer pointer)
+        {
+            return;
+        }
+
+        CompletedScanVisible = false;
+        IsScanning = true;
+        OnPropertyChanged(nameof(IsScanning));
+        ScanCommand.NotifyCanExecuteChanged();
+        ShowCardsCommand.NotifyCanExecuteChanged();
+        ShowFilesCommand.NotifyCanExecuteChanged();
+        ScanStatus = "Opening last scan… Nothing has been changed.";
+        try
+        {
+            SessionDb opened = await SessionDb.OpenAsync(pointer.DatabasePath, safeFs).ConfigureAwait(false);
+            SessionWorkspace previousWorkspace = workspace;
+            SessionDb previousDatabase = sessionDb;
+            workspace = SessionWorkspace.Open(pointer.WorkspaceRoot, pointer.SessionId);
+            sessionDb = opened;
+            scanOrchestrator = new ScanOrchestrator(sessionDb, safeFs, sourceGuard);
+            recipeHost = recipeCatalog.Count > 0
+                ? new RecipeHost(sessionDb, safeFs, processRunner, recipeCatalog)
+                : null;
+            decisionEngine = new DecisionEngine(sessionDb, workspace.SessionId);
+            nodeBrowser = new NodeBrowser(sessionDb, workspace.SessionId);
+            try
+            {
+                await previousDatabase.DisposeAsync().ConfigureAwait(false);
+                if (Directory.Exists(previousWorkspace.RootPath) &&
+                    !previousWorkspace.RootPath.Equals(workspace.RootPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    safeFs.DeleteDirectory(previousWorkspace.RootPath, recursive: true);
+                }
+            }
+            catch (Exception exception) when (
+                exception is not OutOfMemoryException and not StackOverflowException)
+            {
+            }
+
+            await UiThread.InvokeAsync(HydrateFromSavedScan).ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            await UiThread.InvokeAsync(() => ShowHandledFailure(exception)).ConfigureAwait(true);
+        }
+        finally
+        {
+            await UiThread.InvokeAsync(() =>
+            {
+                IsScanning = false;
+                OnPropertyChanged(nameof(IsScanning));
+                ScanCommand.NotifyCanExecuteChanged();
+                ShowCardsCommand.NotifyCanExecuteChanged();
+                ShowFilesCommand.NotifyCanExecuteChanged();
+                ContinueLastScanCommand.NotifyCanExecuteChanged();
+            }).ConfigureAwait(true);
+        }
+    }
+
+    private void HydrateFromSavedScan()
+    {
+        string? source = sessionDb.GetKv(workspace.SessionId, CompletedScan.SourceRootKey)
+            ?? lastScanPointer?.SourceRoot;
+        if (string.IsNullOrWhiteSpace(source) || !Directory.Exists(source))
+        {
+            ScanStatus = "The last scan source folder is gone. Choose Scan to start again.";
+            return;
+        }
+
+        SourceRoot = source;
+        sourceGuard.RegisterSourceRoot(source);
+        SelectedSourcePath = source;
+        lastProfiles = new ProfileDetector().Detect(source);
+        lastRecipeCards = LoadStoredRecipeCards();
+        int highValue = ParseStoredInt(CompletedScan.HighValueCountKey);
+        int regeneratable = ParseStoredInt(CompletedScan.RegeneratableCountKey);
+        lastClassification = new ClassificationSummary(highValue, 0, regeneratable, 0, []);
+        int nodes = ParseStoredInt(CompletedScan.NodesVisitedKey);
+        if (nodes == 0)
+        {
+            nodes = lastScanPointer?.NodesVisited ?? 0;
+        }
+
+        long bytes = 0;
+        string? storedBytes = sessionDb.GetKv(workspace.SessionId, CompletedScan.BytesSeenKey);
+        _ = long.TryParse(storedBytes, NumberStyles.Integer, CultureInfo.InvariantCulture, out bytes);
+        scanCompleted = true;
+        destinationByRelPath = DestinationMap.Parse(sessionDb.GetKv(workspace.SessionId, DestinationMap.KvKey));
+        RebuildCards(lastProfiles);
+        CurrentStep = WorkflowStep.Decide;
+        DecidePane = DecidePane.Cards;
+        ReloadView();
+        ScanStatus = StatusStrip.FormatScanSummary(
+            nodes,
+            bytes,
+            lastProfiles.Count,
+            lastRecipeCards.Count,
+            lastClassification.HighValueCount,
+            hashedFiles: null);
+        OnPropertyChanged(nameof(WindowTitle));
+        OnPropertyChanged(nameof(ScanCompleted));
+        OnPropertyChanged(nameof(SourceRoot));
+        PreparePreviewCommand.NotifyCanExecuteChanged();
+        ExecuteRestoreCommand.NotifyCanExecuteChanged();
+        ReviewUndecidedCommand.NotifyCanExecuteChanged();
+        ShowCardsCommand.NotifyCanExecuteChanged();
+        ShowFilesCommand.NotifyCanExecuteChanged();
+        UndoDecisionCommand.NotifyCanExecuteChanged();
+        AnalyzeGitCommand.NotifyCanExecuteChanged();
+    }
+
+    private IReadOnlyList<RecipeCard> LoadStoredRecipeCards()
+    {
+        List<RecipeCard> cards = [];
+        foreach (PersistedRecipeCard row in sessionDb.ListRecipeCards(workspace.SessionId))
+        {
+            try
+            {
+                RecipeCard? card = JsonSerializer.Deserialize<RecipeCard>(row.Json);
+                if (card is not null)
+                {
+                    cards.Add(card);
+                }
+            }
+            catch (JsonException)
+            {
+            }
+        }
+
+        return cards;
+    }
+
+    private int ParseStoredInt(string key)
+    {
+        string? stored = sessionDb.GetKv(workspace.SessionId, key);
+        return int.TryParse(stored, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value)
+            ? value
+            : 0;
+    }
+
+    private void DismissLastScan()
+    {
+        CompletedScanVisible = false;
+        lastScanPointer = null;
+        ContinueLastScanCommand.NotifyCanExecuteChanged();
     }
 
     private void BrowseDestination()
@@ -1848,6 +2054,31 @@ public sealed class ShellViewModel : ObservableObject
             }
 
             int? hashedFiles = hashed;
+            await sessionDb.SetKvBatchAsync(
+                    workspace.SessionId,
+                    [
+                        (CompletedScan.CompletedKey, "1"),
+                        (CompletedScan.SourceRootKey, result.SourceRoot),
+                        (CompletedScan.NodesVisitedKey, result.Walk.NodesVisited.ToString(CultureInfo.InvariantCulture)),
+                        (CompletedScan.BytesSeenKey, result.Walk.BytesSeen.ToString(CultureInfo.InvariantCulture)),
+                        (CompletedScan.HighValueCountKey, result.Classification.HighValueCount.ToString(CultureInfo.InvariantCulture)),
+                        (CompletedScan.RegeneratableCountKey, result.Classification.RegeneratableCount.ToString(CultureInfo.InvariantCulture)),
+                    ],
+                    scanCancellation.Token)
+                .ConfigureAwait(false);
+            CompletedScan.Write(
+                safeFs,
+                new CompletedScanPointer(
+                    workspace.SessionId,
+                    workspace.RootPath,
+                    workspace.DatabasePath,
+                    PathCanonicalizer.WithoutExtendedPrefix(result.SourceRoot),
+                    DateTimeOffset.Now,
+                    result.Walk.NodesVisited,
+                    result.Walk.BytesSeen,
+                    result.Profiles.Count,
+                    cards.Count),
+                CompletedScan.PointerPathFromWorkspace(workspace.RootPath));
             await UiThread.InvokeAsync(() =>
             {
                 SourceRoot = result.SourceRoot;
@@ -1875,6 +2106,8 @@ public sealed class ShellViewModel : ObservableObject
                 ExecutePurgeCommand.NotifyCanExecuteChanged();
                 CreateSupportBundleCommand.NotifyCanExecuteChanged();
                 AnalyzeGitCommand.NotifyCanExecuteChanged();
+                ShowCardsCommand.NotifyCanExecuteChanged();
+                ShowFilesCommand.NotifyCanExecuteChanged();
             }).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
@@ -1918,6 +2151,8 @@ public sealed class ShellViewModel : ObservableObject
                 ScanCommand.NotifyCanExecuteChanged();
                 CancelScanCommand.NotifyCanExecuteChanged();
                 PauseScanCommand.NotifyCanExecuteChanged();
+                ShowCardsCommand.NotifyCanExecuteChanged();
+                ShowFilesCommand.NotifyCanExecuteChanged();
             }).ConfigureAwait(true);
         }
     }
@@ -2839,7 +3074,7 @@ public sealed class ShellViewModel : ObservableObject
         ClearSyncthingMappings(hideEditor: false);
         if (recipeHost is not null)
         {
-            DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner);
+            DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner, workspace.TemporaryPath);
             foreach (RecipeCard card in lastRecipeCards)
             {
                 IRecipe? recipe = recipeHost.Find(card.RecipeId);
@@ -3024,7 +3259,7 @@ public sealed class ShellViewModel : ObservableObject
             return;
         }
 
-        DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner);
+        DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner, workspace.TemporaryPath);
         List<string> recipeLines = [];
         foreach (RecipeCard card in lastRecipeCards)
         {
@@ -3139,7 +3374,7 @@ public sealed class ShellViewModel : ObservableObject
             .ConfigureAwait(true);
         if (result.Completed && recipeHost is not null)
         {
-            DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner);
+            DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner, workspace.TemporaryPath);
             foreach (RecipeCard card in lastRecipeCards)
             {
                 IRecipe? recipe = recipeHost.Find(card.RecipeId);
@@ -3228,7 +3463,7 @@ public sealed class ShellViewModel : ObservableObject
         IReadOnlyList<VerifyResultRow> level3 = [];
         if (recipeHost is not null)
         {
-            DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner);
+            DestinationContext destination = new(LiveProfileRoot, workspace.ExportsPath, safeFs, processRunner, workspace.TemporaryPath);
             level3 = await recipeHost.CollectLevel3Async(
                     workspace.SessionId,
                     report.ReportId,

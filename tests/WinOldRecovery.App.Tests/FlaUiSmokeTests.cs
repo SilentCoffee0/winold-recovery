@@ -61,6 +61,7 @@ public sealed class FlaUiSmokeTests
             Assert.Contains("WinOld Recovery", found.Title, StringComparison.OrdinalIgnoreCase);
             TryInvoke(found, "DismissFirstRunButton");
             TryInvoke(found, "DismissInterruptedButton");
+            TryInvoke(found, "DismissLastScanButton");
             WaitForStatus(
                 found,
                 static text => text.Contains("Smoke fixture ready (OldInstall)", StringComparison.Ordinal),

@@ -268,6 +268,33 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
+    public async Task Scan_WritesALastScanPointerThatCanBeReopened()
+    {
+        await using ShellTestContext context = await ShellTestContext.CreateAsync();
+        string source = Path.Combine(context.Root, "Windows.old");
+        Directory.CreateDirectory(Path.Combine(source, "Users", "Alice", "Desktop"));
+        await File.WriteAllTextAsync(Path.Combine(source, "Users", "Alice", "NTUSER.DAT"), "hive");
+        await File.WriteAllTextAsync(Path.Combine(source, "Users", "Alice", "Desktop", "note.txt"), "hi");
+        context.ViewModel.SelectedSourcePath = source;
+        await context.ViewModel.ScanCommand.ExecuteAsync(null);
+
+        string pointerPath = CompletedScan.PointerPathFromWorkspace(context.WorkspaceRoot);
+        CompletedScanPointer? pointer = CompletedScan.TryRead(new SafeFs(new SourceGuard()), pointerPath);
+        Assert.NotNull(pointer);
+        Assert.Equal(context.SessionId, pointer.SessionId);
+        Assert.Equal(source, pointer.SourceRoot, StringComparer.OrdinalIgnoreCase);
+
+        context.ViewModel.OfferCompletedScan(pointer);
+        Assert.True(context.ViewModel.CompletedScanVisible);
+        Assert.Contains("already indexed", context.ViewModel.CompletedScanText, StringComparison.OrdinalIgnoreCase);
+        await context.ViewModel.ContinueLastScanCommand.ExecuteAsync(null);
+        Assert.False(context.ViewModel.CompletedScanVisible);
+        Assert.True(context.ViewModel.ScanCompleted);
+        Assert.Equal(WorkflowStep.Decide, context.ViewModel.CurrentStep);
+        Assert.Contains(context.ViewModel.Cards, card => card.Title == "Desktop");
+    }
+
+    [Fact]
     public async Task PauseRestore_IsArmedOnlyWhileARestoreIsRunning()
     {
         await using ShellTestContext context = await ShellTestContext.CreateAsync();
@@ -1296,7 +1323,7 @@ public sealed class ShellViewModelTests
 
         public async ValueTask DisposeAsync()
         {
-            await Database.DisposeAsync();
+            await ViewModel.SessionDatabase.DisposeAsync();
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             Directory.Delete(Root, recursive: true);
         }

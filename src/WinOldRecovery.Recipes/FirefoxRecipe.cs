@@ -96,22 +96,6 @@ public sealed class FirefoxRecipe : IRecipe
             int bookmarkCount = 0;
             string folder = Path.GetFileName(profile);
             string firefoxTemp = Path.Combine(context.SessionTemporaryDirectory, "firefox", folder);
-            if (hasPlaces)
-            {
-                try
-                {
-                    string copy = ReadOnlySqlite.CopyToTemp(
-                        context.SafeFs,
-                        Path.Combine(profile, "places.sqlite"),
-                        firefoxTemp,
-                        "places.sqlite");
-                    (bookmarkCount, bookmarksHtml) = SqliteExports.FirefoxBookmarks(copy);
-                    historyCsv = SqliteExports.FirefoxHistoryCsv(copy);
-                }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
-                {
-                }
-            }
 
             string primaryPassword = present.Contains("key4.db")
                 ? Key4PrimaryPassword.Detect(
@@ -151,7 +135,7 @@ public sealed class FirefoxRecipe : IRecipe
                         new RecipeComponent(
                             "bookmarks-export",
                             "Bookmarks HTML export",
-                            bookmarkCount + " bookmarks",
+                            hasPlaces ? "places.sqlite found" : "No places.sqlite",
                             hasPlaces ? Decision.Restore : Decision.LeaveBehind,
                             false,
                             null,
@@ -277,9 +261,17 @@ public sealed class FirefoxRecipe : IRecipe
             destination.SessionExportsDirectory,
             Id,
             decisions.Card.InstanceKey.Replace(':', '_'));
+        string bookmarksHtmlReady = decisions.Card.Facts.GetValueOrDefault("bookmarksHtml") ?? string.Empty;
+        string historyCsvReady = decisions.Card.Facts.GetValueOrDefault("historyCsv") ?? "url,title\n";
+        if (RecipeDecisions.ShouldRestore(decisions, "bookmarks-export") ||
+            RecipeDecisions.ShouldRestore(decisions, "history-export"))
+        {
+            LoadPlacesExports(decisions, destination, ref bookmarksHtmlReady, ref historyCsvReady);
+        }
+
         if (RecipeDecisions.ShouldRestore(decisions, "bookmarks-export"))
         {
-            string html = decisions.Card.Facts.GetValueOrDefault("bookmarksHtml") ?? string.Empty;
+            string html = bookmarksHtmlReady;
             writes.Add(
                 new RecipeWrite(
                     RecipeWriteKind.WriteContent,
@@ -292,7 +284,7 @@ public sealed class FirefoxRecipe : IRecipe
 
         if (RecipeDecisions.ShouldRestore(decisions, "history-export"))
         {
-            string csv = decisions.Card.Facts.GetValueOrDefault("historyCsv") ?? "url,title\n";
+            string csv = historyCsvReady;
             writes.Add(
                 new RecipeWrite(
                     RecipeWriteKind.WriteContent,
@@ -363,6 +355,49 @@ public sealed class FirefoxRecipe : IRecipe
         }
 
         return FolderAllowList;
+    }
+
+    private static void LoadPlacesExports(
+        CardDecisions decisions,
+        DestinationContext destination,
+        ref string bookmarksHtml,
+        ref string historyCsv)
+    {
+        if (!string.IsNullOrEmpty(bookmarksHtml) && historyCsv.Length > "url,title\n".Length)
+        {
+            return;
+        }
+
+        string source = Path.Combine(decisions.Card.Facts["source"], "places.sqlite");
+        if (!destination.SafeFs.FileExists(source))
+        {
+            return;
+        }
+
+        string work = string.IsNullOrWhiteSpace(destination.SessionTemporaryDirectory)
+            ? Path.Combine(destination.SessionExportsDirectory, ".work")
+            : destination.SessionTemporaryDirectory;
+
+        try
+        {
+            string copy = ReadOnlySqlite.CopyToTemp(
+                destination.SafeFs,
+                source,
+                Path.Combine(work, "firefox", decisions.Card.Facts["folder"]),
+                "places.sqlite");
+            if (string.IsNullOrEmpty(bookmarksHtml))
+            {
+                (_, bookmarksHtml) = SqliteExports.FirefoxBookmarks(copy);
+            }
+
+            if (historyCsv.Length <= "url,title\n".Length)
+            {
+                historyCsv = SqliteExports.FirefoxHistoryCsv(copy);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
+        {
+        }
     }
 
     private static bool SkipRegenerated(string relative)

@@ -1059,6 +1059,27 @@
         </Border>
         <Border Style="{StaticResource DialogHost}"
                 Panel.ZIndex="4"
+                Visibility="{Binding CompletedScanVisible, Converter={StaticResource VisibleWhenTrue}}">
+            <Border Style="{StaticResource DialogCard}">
+            <StackPanel>
+                <TextBlock FontSize="20" FontWeight="SemiBold" Text="Open last scan?" />
+                <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" Text="{Binding CompletedScanText}"
+                           AutomationProperties.AutomationId="CompletedScanText" />
+                <StackPanel Margin="0,28,0,0" Orientation="Horizontal">
+                    <Button Style="{StaticResource AccentButton}" Content="Open last scan"
+                            Command="{Binding ContinueLastScanCommand}"
+                            AutomationProperties.Name="Open last scan"
+                            AutomationProperties.AutomationId="ContinueLastScanButton" />
+                    <Button Margin="12,0,0,0" Content="Scan again"
+                            Command="{Binding DismissLastScanCommand}"
+                            AutomationProperties.Name="Dismiss last scan"
+                            AutomationProperties.AutomationId="DismissLastScanButton" />
+                </StackPanel>
+            </StackPanel>
+            </Border>
+        </Border>
+        <Border Style="{StaticResource DialogHost}"
+                Panel.ZIndex="5"
                 Visibility="{Binding DiskFullVisible, Converter={StaticResource VisibleWhenTrue}}">
             <Border Style="{StaticResource DialogCard}">
             <StackPanel>

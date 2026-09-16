@@ -7,6 +7,8 @@ All notable changes to WinOld Recovery will be documented here.
 ### Changed
 
 - After the file walk, classification and app detect (Chrome/Firefox history copies) run off the dispatcher. The status line shows classifying / looking-for-apps so a large Windows.old no longer looks frozen after "scan finished".
+- Looking for apps no longer copies Chrome History / Edge Web Data / Firefox places during detect. Those sqlite reads happen at Plan/Verify. Apps & folders / All files stay disabled until the scan finishes.
+- A finished scan writes `last-scan.json`. The next launch offers Open last scan so the tree does not have to be walked again.
 - Decide lists Apps first, then Personal folders. Restore is this pass; Later keeps the item Undecided so it can be restored later. Leave Behind still does not delete. The Cards/Files toggle is labeled Apps & folders / All files.
 - GUI startup paints MainWindow before `schtasks /Query` source discovery. The cleanup-task query times out after 2 seconds (was 15) and overlaps volume walking. Embedded classification rules load once. Interrupted-restore peek no longer takes an exclusive lock on leftover session databases first, skips `session.db` files larger than 32 MiB and sessions whose source folder is gone, and is cancelled after 2 seconds. Free-space checks walk to an existing ancestor when the destination folder was deleted.
 - Scan indexing writes nodes with synchronous SQLite inserts, a 64 MB page cache, and memory temp tables. Classify applies suggested defaults in one writer transaction (no per-node undo/subtree CTE). Optional hash-during-scan stores SHA-256 in batches of 64. Node inserts use 48-row `VALUES` statements, badges use 96-row `INSERT OR IGNORE`, folder-size rollups use 32-row `CASE` updates, and hash kv uses 64-row upserts. Schema v4 adds `(session_id, name)` and `(session_id, rel_path)` indexes so post-scan recipe detect can use prefix GLOB instead of scanning every node.
@@ -14,6 +16,7 @@ All notable changes to WinOld Recovery will be documented here.
 - After a scan, Git/KeePass/Obsidian/Outlook and Anki Start-menu `.lnk` detect use the node index instead of walking the profile again. Anki still reads `-b` bytes from those shortcuts. Detect without a walker checkpoint still walks the disk (unit tests).
 - Anki L3 verify opens the restored `collection.anki2` for `PRAGMA integrity_check` and note-count compare, checks dest media file count against the source (excluding `media.trash`), and fails if the newest `.colpkg` was planned but missing.
 - VS Code L3 verify requires dest `install-extensions-<cli>.cmd` to list every source extension id.
+- KeePass L3 verify requires dest sibling `.keyx`/`.key` files. Outlook verify fails if an OST was written. Terminal verify fails if existing `settings.json` matches the old copy. Obsidian verify requires dest `.obsidian`.
 
 ### Fixed
 
@@ -53,7 +56,7 @@ All notable changes to WinOld Recovery will be documented here.
 - I7 watches `RestoreHarness` during a local CopyTree with `netstat -ano` and fails if that PID opens a non-loopback TCP/UDP remote. The same watch covers published `--scan` when `WINOLD_RECOVERY_EXE` is set (skipped in CI; elevation-required starts skip). `tools/run-i7-published-scan.ps1` publishes the EXE and runs that probe on a TEMP `OldInstall` fixture.
 - After `wsl --import-in-place`, Restore sets the distro default user: skip when `/etc/wsl.conf` already has `[user] default=`, otherwise `getent passwd` plus `--set-default-user` with a `wsl.conf` append fallback. Linux names are validated before they are passed to WSL.
 - WSL registration lists `wsl -l -v` first and imports as `<name>-recovered` when that distro name is already taken. A Leave-by-default `ownCopy` component uses `wsl --import --vhd` when the user wants WSL to own the disk. Preview keep-both copy names the `(from Windows.old)` suffix.
-- Game-save badges cover `.minecraft`, Epic, Ubisoft, EA/Origin, Battle.net/Blizzard, and Riot Games publisher folders in addition to Saved Games / My Games / Steam / Unreal / GOG.
+- Game-save badges cover `.minecraft`, Epic, Ubisoft, EA/Origin, Battle.net/Blizzard, Riot Games, and Steam-compatible AppData save folders in addition to Saved Games / My Games / Steam / Unreal / GOG. Game-save **cards** restore those folders from Decide → Apps.
 - I7 source scan also refuses `WebClient`, `HttpWebRequest`, `UdpClient`, `SocketsHttpHandler`, `WebRequest.Create`, `FtpWebRequest`, `HttpListener`, and `Dns.GetHost`.
 - README includes PRODUCT_SPEC §10 search phrases, including `selectively restore from Windows.old`. In-app Help still opens “What can and cannot be recovered” from `limitations.md`.
 - Copy path on the Decide Files context menu writes the selected source path through `ITextClipboard` (WPF clipboard in the app; captured in tests). Copied paths drop the `\\?\` prefix so Explorer can paste them.

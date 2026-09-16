@@ -76,6 +76,9 @@ public sealed class AccessibilityMarkupTests
         Assert.Contains("SessionLogView", xaml, StringComparison.Ordinal);
         Assert.Contains("CompactLayout", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.AutomationId=\"DismissFirstRunButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"ContinueLastScanButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"DismissLastScanButton\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("CompletedScanText", xaml, StringComparison.Ordinal);
         Assert.Contains("FirstRunBody", xaml, StringComparison.Ordinal);
         Assert.Contains("Merge into existing folders", xaml, StringComparison.Ordinal);
         Assert.Contains("Restore into Recovered folder", xaml, StringComparison.Ordinal);

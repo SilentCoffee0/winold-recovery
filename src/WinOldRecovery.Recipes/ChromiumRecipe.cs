@@ -57,9 +57,9 @@ public sealed class ChromiumRecipe : IRecipe
             int count = CountBookmarks(bookmarksJson);
             string extensionsHtml = BuildExtensionsHtml(context, Path.Combine(entry, "Extensions"));
             int extensionCount = CountTag(extensionsHtml, "<li>");
-            (int historyCount, string historyHtml, string historyCsv) = ReadHistory(context, entry, name);
+            bool hasHistory = context.SafeFs.FileExists(Path.Combine(entry, "History"));
             (int tabCount, string tabsHtml) = ReadTabs(context, Path.Combine(entry, "Sessions"));
-            (int autofillCount, string autofillCsv) = ReadAutofill(context, entry, name);
+            bool hasAutofill = context.SafeFs.FileExists(Path.Combine(entry, "Web Data"));
             List<RecipeComponent> components =
             [
                 new RecipeComponent(
@@ -73,8 +73,8 @@ public sealed class ChromiumRecipe : IRecipe
                 new RecipeComponent(
                     "history-export",
                     "History export",
-                    historyCount + " URLs",
-                    historyCount > 0 ? Decision.Restore : Decision.LeaveBehind,
+                    hasHistory ? "History database found" : "No history file",
+                    hasHistory ? Decision.Restore : Decision.LeaveBehind,
                     false,
                     null,
                     true),
@@ -97,7 +97,7 @@ public sealed class ChromiumRecipe : IRecipe
                 new RecipeComponent(
                     "autofill-export",
                     "Autofill CSV export",
-                    autofillCount + " fields",
+                    hasAutofill ? "Web Data found" : "No autofill file",
                     Decision.Undecided,
                     false,
                     null,
@@ -159,14 +159,13 @@ public sealed class ChromiumRecipe : IRecipe
                         ["count"] = count.ToString(),
                         ["extensions"] = extensionCount.ToString(),
                         ["extensionsHtml"] = extensionsHtml,
-                        ["historyHtml"] = historyHtml,
-                        ["historyCsv"] = historyCsv,
                         ["tabsHtml"] = tabsHtml,
-                        ["autofillCsv"] = autofillCsv,
                         ["folder"] = name,
                         ["displayName"] = display,
                         ["browserVersion"] = localState.BrowserVersion,
                         ["lastUsed"] = ReadHistoryLastUsed(context.SafeFs, entry),
+                        ["historyPresent"] = hasHistory ? "1" : "0",
+                        ["autofillPresent"] = hasAutofill ? "1" : "0",
                     }));
             DetectorWalk.AddTreeBadge(
                 badges,
@@ -195,21 +194,25 @@ public sealed class ChromiumRecipe : IRecipe
 
         if (RecipeDecisions.ShouldRestore(decisions, "history-export"))
         {
+            (int _, string historyHtml, string historyCsv) = ReadHistory(
+                destination.SafeFs,
+                decisions.Card.Facts["profileDir"],
+                WorkDirectory(destination, decisions.Card.Facts["folder"]));
             writes.Add(
                 new RecipeWrite(
                     RecipeWriteKind.WriteContent,
                     null,
                     Path.Combine(exportRoot, "history.html"),
-                    decisions.Card.Facts.GetValueOrDefault("historyHtml"),
-                    1,
+                    historyHtml,
+                    historyHtml.Length,
                     "history-export"));
             writes.Add(
                 new RecipeWrite(
                     RecipeWriteKind.WriteContent,
                     null,
                     Path.Combine(exportRoot, "history.csv"),
-                    decisions.Card.Facts.GetValueOrDefault("historyCsv"),
-                    1,
+                    historyCsv,
+                    historyCsv.Length,
                     "history-export"));
         }
 
@@ -241,14 +244,17 @@ public sealed class ChromiumRecipe : IRecipe
 
         if (RecipeDecisions.ShouldRestore(decisions, "autofill-export"))
         {
-            string csv = decisions.Card.Facts.GetValueOrDefault("autofillCsv") ?? "kind,name,value\n";
+            (int _, string autofillCsv) = ReadAutofill(
+                destination.SafeFs,
+                decisions.Card.Facts["profileDir"],
+                WorkDirectory(destination, decisions.Card.Facts["folder"]));
             writes.Add(
                 new RecipeWrite(
                     RecipeWriteKind.WriteContent,
                     null,
                     Path.Combine(exportRoot, "autofill.csv"),
-                    csv,
-                    csv.Length,
+                    autofillCsv,
+                    autofillCsv.Length,
                     "autofill-export"));
         }
 
@@ -497,21 +503,29 @@ public sealed class ChromiumRecipe : IRecipe
         return count;
     }
 
-    private (int Count, string Html, string Csv) ReadHistory(ProfileContext context, string profileDir, string profileName)
+    private static string WorkDirectory(DestinationContext destination, string profileName)
+    {
+        string root = string.IsNullOrWhiteSpace(destination.SessionTemporaryDirectory)
+            ? Path.Combine(destination.SessionExportsDirectory, ".work")
+            : destination.SessionTemporaryDirectory;
+
+        return Path.Combine(root, "chromium", profileName);
+    }
+
+    private (int Count, string Html, string Csv) ReadHistory(
+        SafeFs safeFs,
+        string profileDir,
+        string tempDirectory)
     {
         string history = Path.Combine(profileDir, "History");
-        if (!context.SafeFs.FileExists(history))
+        if (!safeFs.FileExists(history))
         {
             return (0, string.Empty, "url,title,visit_count\n");
         }
 
         try
         {
-            string copy = ReadOnlySqlite.CopyToTemp(
-                context.SafeFs,
-                history,
-                Path.Combine(context.SessionTemporaryDirectory, Id, profileName),
-                "History");
+            string copy = ReadOnlySqlite.CopyToTemp(safeFs, history, tempDirectory, "History");
             return SqliteExports.ChromiumHistory(copy);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)
@@ -520,21 +534,20 @@ public sealed class ChromiumRecipe : IRecipe
         }
     }
 
-    private (int Count, string Csv) ReadAutofill(ProfileContext context, string profileDir, string profileName)
+    private (int Count, string Csv) ReadAutofill(
+        SafeFs safeFs,
+        string profileDir,
+        string tempDirectory)
     {
         string webData = Path.Combine(profileDir, "Web Data");
-        if (!context.SafeFs.FileExists(webData))
+        if (!safeFs.FileExists(webData))
         {
             return (0, "kind,name,value\n");
         }
 
         try
         {
-            string copy = ReadOnlySqlite.CopyToTemp(
-                context.SafeFs,
-                webData,
-                Path.Combine(context.SessionTemporaryDirectory, Id, profileName),
-                "Web Data");
+            string copy = ReadOnlySqlite.CopyToTemp(safeFs, webData, tempDirectory, "Web Data");
             return SqliteExports.ChromiumAutofill(copy);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException)

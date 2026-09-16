@@ -21,6 +21,7 @@ public static class RecipeCatalog
         new VsCodeRecipe(),
         new TerminalRecipe(),
         new ObsidianRecipe(),
+        new GameSavesRecipe(),
     ];
 
     public static IReadOnlyList<(string Id, string AbsentTitle)> AbsentLabels { get; } =
@@ -40,5 +41,6 @@ public static class RecipeCatalog
         ("vscode", "VS Code"),
         ("windows-terminal", "Windows Terminal"),
         ("obsidian", "Obsidian"),
+        ("game-saves", "Game saves"),
     ];
 }
